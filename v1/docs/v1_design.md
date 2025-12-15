@@ -1,4 +1,4 @@
-# v1 設計メモ（YouTube → Bluesky）
+﻿# v1 設計メモ（YouTube → Bluesky）
 
 ## 1. 目的
 - 特定の YouTube チャンネルの新着動画を検知し、指定した Bluesky アカウントに自動投稿する常駐ボットを提供する。

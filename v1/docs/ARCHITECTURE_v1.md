@@ -1,4 +1,4 @@
-# YouTube Notifier on Bluesky - v1 アーキテクチャ設計
+﻿# YouTube Notifier on Bluesky - v1 アーキテクチャ設計
 
 ## 概要
 

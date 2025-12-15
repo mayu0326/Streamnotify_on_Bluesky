@@ -1,4 +1,4 @@
-# Streamnotify v2 設定項目一覧（概要）
+﻿# Streamnotify v2 設定項目一覧（概要）
 
 このドキュメントは `settings.env.example` のセクション順に、主要な設定項目の目的と利用条件を簡潔にまとめたものです。詳細なサンプル値やコメントは `settings.env.example` を参照してください。
 

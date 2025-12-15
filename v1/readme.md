@@ -1,4 +1,4 @@
-# YouTube → Bluesky Notifier (v1)
+﻿# YouTube → Bluesky Notifier (v1)
 
 特定の YouTube チャンネルの新着動画を検知し、指定した Bluesky アカウントに自動投稿する常駐ボットです。
 

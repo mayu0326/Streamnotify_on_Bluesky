@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 
 """
 YouTube Notifier on Bluesky - v1 YouTube RSS 管理
