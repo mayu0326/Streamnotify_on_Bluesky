@@ -1,7 +1,10 @@
 ﻿# -*- coding: utf-8 -*-
 
 """
-Stream notify on Bluesky - v2 Bluesky プラグイン
+Stream notify on Bluesky - v2 Bluesky コア機能（内部ライブラリ）
+
+【重要】このモジュールはプラグイン層からのみ利用されます。
+直接呼び出しは行わないでください。画像添付機能はプラグイン層で実装されます。
 
 Bluesky へのポスト機能を提供。
 HTTP API で直接 Rich Text をポスト。
@@ -71,25 +74,25 @@ class BlueskyMinimalPoster:
     def _build_facets_for_url(self, text: str) -> list:
         """
         テキストから URL を検出して Facet を構築
-        
+
         Bluesky Rich Text Facet: https://docs.bsky.app/docs/advanced-guides/post-richtext
-        
+
         Args:
             text: ポスト本文
-            
+
         Returns:
             Facet リスト、URL がない場合は None
         """
         pattern = r'https?://[^\s]+'
         facets = []
-        
+
         for match in re.finditer(pattern, text):
             url = match.group(0)
-            
+
             # UTF-8 バイト位置を計算
             byte_start = len(text[:match.start()].encode('utf-8'))
             byte_end = len(text[:match.end()].encode('utf-8'))
-            
+
             facet = {
                 "index": {
                     "byteStart": byte_start,
@@ -105,48 +108,67 @@ class BlueskyMinimalPoster:
             facets.append(facet)
             post_logger.info(f"  🔗 URL 検出: {url}")
             post_logger.info(f"     バイト位置: {byte_start} - {byte_end}")
-        
+
         return facets if facets else None
 
     def post_video_minimal(self, video: dict) -> bool:
-        """最小限の動画投稿API（テキストのみ）"""
+        """最小限の動画投稿API（テキスト + オプション画像埋め込み）"""
         try:
             # デバッグ: 受け取ったフィールドを確認
             post_logger.debug(f"🔍 post_video_minimal に受け取ったフィールド:")
             post_logger.debug(f"   source: {video.get('source')}")
             post_logger.debug(f"   image_mode: {video.get('image_mode')}")
             post_logger.debug(f"   image_filename: {video.get('image_filename')}")
-            
+            post_logger.debug(f"   embed: {bool(video.get('embed'))}")
+
             title = video.get("title", "【新着動画】")
             video_url = video.get("video_url", "")
             channel_name = video.get("channel_name", "")
             published_at = video.get("published_at", "")
             source = video.get("source", "youtube").lower()
-            
+
             if not video_url:
                 logger.error("❌ video_url が見つかりません")
                 return False
-            
+
             # source に応じたテンプレートを生成
             if source == "niconico":
                 post_text = f"{title}\n\n📅 {published_at[:10]}\n\n{video_url}"
             else:
                 # YouTube（デフォルト）
                 post_text = f"{title}\n\n🎬 {channel_name}\n📅 {published_at[:10]}\n\n{video_url}"
-            
+
             post_logger.info(f"投稿内容:\n{post_text}")
             post_logger.info(f"文字数: {len(post_text)} / 300")
             post_logger.info(f"バイト数: {len(post_text.encode('utf-8'))}")
-            
+
             # Facet構築（省略可）
             facets = None
-            embed = None  # 画像埋め込みはコア機能から削除
+            # video辞書から embed を取得（プラグインが設定した場合）
+            embed = video.get("embed", None)
+            # use_link_card フラグを取得（デフォルト: True - プラグインなしの場合）
+            use_link_card = video.get("use_link_card", True)
             created_at = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
-            
+
             # Facet を構築（URL をリンク化）
             post_logger.info("📍 Facet を構築しています...")
             facets = self._build_facets_for_url(post_text)
-            
+
+            # === 条件分岐: embed の決定 ===
+            # embed フィールドは Union 型（1種類のみ）
+            if embed:
+                # パターン2: プラグイン有効 + 画像ありの場合
+                post_logger.info("🖼️ 画像 embed を使用します（リンクカード無効化）")
+                use_link_card = False  # リンクカードは使用しない
+            elif use_link_card and video_url:
+                # パターン1,3: リンクカード機能を有効化
+                post_logger.info("🔗 リンクカード embed を構築しています...")
+                embed = self._build_external_embed(video_url)
+                if embed:
+                    post_logger.info("✅ リンクカード embed を追加します")
+                else:
+                    post_logger.info("ℹ️ リンクカード embed は無視されます（画像なし）")
+
             if self.dry_run:
                 logger.info(f"[DRY RUN] Bluesky ポスト\n{post_text}")
                 return True
@@ -159,15 +181,15 @@ class BlueskyMinimalPoster:
                 "text": post_text,
                 "createdAt": created_at,
             }
-            
+
             # Facet がある場合のみ追加
             if facets:
                 post_record["facets"] = facets
-            
+
             # 画像が含まれる場合のみ追加
             if embed:
                 post_record["embed"] = embed
-            
+
             post_data = {
                 "repo": self.did,
                 "collection": "app.bsky.feed.post",
@@ -177,25 +199,196 @@ class BlueskyMinimalPoster:
                 "Authorization": f"Bearer {self.access_token}",
                 "Content-Type": "application/json"
             }
-            
+
             post_logger.info(f"📍 投稿: text={len(post_text)} 文字, facets={len(facets) if facets else 0} 個, 画像={bool(embed)}")
             if facets:
                 post_logger.info(f"   facets: {[f['index'] for f in facets]}")
-            
+
             response = requests.post(post_url, json=post_data, headers=headers, timeout=30)
             response.raise_for_status()
             response_data = response.json()
             uri = response_data.get("uri", "unknown")
-            
+
             if facets:
                 post_logger.info(f"✅ Bluesky に投稿しました（リンク化）: {uri}")
                 logger.info(f"✅ Bluesky に投稿しました（リンク化）: {uri}")
             else:
                 post_logger.info(f"✅ Bluesky に投稿しました（リンクなし）: {uri}")
                 logger.info(f"✅ Bluesky に投稿しました（リンクなし）: {uri}")
-            
+
             return True
         except Exception as e:
             logger.error(f"投稿処理中にエラーが発生しました: {e}", exc_info=True)
             return False
+    # ============ リンクカード機能（OGP 取得） ============
 
+    def _fetch_ogp_data(self, url: str) -> dict:
+        """
+        URL から OGP（Open Graph Protocol）メタデータを取得
+
+        Args:
+            url: 対象 URL
+
+        Returns:
+            {"title": str, "description": str, "image_url": str or None}
+        """
+        try:
+            post_logger.info(f"📋 OGP データを取得しています: {url}")
+
+            # タイムアウト設定して HTML を取得
+            resp = requests.get(url, timeout=10)
+            resp.raise_for_status()
+
+            # HTML をパース
+            try:
+                from bs4 import BeautifulSoup
+            except ImportError:
+                post_logger.warning("⚠️ BeautifulSoup がインストールされていません。OGP 取得をスキップします")
+                return None
+
+            soup = BeautifulSoup(resp.text, "html.parser")
+
+            # OGP タグを抽出
+            og_title = soup.find("meta", property="og:title")
+            og_desc = soup.find("meta", property="og:description")
+            og_image = soup.find("meta", property="og:image")
+
+            # フォールバック: og:title がない場合は title タグを使用
+            if not og_title:
+                title_tag = soup.find("title")
+                title = title_tag.string if title_tag else "No title"
+            else:
+                title = og_title.get("content", "No title")
+
+            description = og_desc.get("content", "") if og_desc else ""
+            image_url = og_image.get("content", None) if og_image else None
+
+            # 相対 URL を絶対 URL に変換
+            if image_url and "://" not in image_url:
+                from urllib.parse import urljoin
+                image_url = urljoin(url, image_url)
+
+            ogp_data = {
+                "title": title[:100],  # 最大 100 文字
+                "description": description[:256],  # 最大 256 文字
+                "image_url": image_url
+            }
+
+            post_logger.info(f"✅ OGP 取得成功: title={ogp_data['title'][:30]}...")
+            return ogp_data
+
+        except Exception as e:
+            post_logger.warning(f"⚠️ OGP 取得失敗: {e}")
+            return None
+
+    def _upload_ogp_image_blob(self, image_url: str) -> dict:
+        """
+        OGP 画像を Blob としてアップロード
+
+        Args:
+            image_url: 画像 URL
+
+        Returns:
+            blob メタデータ、失敗時は None
+        """
+        try:
+            if self.dry_run:
+                post_logger.info(f"🧪 [DRY RUN] 画像アップロード（スキップ）: {image_url}")
+                return {
+                    "$type": "blob",
+                    "mimeType": "image/jpeg",
+                    "size": 1000,
+                    "link": {"$link": "bafkreidummy"}
+                }
+
+            post_logger.info(f"📥 OGP 画像をダウンロード中: {image_url}")
+
+            # 画像をダウンロード
+            img_resp = requests.get(image_url, timeout=10)
+            img_resp.raise_for_status()
+
+            # ファイルサイズチェック（1MB 制限）
+            if len(img_resp.content) > 1_000_000:
+                post_logger.warning(f"⚠️ OGP 画像が大きすぎます: {len(img_resp.content)} bytes > 1MB")
+                return None
+
+            # MIME Type を取得
+            mime_type = img_resp.headers.get("Content-Type", "image/jpeg")
+
+            # アクセストークン確認
+            if not self.access_token:
+                post_logger.warning(f"⚠️ 認証トークンがありません。OGP 画像をアップロードできません")
+                return None
+
+            # Blob としてアップロード
+            upload_url = "https://bsky.social/xrpc/com.atproto.repo.uploadBlob"
+            headers = {
+                "Authorization": f"Bearer {self.access_token}",
+                "Content-Type": mime_type
+            }
+
+            upload_resp = requests.post(
+                upload_url,
+                data=img_resp.content,
+                headers=headers,
+                timeout=30
+            )
+            upload_resp.raise_for_status()
+
+            result = upload_resp.json()
+            blob = result.get("blob")
+
+            if blob:
+                post_logger.info(f"✅ OGP 画像アップロード成功: {blob.get('mimeType')} ({len(img_resp.content)} bytes)")
+                return blob
+            else:
+                post_logger.warning(f"⚠️ Blob メタデータが返されませんでした")
+                return None
+
+        except Exception as e:
+            post_logger.warning(f"⚠️ OGP 画像アップロード失敗: {e}")
+            return None
+
+    def _build_external_embed(self, url: str) -> dict:
+        """
+        リンクカード（外部 embed）を構築
+
+        OGP データを取得して、リンクカードを構築します。
+        Bluesky API: app.bsky.embed.external
+        参照: https://docs.bsky.app/docs/advanced-guides/posts
+
+        Args:
+            url: 対象 URL
+
+        Returns:
+            embed オブジェクト、失敗時は None
+        """
+        try:
+            ogp_data = self._fetch_ogp_data(url)
+            if not ogp_data:
+                post_logger.warning(f"⚠️ OGP データが取得できませんでした。リンクカードなしで投稿します")
+                return None
+
+            # リンクカード基本情報
+            embed = {
+                "$type": "app.bsky.embed.external",
+                "external": {
+                    "uri": url,
+                    "title": ogp_data["title"],
+                    "description": ogp_data["description"]
+                }
+            }
+
+            # 画像がある場合、アップロード
+            if ogp_data.get("image_url"):
+                blob = self._upload_ogp_image_blob(ogp_data["image_url"])
+                if blob:
+                    embed["external"]["thumb"] = blob
+                    post_logger.info(f"✅ リンクカード画像を追加しました")
+
+            post_logger.info(f"✅ リンクカード embed を構築しました")
+            return embed
+
+        except Exception as e:
+            post_logger.warning(f"⚠️ リンクカード構築失敗: {e}")
+            return None
