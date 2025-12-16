@@ -27,13 +27,14 @@ __license__ = "GPLv2"
 class StreamNotifyGUI:
     """Stream notify GUI（統合版, プラグイン対応）"""
 
-    def __init__(self, root, db, plugin_manager=None):
+    def __init__(self, root, db, plugin_manager=None, bluesky_core=None):
         self.root = root
         self.root.title("StreamNotify on Bluesky - DB 管理")
         self.root.geometry("1400x750")
 
         self.db = db
         self.plugin_manager = plugin_manager
+        self.bluesky_core = bluesky_core  # コア機能へのアクセス
         self.image_manager = get_image_manager()  # 画像管理クラスを初期化
         self.selected_rows = set()
 
@@ -95,7 +96,7 @@ class StreamNotifyGUI:
 
         self.tree.bind("<Button-1>", self.on_tree_click)
         self.tree.bind("<Double-1>", self.on_tree_double_click)
-        
+
         # 右クリックメニュー
         self.context_menu = tk.Menu(self.root, tearoff=0)
         self.context_menu.add_command(label="⏰ 予約日時を設定", command=self.context_edit_scheduled)
@@ -103,7 +104,7 @@ class StreamNotifyGUI:
         self.context_menu.add_separator()
         self.context_menu.add_command(label="🗑️ 削除", command=self.context_delete)
         self.context_menu.add_command(label="❌ 選択解除", command=self.context_deselect)
-        
+
         self.tree.bind("<Button-3>", self.show_context_menu)
 
         status_frame = ttk.Frame(self.root)
@@ -247,7 +248,7 @@ class StreamNotifyGUI:
                 prev_post_info = "前回投稿日時: 不明"
         else:
             prev_post_info = "前回投稿日時: 投稿されていません"
-        
+
         ttk.Label(edit_window, text=prev_post_info, foreground="blue", font=("Arial", 9)).pack(pady=2)
 
         # メインフレーム（スクロール対応）
@@ -293,7 +294,7 @@ class StreamNotifyGUI:
                 year = int(year_var.get())
                 month = int(month_var.get())
                 day = int(day_var.get())
-                
+
                 # 日の妥当性チェック
                 if day > calendar.monthrange(year, month)[1]:
                     day = calendar.monthrange(year, month)[1]
@@ -443,13 +444,13 @@ class StreamNotifyGUI:
         # 画像ファイル選択フレーム
         image_frame = ttk.LabelFrame(image_window, text=f"画像ファイル指定 ({site_dir}/import)", padding=10)
         image_frame.pack(pady=5, padx=10, fill=tk.BOTH, expand=True)
-        
+
         image_path_var = tk.StringVar(value=video.get("image_filename") or "")
-        
+
         # ファイル名入力
         file_select_frame = ttk.Frame(image_frame)
         file_select_frame.pack(fill=tk.X, pady=5)
-        
+
         ttk.Label(file_select_frame, text="ファイル名:").pack(side=tk.LEFT, padx=5)
         image_entry = ttk.Entry(file_select_frame, textvariable=image_path_var, width=35)
         image_entry.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
@@ -473,34 +474,34 @@ class StreamNotifyGUI:
         current_frame = ttk.LabelFrame(image_frame, text="登録されている画像", padding=5)
         current_frame.pack(fill=tk.X, pady=5)
         ttk.Label(current_frame, textvariable=current_image_var, foreground="blue").pack(anchor=tk.W)
-        
+
         # URLからダウンロードフレーム
         url_frame = ttk.LabelFrame(image_frame, text="URLから画像をダウンロード", padding=5)
         url_frame.pack(fill=tk.X, pady=5)
-        
+
         url_var = tk.StringVar(value=video.get("thumbnail_url") or "")
-        
+
         url_input_frame = ttk.Frame(url_frame)
         url_input_frame.pack(fill=tk.X)
-        
+
         ttk.Label(url_input_frame, text="URL:").pack(side=tk.LEFT, padx=2)
         url_entry = ttk.Entry(url_input_frame, textvariable=url_var, width=35)
         url_entry.pack(side=tk.LEFT, padx=2, fill=tk.X, expand=True)
-        
+
         def download_from_url():
             """URLから画像をダウンロード"""
             url = url_var.get().strip()
             if not url:
                 messagebox.showwarning("警告", "URLを入力してください。")
                 return
-            
+
             # YouTube動画の場合、ロガーを切り替え
             import image_manager as im_module
             import logging
             original_logger = im_module.logger
             if site_dir == "YouTube":
                 im_module.logger = logging.getLogger("YouTubeLogger")
-            
+
             try:
                 # ダウンロード
                 filename = self.image_manager.download_and_save_thumbnail(
@@ -511,7 +512,7 @@ class StreamNotifyGUI:
                 )
             finally:
                 im_module.logger = original_logger
-            
+
             if filename:
                 image_path_var.set(filename)
                 current_image_var.set(filename)
@@ -519,7 +520,7 @@ class StreamNotifyGUI:
                 messagebox.showinfo("成功", f"画像をダウンロードしました。\n{filename}")
             else:
                 messagebox.showerror("エラー", "画像のダウンロードに失敗しました。")
-        
+
         ttk.Button(url_input_frame, text="⬇️ ダウンロード", command=download_from_url).pack(side=tk.LEFT, padx=2)
 
         # 自動取得／バックフィルフレーム
@@ -547,7 +548,7 @@ class StreamNotifyGUI:
             import logging
             original_logger = im_module.logger
             im_module.logger = logging.getLogger("YouTubeLogger")
-            
+
             try:
                 filename = self.image_manager.download_and_save_thumbnail(
                     thumbnail_url=thumb_url,
@@ -557,19 +558,19 @@ class StreamNotifyGUI:
                 )
             finally:
                 im_module.logger = original_logger
-            
+
             if filename:
                 # DB更新時のロガーも切り替え
                 import database as db_module
                 db_original_logger = db_module.logger
                 db_module.logger = logging.getLogger("YouTubeLogger")
-                
+
                 try:
                     self.db.update_thumbnail_url(item_id, thumb_url)
                     self.db.update_image_info(item_id, image_mode="import", image_filename=filename)
                 finally:
                     db_module.logger = db_original_logger
-                
+
                 image_path_var.set(filename)
                 current_image_var.set(filename)
                 image_window.destroy()  # ダイアログを先に閉じる
@@ -625,7 +626,7 @@ class StreamNotifyGUI:
             ttk.Button(auto_frame, text="YouTubeサムネイル取得", command=run_youtube_thumbnail_fetch).pack(side=tk.LEFT, padx=3, expand=True, fill=tk.X)
         elif site_dir == "Niconico":
             ttk.Button(auto_frame, text="OGPから取得 (ニコニコ)", command=run_niconico_ogp_fetch).pack(side=tk.LEFT, padx=3, expand=True, fill=tk.X)
-        
+
         ttk.Button(auto_frame, text="未設定画像を再ダウンロード", command=run_redownload_all).pack(side=tk.LEFT, padx=3, expand=True, fill=tk.X)
 
         # ボタン
@@ -636,14 +637,14 @@ class StreamNotifyGUI:
             """画像設定を保存"""
             image_filename = image_path_var.get().strip() or None
             image_mode = "import" if image_filename else None
-            
+
             # 画像ファイルの存在確認
             if image_filename:
                 image_path = os.path.join("images", site_dir, "import", image_filename)
                 if not os.path.exists(image_path):
                     if not messagebox.askyesno("確認", f"画像ファイル '{image_filename}' が見つかりません。\nそれでも設定しますか？"):
                         return
-            
+
             self.db.update_image_info(item_id, image_mode=image_mode, image_filename=image_filename)
             messagebox.showinfo("成功", f"画像ファイルを設定しました。\n画像: {image_filename or '（指定なし）'}\n\n「選択を保存」ボタンで確定してください。")
             image_window.destroy()
@@ -664,12 +665,12 @@ class StreamNotifyGUI:
             if not filename:
                 messagebox.showinfo("情報", "画像が登録されていません。")
                 return
-            
+
             image_info = self.image_manager.get_image_info(site_dir, "import", filename)
             if not image_info:
                 messagebox.showerror("エラー", f"画像ファイル '{filename}' が見つかりません。")
                 return
-            
+
             # プレビューウィンドウを作成（画像表示 + 情報）
             preview_window = tk.Toplevel(image_window)
             preview_window.title(f"画像プレビュー - {filename}")
@@ -701,42 +702,42 @@ class StreamNotifyGUI:
                 ttk.Label(preview_window, text="Pillow が未インストールのため画像表示できません。\n`pip install Pillow` を実行してください。", foreground="red", wraplength=480).pack(pady=5)
 
             ttk.Label(preview_window, text="画像情報", font=("Arial", 12, "bold")).pack(pady=5)
-            
+
             info_frame = ttk.Frame(preview_window, padding=10)
             info_frame.pack(fill=tk.BOTH, expand=True)
-            
+
             # 情報を表示
             ttk.Label(info_frame, text=f"ファイル名:", font=("Arial", 9, "bold")).grid(row=0, column=0, sticky=tk.W, pady=3)
             ttk.Label(info_frame, text=image_info['filename']).grid(row=0, column=1, sticky=tk.W, pady=3, padx=10)
-            
+
             ttk.Label(info_frame, text=f"形式:", font=("Arial", 9, "bold")).grid(row=1, column=0, sticky=tk.W, pady=3)
             ttk.Label(info_frame, text=image_info['format']).grid(row=1, column=1, sticky=tk.W, pady=3, padx=10)
-            
+
             ttk.Label(info_frame, text=f"ファイルサイズ:", font=("Arial", 9, "bold")).grid(row=2, column=0, sticky=tk.W, pady=3)
             ttk.Label(info_frame, text=f"{image_info['file_size_mb']} MB").grid(row=2, column=1, sticky=tk.W, pady=3, padx=10)
-            
+
             if image_info.get('width') and image_info.get('height'):
                 ttk.Label(info_frame, text=f"解像度:", font=("Arial", 9, "bold")).grid(row=3, column=0, sticky=tk.W, pady=3)
                 ttk.Label(info_frame, text=f"{image_info['width']} x {image_info['height']}").grid(row=3, column=1, sticky=tk.W, pady=3, padx=10)
-                
+
                 ttk.Label(info_frame, text=f"モード:", font=("Arial", 9, "bold")).grid(row=4, column=0, sticky=tk.W, pady=3)
                 ttk.Label(info_frame, text=image_info.get('mode', 'N/A')).grid(row=4, column=1, sticky=tk.W, pady=3, padx=10)
             else:
-                ttk.Label(info_frame, text="※ Pillow未インストールのため解像度情報は取得できません", 
+                ttk.Label(info_frame, text="※ Pillow未インストールのため解像度情報は取得できません",
                          foreground="gray", wraplength=350).grid(row=3, column=0, columnspan=2, pady=10)
-            
+
             ttk.Label(info_frame, text=f"パス:", font=("Arial", 9, "bold")).grid(row=5, column=0, sticky=tk.W, pady=3)
             path_label = ttk.Label(info_frame, text=image_info['path'], foreground="blue", cursor="hand2", wraplength=320)
             path_label.grid(row=5, column=1, sticky=tk.W, pady=3, padx=10)
-            
+
             def open_folder():
                 """フォルダを開く"""
                 import subprocess
                 folder_path = os.path.dirname(image_info['path'])
                 subprocess.Popen(f'explorer "{folder_path}"')
-            
+
             path_label.bind("<Button-1>", lambda e: open_folder())
-            
+
             ttk.Button(preview_window, text="閉じる", command=preview_window.destroy).pack(pady=10)
 
         ttk.Button(button_frame, text="✅ 保存", command=save_image).pack(side=tk.LEFT, padx=3, expand=True, fill=tk.X)
@@ -793,7 +794,7 @@ class StreamNotifyGUI:
             messagebox.showinfo("完了", f"{len(selected)} 件のドライラン実行をログに出力しました。\nコンソールログを確認してください。")
 
     def execute_post(self):
-        """投稿実行：選択された動画をすべての有効プラグインで投稿"""
+        """投稿実行：有効なプラグインがあればプラグイン経由、なければコア機能で投稿"""
         if not self.plugin_manager:
             messagebox.showerror("エラー", "プラグインマネージャが初期化されていません。再起動してください。")
             return
@@ -809,15 +810,26 @@ class StreamNotifyGUI:
             messagebox.showwarning("警告", "投稿対象の動画がありません。\n\n選択して保存してから実行してください。")
             return
 
+        # 有効なプラグインがあるか確認
+        enabled_plugins = self.plugin_manager.get_enabled_plugins()
+        has_plugin = len(enabled_plugins) > 0
+
         msg = f"""
 📤 投稿実行 - 確認
 
-以下の {len(selected)} 件を有効な全プラグインで投稿します：
+以下の {len(selected)} 件を投稿します：
 """
         for v in selected[:5]:
             msg += f"  ✓ {v['title'][:50]}...\n"
         if len(selected) > 5:
             msg += f"  ... ほか {len(selected) - 5} 件\n"
+        msg += "\n"
+
+        if has_plugin:
+            msg += "【投稿モード】プラグイン経由（画像添付機能: 有効）\n"
+        else:
+            msg += "【投稿モード】コア機能のみ（テキスト + URLリンク化）\n"
+
         msg += """
 ※ この操作は取り消せません。
 ※ 投稿済みフラグの有無に関わらず投稿します。
@@ -830,8 +842,19 @@ class StreamNotifyGUI:
         for video in selected:
             try:
                 logger.info(f"📤 投稿実行（GUI）: {video['title']}")
-                results = self.plugin_manager.post_video_with_all_enabled(video)
-                if any(results.values()):
+                if has_plugin:
+                    # プラグイン有効時：プラグイン経由で投稿
+                    results = self.plugin_manager.post_video_with_all_enabled(video)
+                    success = any(results.values())
+                else:
+                    # プラグイン無効時：コア機能で直接投稿（テキスト + URLリンク化）
+                    if self.bluesky_core:
+                        success = self.bluesky_core.post_video_minimal(video)
+                    else:
+                        logger.warning(f"⚠️ コア機能が初期化されていないため、投稿できません: {video['title']}")
+                        success = False
+
+                if success:
                     self.db.mark_as_posted(video["video_id"])
                     self.db.update_selection(video["video_id"], selected=False, scheduled_at=None)
                     logger.info(f"動画の選択状態を更新: {video['video_id']} (selected=False, scheduled=None)")
@@ -905,14 +928,14 @@ class StreamNotifyGUI:
         info_lines = ["🔧 導入プラグイン一覧"]
         info_lines.append("-" * 65)
         info_lines.append("")
-        
+
         for plugin_name, plugin in loaded.items():
             is_enabled = plugin_name in enabled
             status = "✅有効" if is_enabled else "⚪無効"
             name = plugin.get_name()
             version = plugin.get_version()
             description = plugin.get_description()
-            
+
             # 説明文が長い場合は折り返す
             desc_lines = []
             desc = description
@@ -926,7 +949,7 @@ class StreamNotifyGUI:
                 desc = desc[idx:].lstrip()
             if desc:
                 desc_lines.append(desc)
-            
+
             info_lines.append(f"【{name}】 {status}")
             info_lines.append(f"  バージョン: v{version}")
             for i, desc_line in enumerate(desc_lines):
@@ -937,26 +960,26 @@ class StreamNotifyGUI:
             info_lines.append("")
 
         info_text = "\n".join(info_lines)
-        
+
         # Toplevel ウィンドウで表示（スクロール機能付き）
         info_window = tk.Toplevel(self.root)
         info_window.title("プラグイン情報")
         info_window.geometry("700x500")
-        
+
         # テキストウィジェット
         text_frame = ttk.Frame(info_window)
         text_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-        
+
         text_widget = tk.Text(text_frame, wrap=tk.WORD, font=("Courier New", 9), height=25, width=80)
         scrollbar = ttk.Scrollbar(text_frame, orient=tk.VERTICAL, command=text_widget.yview)
         text_widget.configure(yscroll=scrollbar.set)
-        
+
         text_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        
+
         text_widget.insert(tk.END, info_text)
         text_widget.config(state=tk.DISABLED)
-        
+
         # 閉じるボタン
         button_frame = ttk.Frame(info_window)
         button_frame.pack(fill=tk.X, padx=10, pady=5)
@@ -1008,7 +1031,7 @@ class StreamNotifyGUI:
         # 削除実行
         logger.info(f"🗑️ {len(selected)} 件の動画削除を開始します")
         deleted_count = self.db.delete_videos_batch([v["video_id"] for v in selected])
-        
+
         if deleted_count > 0:
             logger.info(f"✅ {deleted_count} 件の動画を削除しました（GUI操作）")
             self.selected_rows.clear()
