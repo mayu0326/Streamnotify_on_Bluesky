@@ -9,7 +9,7 @@
 │ StreamNotify on Bluesky - DB 管理                                                        │
 ├──────────────────────────────────────────────────────────────────────────────────────────────┤
 │                                                                                              │
-│ [🔄 再読込] [☑️ 全選択] [☐ 全解除] | [💾 保存] [🗑️ 削除] | [🧪 ドライラン] [📤 投稿実行] [ℹ️ 統計] [🔌 プラグイン] │
+│ [🔄 再読込] [☑️ 全選択] [☐ 全解除] | [💾 保存] [🗑️ 削除] | [🧪 投稿テスト] [📤 投稿設定] [ℹ️ 統計] [🔌 プラグイン] │
 │                                                                                              │
 ├──────────────────────────────────────────────────────────────────────────────────────────────┤
 │                                                                                              │
@@ -114,7 +114,7 @@ def execute_post(self):
     if not self.plugin_manager:
         messagebox.showerror("エラー", "プラグインが初期化されていません")
         return
-    
+
     # 複数プラグイン対応: 有効なすべてのプラグインで投稿実行
     results = self.plugin_manager.post_video_with_all_enabled(video)
     # results: {"bluesky": True, "twitch": False, ...}
@@ -141,8 +141,8 @@ def execute_post(self):
 | ☐ 全解除 | すべての選択を解除 | `deselect_all()` |
 | 💾 保存 | 選択状態を DB に保存 | `save_selection()` |
 | 🗑️ 削除 | 選択した動画を DB から削除 | `delete_selected()` |
-| 🧪 ドライラン | 投稿をテスト実行 | `dry_run_post()` |
-| 📤 投稿実行 | 選択動画を投稿 | `execute_post()` |
+| 🧪 投稿テスト | 投稿をテスト実行 | `dry_run_post()` |
+| 📤 投稿設定 | 投稿設定ウィンドウを表示 | `execute_post()` |
 | ℹ️ 統計 | 投稿数、投稿予定、未処理などの統計情報を表示 | `show_stats()` |
 | 🔌 プラグイン | 導入プラグイン一覧と有効/無効状態を表示 | `show_plugins()` |
 
@@ -220,8 +220,8 @@ def execute_post(self):
 1. 「☑️」をクリック → 投稿対象を選択
 2. 「投稿予定/投稿日時」をダブルクリック → 投稿日時を設定
 3. 「💾 選択を保存」 → DB に反映
-4. 「🧪 ドライラン」 → テスト実行
-5. 「📤 投稿実行」 → 実投稿
+4. 「🧪 投稿テスト」 → テスト実行
+5. 「📤 投稿設定」 → 投稿設定
 
 ⚠️ 注意
 ━━━━━━━━━━━━━━━━━
@@ -238,13 +238,13 @@ def execute_post(self):
    ↓
    StreamNotifyGUI.on_tree_click()
    self.selected_rows に追加
-   
+
 2. ユーザーが「💾 保存」ボタンをクリック
    ↓
    StreamNotifyGUI.save_selection()
    → db.update_selection()
-   
-3. ユーザーが「📤 投稿実行」をクリック
+
+3. ユーザーが「📤 投稿設定」をクリック
    ↓
    StreamNotifyGUI.execute_post()
    → plugin_manager.post_video_with_all_enabled(video)
@@ -260,7 +260,7 @@ def execute_post(self):
    ↓
    StreamNotifyGUI.on_tree_click()
    self.selected_rows に追加
-   
+
 2. ユーザーが「🗑️ 削除」ボタンをクリック
    ↓
    StreamNotifyGUI.delete_selected()
