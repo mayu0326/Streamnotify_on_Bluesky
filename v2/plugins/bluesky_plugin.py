@@ -13,6 +13,9 @@ import re
 from pathlib import Path
 import os
 
+# PIL (Pillow) をインポート
+from PIL import Image
+
 # 親ディレクトリをパスに追加（image_manager.pyをインポートするため）
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from image_manager import get_image_manager
@@ -87,6 +90,16 @@ IMAGE_OUTPUT_QUALITY_INITIAL = _IMAGE_CONFIG["quality_initial"]
 IMAGE_SIZE_TARGET = _IMAGE_CONFIG["size_target"]
 IMAGE_SIZE_THRESHOLD = _IMAGE_CONFIG["size_threshold"]
 IMAGE_SIZE_LIMIT = _IMAGE_CONFIG["size_limit"]
+
+
+def get_env_setting(key: str, default=None):
+    """settings.env から設定値を取得（汎用関数）"""
+    try:
+        settings_path = Path("settings.env")
+        if not settings_path.exists():
+            return default
+        with open(settings_path, 'r', encoding='utf-8') as f:
+            for line in f:
                 if not line or line.startswith('#'):
                     continue
                 if '=' in line:
@@ -96,6 +109,7 @@ IMAGE_SIZE_LIMIT = _IMAGE_CONFIG["size_limit"]
     except Exception as e:
         logger.warning(f"⚠️ 設定ファイル読み込み失敗: {e}")
     return default
+
 
 from plugin_interface import NotificationPlugin
 
@@ -122,6 +136,12 @@ class BlueskyImagePlugin(NotificationPlugin):
         この post_video は main_v2.py から呼び出されません。
         プラグインマネージャー経由で実行される場合にのみ使用されます。
         """
+        # GUI から use_image フラグが指定されている場合は優先
+        use_image = video.get("use_image", True)  # デフォルトは画像添付
+        resize_small_images = video.get("resize_small_images", True)  # デフォルトはリサイズ有効
+
+        post_logger.info(f"🔍 post_video 開始: use_image={use_image}, resize_small_images={resize_small_images}, image_filename={video.get('image_filename')}")
+
         # DBに画像ファイルが登録されている場合、そのファイルを優先して使用
         image_filename = video.get("image_filename")
         image_mode = video.get("image_mode")
@@ -129,14 +149,19 @@ class BlueskyImagePlugin(NotificationPlugin):
         video = dict(video)  # 元の辞書を変更しないようコピー
         embed = None
 
-        if image_filename and image_filename.strip():
+        # use_image=False の場合は画像添付を強制的にスキップ
+        if not use_image:
+            post_logger.info(f"🔗 GUI設定により、リンクカード投稿モード")
+            video["use_link_card"] = True
+            video["embed"] = None
+        elif image_filename and image_filename.strip():
             # ファイル名から完全パスを構築
             image_path = self._resolve_image_path(image_filename, image_mode, source)
             post_logger.info(f"💾 DB登録済み画像を使用: {image_filename}")
             video["image_source"] = "database"
             # 画像ファイルをアップロードして embed を取得
             if image_path and Path(image_path).exists():
-                blob = self._upload_blob(image_path)
+                blob = self._upload_blob(image_path, resize_small_images=resize_small_images)
                 if blob:
                     embed = self._build_image_embed(blob)
                     post_logger.info(f"✅ 画像埋め込みの準備完了")
@@ -149,7 +174,7 @@ class BlueskyImagePlugin(NotificationPlugin):
                 video["image_filename"] = str(self.default_image_path)
                 video["image_source"] = "default"
                 # デフォルト画像をアップロードして embed を取得
-                blob = self._upload_blob(str(self.default_image_path))
+                blob = self._upload_blob(str(self.default_image_path), resize_small_images=resize_small_images)
                 if blob:
                     embed = self._build_image_embed(blob)
                     post_logger.info(f"✅ デフォルト画像埋め込みの準備完了")
@@ -167,6 +192,7 @@ class BlueskyImagePlugin(NotificationPlugin):
             post_logger.info(f"🔗 リンクカード機能を有効化します（画像なし）")
 
         # 最終的に minimal_poster で投稿
+        post_logger.info(f"📊 最終投稿設定: use_link_card={video.get('use_link_card')}, embed={bool(embed)}")
         return self.minimal_poster.post_video_minimal(video)
 
     def is_available(self) -> bool:
@@ -234,7 +260,7 @@ class BlueskyImagePlugin(NotificationPlugin):
 
     # ============ 画像アップロード機能（拡張機能） ============
 
-    def _upload_blob(self, file_path: str) -> dict:
+    def _upload_blob(self, file_path: str, resize_small_images: bool = True) -> dict:
         """
         画像をBlob としてアップロード
 
@@ -243,12 +269,13 @@ class BlueskyImagePlugin(NotificationPlugin):
 
         処理フロー:
         1. 画像ファイルを読み込む
-        2. _resize_image() で自動リサイズ・最適化
-        3. リサイズ結果がない場合はスキップ
+        2. resize_small_images=True の場合、_resize_image() で自動リサイズ・最適化
+        3. resize_small_images=False の場合、元の画像をそのまま使用
         4. Bluesky API にアップロード
 
         Args:
             file_path: 画像ファイルパス
+            resize_small_images: 画像をリサイズするか（Falseの場合はオリジナル画像を使用）
 
         Returns:
             blob メタデータ、失敗時は None
@@ -268,15 +295,30 @@ class BlueskyImagePlugin(NotificationPlugin):
                 post_logger.warning(f"⚠️ 画像ファイルが見つかりません: {file_path}")
                 return None
 
-            # ========== 画像のリサイズ・最適化 ==========
-            image_data = self._resize_image(file_path)
-            if image_data is None:
-                # リサイズ失敗 → この投稿では画像添付をスキップ
-                post_logger.warning(f"⚠️ 画像リサイズ失敗のため、この投稿では画像添付をスキップします")
-                return None
+            # ========== 画像処理 ==========
+            if resize_small_images:
+                # リサイズして最適化
+                post_logger.info(f"📏 画像をリサイズして最適化します")
+                image_data = self._resize_image(file_path)
+                if image_data is None:
+                    # リサイズ失敗 → この投稿では画像添付をスキップ
+                    post_logger.warning(f"⚠️ 画像リサイズ失敗のため、この投稿では画像添付をスキップします")
+                    return None
+                mime_type = 'image/jpeg'
+            else:
+                # オリジナル画像をそのまま使用
+                post_logger.info(f"📷 オリジナル画像をそのまま使用します（リサイズなし）")
+                with open(file_path, 'rb') as f:
+                    image_data = f.read()
 
-            # MIME タイプを判定（リサイズ後は JPEG）
-            mime_type = 'image/jpeg'
+                # MIME タイプを判定
+                from PIL import Image
+                try:
+                    img = Image.open(file_path)
+                    img_format = img.format or "JPEG"
+                    mime_type = f'image/{img_format.lower()}'
+                except:
+                    mime_type = 'image/jpeg'
 
             # アクセストークンが存在することを確認
             if not self.minimal_poster.access_token:
@@ -351,18 +393,10 @@ class BlueskyImagePlugin(NotificationPlugin):
             post_logger.debug(f"📏 元画像: {original_width}×{original_height} ({original_format}, {original_size_bytes / 1024:.1f}KB, アスペクト比: {aspect_ratio:.2f})")
 
             # ========== アスペクト比に基づいた処理 ==========
-            if aspect_ratio >= 1.3:
-                # パターン1: 横長（幅/高さ ≥ 1.3）→ 3:2トリミング
-                resized_img = self._resize_to_aspect_ratio(img, _IMAGE_CONFIG["target_width"], _IMAGE_CONFIG["target_height"])
-                post_logger.debug(f"🔄 パターン1（横長）: 3:2（{_IMAGE_CONFIG['target_width']}×{_IMAGE_CONFIG['target_height']}）に寄せて縮小+中央トリミング")
-            elif aspect_ratio >= 0.8:
-                # パターン2: 正方形〜やや横長（0.8〜1.3）→ 長辺以下に縮小のみ
-                resized_img = self._resize_to_max_dimension(img, _IMAGE_CONFIG["target_width"])
-                post_logger.debug(f"🔄 パターン2（正方形/やや横長）: 長辺{_IMAGE_CONFIG['target_width']}px以下に縮小")
-            else:
-                # パターン3: 縦長（幅/高さ < 0.8）→ 長辺以下に縮小のみ
-                resized_img = self._resize_to_max_dimension(img, _IMAGE_CONFIG["target_width"])
-                post_logger.debug(f"🔄 パターン3（縦長）: 長辺{_IMAGE_CONFIG['target_width']}px以下に縮小")
+            # 元画像のアスペクト比を維持したまま、長辺が1280以下になるようにリサイズのみ
+            # （Blueskyは自動的に適切に表示してくれるため、クロップは行わない）
+            resized_img = self._resize_to_max_dimension(img, _IMAGE_CONFIG["target_width"])
+            post_logger.debug(f"🔄 アスペクト比維持: 長辺{_IMAGE_CONFIG['target_width']}px以下にリサイズ")
 
             resized_width, resized_height = resized_img.size
             post_logger.debug(f"   リサイズ後: {resized_width}×{resized_height}")
@@ -405,7 +439,8 @@ class BlueskyImagePlugin(NotificationPlugin):
         """
         アスペクト比を指定値に寄せて縮小+中央トリミング
 
-        短辺を基準に縮小した後、中央トリミングでちょうど target_width × target_height にする
+        ターゲットのアスペクト比に合わせるため、元画像が相対的に横長ならば幅を基準に縮小し、
+        縦長ならば高さを基準に縮小してから中央トリミングを行う
 
         Args:
             img: PIL Image オブジェクト
@@ -424,13 +459,13 @@ class BlueskyImagePlugin(NotificationPlugin):
         current_ratio = original_width / original_height
 
         if current_ratio > target_ratio:
-            # 元画像がターゲットより横長 → 高さを基準に縮小
-            new_height = target_height
-            new_width = int(target_height * current_ratio)
-        else:
-            # 元画像がターゲットより縦長 → 幅を基準に縮小
+            # 元画像がターゲットより横長 → 幅を基準に縮小（高さがターゲット以下になる）
             new_width = target_width
             new_height = int(target_width / current_ratio)
+        else:
+            # 元画像がターゲットより縦長 → 高さを基準に縮小（幅がターゲット以下になる）
+            new_height = target_height
+            new_width = int(target_height * current_ratio)
 
         # 縮小
         img_resized = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
