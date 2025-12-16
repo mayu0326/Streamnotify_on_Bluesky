@@ -25,14 +25,6 @@ __author__ = "mayuneco(mayunya)"
 __copyright__ = "Copyright (C) 2025 mayuneco(mayunya)"
 __license__ = "GPLv2"
 
-# ============ 画像リサイズ設定（定数） ============
-IMAGE_RESIZE_TARGET_WIDTH = 1280  # 横長画像のターゲット幅（3:2の場合）
-IMAGE_RESIZE_TARGET_HEIGHT = 800  # 横長画像のターゲット高さ（3:2の場合）
-IMAGE_OUTPUT_QUALITY_INITIAL = 90  # JPEG出力時の初期品質
-IMAGE_SIZE_TARGET = 800_000  # ファイルサイズの目標値（800KB）
-IMAGE_SIZE_THRESHOLD = 900_000  # この値を超えたら品質低下で再圧縮
-IMAGE_SIZE_LIMIT = 1_000_000  # 最終的な上限（1MB）
-
 
 # settings.env から値を取得する簡易関数
 def get_env_setting(key: str, default: str = None) -> str:
@@ -43,6 +35,58 @@ def get_env_setting(key: str, default: str = None) -> str:
         with open(env_path, encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+                if '=' in line:
+                    k, v = line.split('=', 1)
+                    if k.strip() == key:
+                        return v.strip()
+    except Exception as e:
+        logger.warning(f"⚠️ 設定ファイル読み込み失敗: {e}")
+    return default
+
+
+# ============ 画像リサイズ設定（環境変数から読み込み） ============
+def _load_image_resize_config():
+    """環境変数から画像リサイズ設定を読み込む
+
+    Returns:
+        dict: 画像リサイズ設定
+    """
+    try:
+        config = {
+            "target_width": int(get_env_setting("IMAGE_RESIZE_TARGET_WIDTH") or "1280"),
+            "target_height": int(get_env_setting("IMAGE_RESIZE_TARGET_HEIGHT") or "800"),
+            "quality_initial": int(get_env_setting("IMAGE_OUTPUT_QUALITY_INITIAL") or "90"),
+            "size_target": int(get_env_setting("IMAGE_SIZE_TARGET") or "800000"),
+            "size_threshold": int(get_env_setting("IMAGE_SIZE_THRESHOLD") or "900000"),
+            "size_limit": int(get_env_setting("IMAGE_SIZE_LIMIT") or "1000000"),
+        }
+        logger.debug(f"🔧 画像リサイズ設定を環境変数から読み込み: {config}")
+        return config
+    except ValueError as e:
+        logger.warning(f"⚠️ 画像リサイズ設定の値が無効: {e}")
+        # デフォルト値で返す
+        return {
+            "target_width": 1280,
+            "target_height": 800,
+            "quality_initial": 90,
+            "size_target": 800_000,
+            "size_threshold": 900_000,
+            "size_limit": 1_000_000,
+        }
+
+
+# グローバル設定を読み込み
+_IMAGE_CONFIG = _load_image_resize_config()
+
+# 定数として再エクスポート（下位互換性維持）
+IMAGE_RESIZE_TARGET_WIDTH = _IMAGE_CONFIG["target_width"]
+IMAGE_RESIZE_TARGET_HEIGHT = _IMAGE_CONFIG["target_height"]
+IMAGE_OUTPUT_QUALITY_INITIAL = _IMAGE_CONFIG["quality_initial"]
+IMAGE_SIZE_TARGET = _IMAGE_CONFIG["size_target"]
+IMAGE_SIZE_THRESHOLD = _IMAGE_CONFIG["size_threshold"]
+IMAGE_SIZE_LIMIT = _IMAGE_CONFIG["size_limit"]
                 if not line or line.startswith('#'):
                     continue
                 if '=' in line:
@@ -309,40 +353,40 @@ class BlueskyImagePlugin(NotificationPlugin):
             # ========== アスペクト比に基づいた処理 ==========
             if aspect_ratio >= 1.3:
                 # パターン1: 横長（幅/高さ ≥ 1.3）→ 3:2トリミング
-                resized_img = self._resize_to_aspect_ratio(img, 1280, 800)
-                post_logger.debug(f"🔄 パターン1（横長）: 3:2（1280×800）に寄せて縮小+中央トリミング")
+                resized_img = self._resize_to_aspect_ratio(img, _IMAGE_CONFIG["target_width"], _IMAGE_CONFIG["target_height"])
+                post_logger.debug(f"🔄 パターン1（横長）: 3:2（{_IMAGE_CONFIG['target_width']}×{_IMAGE_CONFIG['target_height']}）に寄せて縮小+中央トリミング")
             elif aspect_ratio >= 0.8:
-                # パターン2: 正方形〜やや横長（0.8〜1.3）→ 長辺1280px以下に縮小のみ
-                resized_img = self._resize_to_max_dimension(img, 1280)
-                post_logger.debug(f"🔄 パターン2（正方形/やや横長）: 長辺1280px以下に縮小")
+                # パターン2: 正方形〜やや横長（0.8〜1.3）→ 長辺以下に縮小のみ
+                resized_img = self._resize_to_max_dimension(img, _IMAGE_CONFIG["target_width"])
+                post_logger.debug(f"🔄 パターン2（正方形/やや横長）: 長辺{_IMAGE_CONFIG['target_width']}px以下に縮小")
             else:
-                # パターン3: 縦長（幅/高さ < 0.8）→ 長辺1280px以下に縮小のみ
-                resized_img = self._resize_to_max_dimension(img, 1280)
-                post_logger.debug(f"🔄 パターン3（縦長）: 長辺1280px以下に縮小")
+                # パターン3: 縦長（幅/高さ < 0.8）→ 長辺以下に縮小のみ
+                resized_img = self._resize_to_max_dimension(img, _IMAGE_CONFIG["target_width"])
+                post_logger.debug(f"🔄 パターン3（縦長）: 長辺{_IMAGE_CONFIG['target_width']}px以下に縮小")
 
             resized_width, resized_height = resized_img.size
             post_logger.debug(f"   リサイズ後: {resized_width}×{resized_height}")
 
-            # ========== JPEG 出力（初期品質90） ==========
-            jpeg_data = self._encode_jpeg(resized_img, IMAGE_OUTPUT_QUALITY_INITIAL)
+            # ========== JPEG 出力（初期品質） ==========
+            jpeg_data = self._encode_jpeg(resized_img, _IMAGE_CONFIG["quality_initial"])
             current_size_bytes = len(jpeg_data)
-            post_logger.debug(f"   JPEG品質{IMAGE_OUTPUT_QUALITY_INITIAL}: {current_size_bytes / 1024:.1f}KB")
+            post_logger.debug(f"   JPEG品質{_IMAGE_CONFIG['quality_initial']}: {current_size_bytes / 1024:.1f}KB")
 
             # ========== ファイルサイズチェック＆品質調整 ==========
-            if current_size_bytes > IMAGE_SIZE_THRESHOLD:
-                # 900KB超過 → 品質を段階的に下げて再圧縮
-                post_logger.info(f"⚠️ ファイルサイズが {IMAGE_SIZE_THRESHOLD / 1024:.0f}KB を超過: {current_size_bytes / 1024:.1f}KB")
+            if current_size_bytes > _IMAGE_CONFIG["size_threshold"]:
+                # 閾値超過 → 品質を段階的に下げて再圧縮
+                post_logger.info(f"⚠️ ファイルサイズが {_IMAGE_CONFIG['size_threshold'] / 1024:.0f}KB を超過: {current_size_bytes / 1024:.1f}KB")
                 jpeg_data = self._optimize_image_quality(resized_img, current_size_bytes)
 
                 if jpeg_data is None:
-                    post_logger.error(f"❌ ファイルサイズの最適化に失敗しました（1MB超過）")
+                    post_logger.error(f"❌ ファイルサイズの最適化に失敗しました（{_IMAGE_CONFIG['size_limit']}バイト超過）")
                     return None
 
                 current_size_bytes = len(jpeg_data)
 
             # ========== 最終チェック ==========
-            if current_size_bytes > IMAGE_SIZE_LIMIT:
-                post_logger.error(f"❌ 最終的なファイルサイズが1MBを超えています: {current_size_bytes / 1024:.1f}KB")
+            if current_size_bytes > _IMAGE_CONFIG["size_limit"]:
+                post_logger.error(f"❌ 最終的なファイルサイズが上限を超えています: {current_size_bytes / 1024:.1f}KB")
                 return None
 
             # ========== ログ出力 ==========
@@ -457,7 +501,7 @@ class BlueskyImagePlugin(NotificationPlugin):
 
     def _optimize_image_quality(self, img, current_size_bytes: int) -> bytes:
         """
-        画像の品質を段階的に下げて再圧縮（ファイルサイズを 1MB 未満に）
+        画像の品質を段階的に下げて再圧縮（ファイルサイズを上限未満に）
 
         Args:
             img: PIL Image オブジェクト
@@ -475,12 +519,12 @@ class BlueskyImagePlugin(NotificationPlugin):
 
             post_logger.debug(f"   JPEG品質{quality}: {size_bytes / 1024:.1f}KB")
 
-            if size_bytes <= IMAGE_SIZE_LIMIT:
-                post_logger.info(f"✅ 品質{quality}で 1MB 以下に圧縮: {size_bytes / 1024:.1f}KB")
+            if size_bytes <= _IMAGE_CONFIG["size_limit"]:
+                post_logger.info(f"✅ 品質{quality}で {_IMAGE_CONFIG['size_limit'] / 1024:.0f}KB 以下に圧縮: {size_bytes / 1024:.1f}KB")
                 return jpeg_data
 
-        # すべての品質レベルでも 1MB を超えた
-        post_logger.error(f"❌ 品質{quality_levels[-1]}でも {IMAGE_SIZE_LIMIT / 1024:.0f}KB を超えています")
+        # すべての品質レベルでも上限を超えた
+        post_logger.error(f"❌ 品質{quality_levels[-1]}でも {_IMAGE_CONFIG['size_limit'] / 1024:.0f}KB を超えています")
         return None
 
     def _get_mime_type(self, file_path: str) -> str:
