@@ -1248,6 +1248,8 @@ class PostSettingsWindow:
         use_image = self.use_image_var.get()
         resize_small = self.resize_small_var.get()
 
+        logger.info(f"🔍 投稿設定確定: use_image={use_image}, resize_small={resize_small}")
+
         self.result = {
             "use_image": use_image,
             "resize_small_images": resize_small,
@@ -1259,9 +1261,14 @@ class PostSettingsWindow:
 
     def _dry_run(self):
         """ドライラン実行"""
+        use_image = self.use_image_var.get()
+        resize_small = self.resize_small_var.get()
+
+        logger.info(f"🔍 ドライラン設定: use_image={use_image}, resize_small={resize_small}")
+
         self.result = {
-            "use_image": self.use_image_var.get(),
-            "resize_small_images": self.resize_small_var.get(),
+            "use_image": use_image,
+            "resize_small_images": resize_small,
             "video": self.video,
         }
         self._execute_post(dry_run=True)
@@ -1273,33 +1280,37 @@ class PostSettingsWindow:
             use_image = self.result["use_image"]
             resize_small = self.result["resize_small_images"]
 
+            logger.info(f"📋 _execute_post 開始: use_image={use_image} (type={type(use_image).__name__}), resize_small={resize_small}")
+
             mode_str = "画像" if use_image else "URLリンクカード"
             dry_str = "【ドライラン】" if dry_run else ""
 
             logger.info(f"{dry_str}投稿開始: {video['title'][:40]}... (投稿方法: {mode_str})")
 
-            if self.plugin_manager:
-                enabled_plugins = self.plugin_manager.get_enabled_plugins()
-                if enabled_plugins and use_image:
-                    # プラグイン経由で画像添付投稿
-                    for plugin in enabled_plugins:
-                        plugin.dry_run = dry_run
-                        plugin.config.get("resize_small_images", True)
-                        logger.info(f"📤 プラグイン経由で投稿: {plugin.__class__.__name__}")
-                        results = self.plugin_manager.post_video_with_all_enabled(video)
-                        logger.info(f"投稿結果: {results}")
-                        if any(results.values()) and not dry_run:
-                            self.db.mark_as_posted(video["video_id"])
+            if use_image:
+                # プラグイン経由で画像添付投稿
+                if self.plugin_manager:
+                    # video に投稿方法フラグを追加
+                    video_with_settings = dict(video)
+                    video_with_settings["use_image"] = True
+                    logger.info(f"📤 プラグイン経由で投稿（画像添付）: {video['title']}")
+                    results = self.plugin_manager.post_video_with_all_enabled(video_with_settings)
+                    logger.info(f"投稿結果: {results}")
+                    if any(results.values()) and not dry_run:
+                        self.db.mark_as_posted(video["video_id"])
                 else:
-                    # テキスト + URLリンク投稿
-                    if self.bluesky_core:
-                        logger.info(f"📤 コア機能で投稿（URLリンク）: {video['title']}")
-                        success = self.bluesky_core.post_video_minimal(video)
-                        if success and not dry_run:
-                            self.db.mark_as_posted(video["video_id"])
+                    messagebox.showerror("エラー", "プラグインマネージャが初期化されていません")
+                    return
             else:
-                messagebox.showerror("エラー", "プラグインマネージャが初期化されていません")
-                return
+                # テキスト + URLリンク投稿
+                if self.bluesky_core:
+                    logger.info(f"📤 コア機能で投稿（URLリンク）: {video['title']}")
+                    success = self.bluesky_core.post_video_minimal(video)
+                    if success and not dry_run:
+                        self.db.mark_as_posted(video["video_id"])
+                else:
+                    messagebox.showerror("エラー", "コア機能が初期化されていません")
+                    return
 
             msg = f"{'✅ ドライラン完了' if dry_run else '✅ 投稿完了'}\n\n{video['title'][:60]}...\n\n投稿方法: {mode_str}"
             messagebox.showinfo("成功", msg)
