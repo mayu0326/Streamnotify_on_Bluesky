@@ -20,7 +20,7 @@
   - 最新の機能と改善を含む現在のメインアプリケーション
 
 - `v1/` - 前のバージョン
-  - 互換性のために保持
+  - レガシーコード（参考用）
 
 ## 必要な環境
 
@@ -64,13 +64,14 @@ python v2/main_v2.py
 
 ## ドキュメント
 
-- [アーキテクチャ](OLD_App/document/ARCHITECTURE.ja.md) - システムアーキテクチャの詳細
-- [貢献ガイド](OLD_App/document/CONTRIBUTING.ja.md) - 開発への参加方法
-- [モジュール一覧](OLD_App/document/All-ModuleList.md) - 全モジュールの説明
+- [アーキテクチャ](v2/docs/ARCHITECTURE_v2.md) - システムアーキテクチャの詳細
+- [モジュール一覧](v2/docs/ModuleList_v2.md) - 全モジュールの説明
+- [プラグイン開発ガイド](v2/docs/BLUESKY_PLUGIN_GUIDE.md) - プラグイン開発方法
+- [設定概要](v2/docs/SETTINGS_OVERVIEW.md) - 設定項目の説明
 
 ## ライセンス
 
-詳細は[LICENSE](OLD_App/LICENSE)を参照してください。
+詳細は[LICENSE](LICENSE)を参照してください。
 
 ## 支援
 
