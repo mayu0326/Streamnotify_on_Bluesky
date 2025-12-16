@@ -316,7 +316,7 @@ Python 3.10 以上が必要です。`python --version` で確認してくださ�
    ```bash
    # Windows PowerShell
    Get-Content logs/app.log -Tail 50
-   
+
    # Linux / WSL
    tail -50 logs/app.log
    ```
@@ -325,7 +325,7 @@ Python 3.10 以上が必要です。`python --version` で確認してくださ�
    ```bash
    # Windows PowerShell
    Select-String "ERROR|CRITICAL" logs/app.log
-   
+
    # Linux / WSL
    grep -E "ERROR|CRITICAL" logs/app.log
    ```
@@ -365,7 +365,7 @@ Python 3.10 以上が必要です。`python --version` で確認してくださ�
 
 5. **再現手順**
    - 問題を再現するための具体的な手順
-   - 例：「GUI で『投稿実行』をクリックしたら投稿されない」
+   - 例：「GUI で『投稿設定』をクリックしたのに投稿設定画面が表示されない」
 
 ### Issue 報告のテンプレート
 
