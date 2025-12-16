@@ -16,6 +16,13 @@ import sys
 import calendar
 from database import get_database
 from image_manager import get_image_manager
+from pathlib import Path
+
+try:
+    from PIL import Image
+    PIL_AVAILABLE = True
+except ImportError:
+    PIL_AVAILABLE = False
 
 logger = logging.getLogger("GUILogger")
 
@@ -56,8 +63,8 @@ class StreamNotifyGUI:
         ttk.Button(toolbar, text="💾 選択を保存", command=self.save_selection).pack(side=tk.LEFT, padx=2)
         ttk.Button(toolbar, text="🗑️ 削除", command=self.delete_selected).pack(side=tk.LEFT, padx=2)
         ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=2)
-        ttk.Button(toolbar, text="🧪 ドライラン", command=self.dry_run_post).pack(side=tk.LEFT, padx=2)
-        ttk.Button(toolbar, text="📤 投稿実行", command=self.execute_post).pack(side=tk.LEFT, padx=2)
+        ttk.Button(toolbar, text="🧪 投稿テスト", command=self.dry_run_post).pack(side=tk.LEFT, padx=2)
+        ttk.Button(toolbar, text="📤 投稿設定", command=self.execute_post).pack(side=tk.LEFT, padx=2)
         ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=2)
         ttk.Button(toolbar, text="ℹ️ 統計", command=self.show_stats).pack(side=tk.LEFT, padx=2)
         ttk.Button(toolbar, text="🔧 プラグイン", command=self.show_plugins).pack(side=tk.LEFT, padx=2)
@@ -759,7 +766,7 @@ class StreamNotifyGUI:
         return site
 
     def dry_run_post(self):
-        """ドライラン：選択された動画をログ出力のみ（実際には投稿しない）"""
+        """ドライラン：投稿設定ウィンドウを表示（ドライランモード）"""
         if not self.selected_rows:
             messagebox.showwarning("警告", "投稿対象の動画がありません。\n\n☑️ をクリックして選択してください。")
             return
@@ -774,7 +781,7 @@ class StreamNotifyGUI:
         msg = f"""
 🧪 ドライラン モード
 
-以下の {len(selected)} 件をテスト投稿（ログ出力のみ）します：
+以下の {len(selected)} 件をテスト実行します：
 
 """
         for v in selected[:5]:
@@ -784,17 +791,19 @@ class StreamNotifyGUI:
             msg += f"  ... ほか {len(selected) - 5} 件\n"
 
         msg += """
-メインログに [DRY RUN] と表示されます。
-実際には投稿されません。
+投稿設定ウィンドウで「ドライラン」をクリックすると、
+ログ出力のみで実際には投稿されません。
         """
 
         if messagebox.askyesno("確認", msg):
             for video in selected:
-                logger.info(f"[DRY RUN - GUI] 投稿予定: {video['title']}")
-            messagebox.showinfo("完了", f"{len(selected)} 件のドライラン実行をログに出力しました。\nコンソールログを確認してください。")
+                post_window = PostSettingsWindow(
+                    self.root, video, self.db, self.plugin_manager, self.bluesky_core
+                )
+                self.root.wait_window(post_window.window)
 
     def execute_post(self):
-        """投稿実行：有効なプラグインがあればプラグイン経由、なければコア機能で投稿"""
+        """投稿設定：投稿設定ウィンドウを表示"""
         if not self.plugin_manager:
             messagebox.showerror("エラー", "プラグインマネージャが初期化されていません。再起動してください。")
             return
@@ -810,74 +819,12 @@ class StreamNotifyGUI:
             messagebox.showwarning("警告", "投稿対象の動画がありません。\n\n選択して保存してから実行してください。")
             return
 
-        # 有効なプラグインがあるか確認
-        enabled_plugins = self.plugin_manager.get_enabled_plugins()
-        has_plugin = len(enabled_plugins) > 0
-
-        msg = f"""
-📤 投稿実行 - 確認
-
-以下の {len(selected)} 件を投稿します：
-"""
-        for v in selected[:5]:
-            msg += f"  ✓ {v['title'][:50]}...\n"
-        if len(selected) > 5:
-            msg += f"  ... ほか {len(selected) - 5} 件\n"
-        msg += "\n"
-
-        if has_plugin:
-            msg += "【投稿モード】プラグイン経由（画像添付機能: 有効）\n"
-        else:
-            msg += "【投稿モード】コア機能のみ（テキスト + URLリンク化）\n"
-
-        msg += """
-※ この操作は取り消せません。
-※ 投稿済みフラグの有無に関わらず投稿します。
-        """
-        if not messagebox.askyesno("確認", msg):
-            return
-
-        success_count = 0
-        fail_count = 0
+        # 各動画について投稿設定ウィンドウを表示
         for video in selected:
-            try:
-                logger.info(f"📤 投稿実行（GUI）: {video['title']}")
-                if has_plugin:
-                    # プラグイン有効時：プラグイン経由で投稿
-                    results = self.plugin_manager.post_video_with_all_enabled(video)
-                    success = any(results.values())
-                else:
-                    # プラグイン無効時：コア機能で直接投稿（テキスト + URLリンク化）
-                    if self.bluesky_core:
-                        success = self.bluesky_core.post_video_minimal(video)
-                    else:
-                        logger.warning(f"⚠️ コア機能が初期化されていないため、投稿できません: {video['title']}")
-                        success = False
-
-                if success:
-                    self.db.mark_as_posted(video["video_id"])
-                    self.db.update_selection(video["video_id"], selected=False, scheduled_at=None)
-                    logger.info(f"動画の選択状態を更新: {video['video_id']} (selected=False, scheduled=None)")
-                    success_count += 1
-                    logger.info(f"✅ 投稿成功（GUI）: {video['title']}")
-                else:
-                    fail_count += 1
-                    logger.warning(f"❌ 投稿失敗（GUI）: {video['title']}")
-            except Exception as e:
-                fail_count += 1
-                logger.error(f"❌ 投稿エラー（GUI）: {video['title']} - {e}")
-
-        result_msg = f"""
-📊 投稿結果
-
-成功: {success_count} 件
-失敗: {fail_count} 件
-合計: {len(selected)} 件
-
-詳細はコンソールログを確認してください。
-        """
-        messagebox.showinfo("完了", result_msg)
-        self.refresh_data()
+            post_window = PostSettingsWindow(
+                self.root, video, self.db, self.plugin_manager, self.bluesky_core
+            )
+            self.root.wait_window(post_window.window)
 
     def show_stats(self):
         """統計情報を表示"""
@@ -901,8 +848,8 @@ class StreamNotifyGUI:
 1. 「☑️」をクリック → 投稿対象を選択
 2. 「投稿予定/投稿日時」をダブルクリック → 投稿日時を設定
 3. 「💾 選択を保存」 → DB に反映
-4. 「🧪 ドライラン」 → テスト実行
-5. 「📤 投稿実行」 → 実投稿
+4. 「🧪 投稿テスト」 → テスト実行
+5. 「📤 投稿設定」 → 投稿設定
 
 ⚠️ 注意
 ━━━━━━━━━━━━━━━━━
@@ -1082,3 +1029,286 @@ class StreamNotifyGUI:
         else:
             logger.error(f"❌ 動画削除に失敗: {item_id}")
             messagebox.showerror("エラー", "動画の削除に失敗しました。")
+
+
+class PostSettingsWindow:
+    """投稿設定ウィンドウ - 動画の投稿設定を詳細に管理"""
+
+    def __init__(self, parent, video, db, plugin_manager=None, bluesky_core=None):
+        """
+        投稿設定ウィンドウを初期化
+
+        Args:
+            parent: 親ウィンドウ
+            video: 選択されたビデオレコード
+            db: Database インスタンス
+            plugin_manager: PluginManager インスタンス
+            bluesky_core: Bluesky コア機能インスタンス
+        """
+        self.parent = parent
+        self.video = video
+        self.db = db
+        self.plugin_manager = plugin_manager
+        self.bluesky_core = bluesky_core
+        self.result = None  # 確定時の設定結果
+
+        # ウィンドウを作成
+        self.window = tk.Toplevel(parent)
+        self.window.title(f"📤 投稿設定 - {video['title'][:50]}...")
+        self.window.geometry("700x620")
+        self.window.resizable(False, False)
+
+        self._build_ui()
+        self.window.transient(parent)
+        self.window.grab_set()
+
+    def _build_ui(self):
+        """UI を構築"""
+        # === メインフレーム ===
+        main_frame = ttk.Frame(self.window)
+        main_frame.pack(fill=tk.X, expand=False, padx=10, pady=10, side=tk.TOP)
+
+        # === 1. 動画情報 ===
+        info_frame = ttk.LabelFrame(main_frame, text="📹 動画情報", padding=10)
+        info_frame.pack(fill=tk.X, pady=(0, 10))
+
+        ttk.Label(info_frame, text="タイトル:", font=("", 10, "bold")).grid(row=0, column=0, sticky=tk.W)
+        title_label = ttk.Label(
+            info_frame, text=self.video["title"], foreground="darkblue", wraplength=550
+        )
+        title_label.grid(row=0, column=1, sticky=tk.W, columnspan=2)
+
+        ttk.Label(info_frame, text="ソース:", font=("", 10, "bold")).grid(row=1, column=0, sticky=tk.W)
+        source_text = self.video.get("source", "youtube").upper()
+        ttk.Label(info_frame, text=source_text, foreground="darkgreen").grid(row=1, column=1, sticky=tk.W)
+
+        ttk.Label(info_frame, text="公開日時:", font=("", 10, "bold")).grid(row=2, column=0, sticky=tk.W)
+        ttk.Label(info_frame, text=self.video.get("published_at", "不明")).grid(row=2, column=1, sticky=tk.W)
+
+        # === 2. 投稿実績と投稿予約を1列に統合 ===
+        status_frame = ttk.LabelFrame(main_frame, text="📊 投稿状況", padding=10)
+        status_frame.pack(fill=tk.X, pady=(0, 10))
+
+        # 投稿実績
+        posted_status = "✅ 投稿済み" if self.video.get("posted_to_bluesky") else "❌ 未投稿"
+        posted_date = self.video.get("posted_at", "—")
+        posted_info = f"投稿実績: {posted_status} ({posted_date})"
+        ttk.Label(status_frame, text=posted_info, font=("", 10)).pack(anchor=tk.W, pady=(0, 5))
+
+        # 投稿予約
+        scheduled_at = self.video.get("scheduled_at")
+        if scheduled_at:
+            schedule_text = f"投稿予約: 予約あり ({scheduled_at})"
+            schedule_color = "darkgreen"
+        else:
+            schedule_text = f"投稿予約: 予約なし"
+            schedule_color = "gray"
+
+        ttk.Label(status_frame, text=schedule_text, foreground=schedule_color, font=("", 10)).pack(anchor=tk.W)
+
+        # === 3. DB 画像の設定 + プレビュー（左右配置） ===
+        image_frame = ttk.LabelFrame(main_frame, text="🖼️ DB画像の設定", padding=10)
+        image_frame.pack(fill=tk.X, pady=(0, 5))
+
+        # 画像情報フレーム（左側）
+        image_info_frame = ttk.Frame(image_frame)
+        image_info_frame.pack(fill=tk.X, expand=True)
+
+        image_filename = self.video.get("image_filename")
+        if image_filename:
+            image_text = f"✅ ファイル: {image_filename}"
+            image_color = "darkblue"
+        else:
+            image_text = "❌ なし"
+            image_color = "gray"
+
+        ttk.Label(image_info_frame, text=image_text, foreground=image_color, font=("", 10, "bold")).pack(anchor=tk.W)
+
+        # 画像情報詳細（左側）
+        if image_filename:
+            self._display_image_preview(image_info_frame, image_filename)
+
+        # === 4. 投稿方法の選択 ===
+        post_method_frame = ttk.LabelFrame(main_frame, text="📋 投稿方法", padding=10)
+        post_method_frame.pack(fill=tk.X, pady=(0, 10))
+
+        self.use_image_var = tk.BooleanVar(value=True if image_filename else False)
+
+        # 画像がない場合は強制的に URLリンクカード
+        if not image_filename:
+            self.use_image_var.set(False)
+            ttk.Radiobutton(
+                post_method_frame,
+                text="🔗 URLリンクカード（画像なし）",
+                variable=self.use_image_var,
+                value=False,
+                state=tk.DISABLED,
+            ).pack(anchor=tk.W, pady=5)
+            ttk.Label(post_method_frame, text="⚠️ DB画像がないため、URLリンクカードのみ利用可能", foreground="orange").pack(
+                anchor=tk.W, padx=20
+            )
+        else:
+            ttk.Radiobutton(
+                post_method_frame,
+                text="🖼️ 画像を添付",
+                variable=self.use_image_var,
+                value=True,
+            ).pack(anchor=tk.W, pady=5)
+            ttk.Radiobutton(
+                post_method_frame,
+                text="🔗 URLリンクカード",
+                variable=self.use_image_var,
+                value=False,
+            ).pack(anchor=tk.W, pady=5)
+
+        # === 5. 小さい画像の加工設定 ===
+        small_image_frame = ttk.LabelFrame(main_frame, text="🎨 小さい画像の加工", padding=10)
+        small_image_frame.pack(fill=tk.X, pady=(0, 10))
+
+        self.resize_small_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(
+            small_image_frame,
+            text="小さい画像も自動加工する（リサイズ・圧縮）",
+            variable=self.resize_small_var,
+        ).pack(anchor=tk.W, pady=5)
+        ttk.Label(
+            small_image_frame,
+            text="✓: すべての画像を加工 / ✗: 大きい画像のみ加工",
+            foreground="gray",
+            font=("", 9),
+        ).pack(anchor=tk.W, padx=5)
+
+        # === ボタンフレーム（常に下部に固定） ===
+        button_frame = ttk.Frame(self.window)
+        button_frame.pack(fill=tk.X, padx=10, pady=10, side=tk.BOTTOM)
+
+        ttk.Button(button_frame, text="✅ 確定して投稿", command=self._confirm_and_post).pack(
+            side=tk.RIGHT, padx=5
+        )
+        ttk.Button(button_frame, text="❌ キャンセル", command=self.window.destroy).pack(side=tk.RIGHT, padx=5)
+        ttk.Button(button_frame, text="🧪 ドライラン", command=self._dry_run).pack(side=tk.RIGHT, padx=5)
+
+    def _display_image_preview(self, parent_frame, image_filename):
+        """画像プレビューを表示（右横配置）"""
+        if not PIL_AVAILABLE:
+            ttk.Label(parent_frame, text="⚠️ PIL (Pillow) がインストールされていないため、プレビューは表示できません", foreground="orange").pack(anchor=tk.W, pady=5)
+            return
+
+        try:
+            # 画像ファイルの完全パスを構築
+            site = self.video.get("source", "youtube").capitalize()
+            image_path = Path("images") / site / "import" / image_filename
+
+            if not image_path.exists():
+                # autopost フォルダも試す
+                image_path = Path("images") / site / "autopost" / image_filename
+
+            if not image_path.exists():
+                ttk.Label(parent_frame, text=f"⚠️ 画像ファイルが見つかりません: {image_filename}", foreground="orange").pack(anchor=tk.W, pady=5)
+                return
+
+            # 画像情報と画像を左右に配置するフレーム
+            preview_container = ttk.Frame(parent_frame)
+            preview_container.pack(fill=tk.X, pady=5)
+
+            # 左側：画像情報
+            info_frame = ttk.Frame(preview_container)
+            info_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 10))
+
+            with Image.open(image_path) as img_info:
+                width, height = img_info.size
+                size_kb = image_path.stat().st_size / 1024
+                info_text = f"解像度: {width}×{height} px\nサイズ: {size_kb:.1f} KB"
+                ttk.Label(info_frame, text=info_text, foreground="gray", font=("", 9), justify=tk.LEFT).pack(anchor=tk.W)
+
+            # 右側：プレビュー画像
+            preview_frame = ttk.Frame(preview_container)
+            preview_frame.pack(side=tk.RIGHT)
+
+            # 画像を開く
+            with Image.open(image_path) as img:
+                # サムネイルサイズに縮小（最大 100x67）
+                img.thumbnail((100, 67), Image.Resampling.LANCZOS)
+
+                # PIL Image を tkinter PhotoImage に変換
+                from PIL import ImageTk
+                photo = ImageTk.PhotoImage(img)
+
+                # ラベルに表示
+                preview_label = tk.Label(preview_frame, image=photo, bg="lightgray", relief=tk.SUNKEN)
+                preview_label.image = photo  # ガベージコレクション対策
+                preview_label.pack()
+
+        except Exception as e:
+            logger.warning(f"画像プレビュー表示エラー: {e}")
+            ttk.Label(parent_frame, text=f"⚠️ 画像の読み込みに失敗: {str(e)[:50]}", foreground="orange").pack(anchor=tk.W, pady=5)
+
+    def _confirm_and_post(self):
+        """設定を確定して投稿を実行"""
+        use_image = self.use_image_var.get()
+        resize_small = self.resize_small_var.get()
+
+        self.result = {
+            "use_image": use_image,
+            "resize_small_images": resize_small,
+            "video": self.video,
+        }
+
+        # 投稿実行
+        self._execute_post(dry_run=False)
+
+    def _dry_run(self):
+        """ドライラン実行"""
+        self.result = {
+            "use_image": self.use_image_var.get(),
+            "resize_small_images": self.resize_small_var.get(),
+            "video": self.video,
+        }
+        self._execute_post(dry_run=True)
+
+    def _execute_post(self, dry_run=False):
+        """投稿を実行"""
+        try:
+            video = self.video
+            use_image = self.result["use_image"]
+            resize_small = self.result["resize_small_images"]
+
+            mode_str = "画像" if use_image else "URLリンクカード"
+            dry_str = "【ドライラン】" if dry_run else ""
+
+            logger.info(f"{dry_str}投稿開始: {video['title'][:40]}... (投稿方法: {mode_str})")
+
+            if self.plugin_manager:
+                enabled_plugins = self.plugin_manager.get_enabled_plugins()
+                if enabled_plugins and use_image:
+                    # プラグイン経由で画像添付投稿
+                    for plugin in enabled_plugins:
+                        plugin.dry_run = dry_run
+                        plugin.config.get("resize_small_images", True)
+                        logger.info(f"📤 プラグイン経由で投稿: {plugin.__class__.__name__}")
+                        results = self.plugin_manager.post_video_with_all_enabled(video)
+                        logger.info(f"投稿結果: {results}")
+                        if any(results.values()) and not dry_run:
+                            self.db.mark_as_posted(video["video_id"])
+                else:
+                    # テキスト + URLリンク投稿
+                    if self.bluesky_core:
+                        logger.info(f"📤 コア機能で投稿（URLリンク）: {video['title']}")
+                        success = self.bluesky_core.post_video_minimal(video)
+                        if success and not dry_run:
+                            self.db.mark_as_posted(video["video_id"])
+            else:
+                messagebox.showerror("エラー", "プラグインマネージャが初期化されていません")
+                return
+
+            msg = f"{'✅ ドライラン完了' if dry_run else '✅ 投稿完了'}\n\n{video['title'][:60]}...\n\n投稿方法: {mode_str}"
+            messagebox.showinfo("成功", msg)
+
+            if not dry_run:
+                self.db.update_selection(video["video_id"], selected=False, scheduled_at=None)
+                logger.info(f"選択状態を更新: {video['video_id']} (selected=False)")
+                self.window.destroy()
+
+        except Exception as e:
+            logger.error(f"投稿エラー: {e}", exc_info=True)
+            messagebox.showerror("エラー", f"投稿に失敗しました:\n{str(e)}")
