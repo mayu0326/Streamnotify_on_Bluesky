@@ -88,7 +88,7 @@ cp settings.env.example settings.env
 | `BLUESKY_PASSWORD` | Bluesky のアプリパスワード | `xxxx-xxxx-xxxx-xxxx` |
 | `POLL_INTERVAL_MINUTES` | ポーリング間隔（分、最小値 5） | `10` |
 
-その他のオプション設定については、`settings.env` 内のコメント、または [docs/SETTINGS_OVERVIEW.md](docs/SETTINGS_OVERVIEW.md) を参照してください。
+その他のオプション設定については、`settings.env` 内のコメント、または [v2/docs/SETTINGS_OVERVIEW.md](v2/docs/SETTINGS_OVERVIEW.md) を参照してください。
 
 ## 使用方法
 
@@ -120,18 +120,18 @@ python main_v2.py
 
 詳細な情報は以下をご覧ください：
 
-- [アーキテクチャ](docs/ARCHITECTURE_v2.md) - システム構成とデータベース設計の詳細
-- [モジュール一覧](docs/ModuleList_v2.md) - 全コンポーネントの説明
-- [設定概要](docs/SETTINGS_OVERVIEW.md) - 環境変数・設定項目の詳細
-- [プラグイン開発ガイド](docs/BLUESKY_PLUGIN_GUIDE.md) - プラグイン開発方法
-- [設計方針メモ](docs/v2_DESIGN_POLICY.md) - v2 の仕様と今後の拡張方針
-- [デバッグ・ドライラン](docs/DEBUG_DRY_RUN_GUIDE.md) - トラブルシューティング
-- [将来ロードマップ](docs/FUTURE_ROADMAP_v2.md) - v3+ の計画概要
+- [アーキテクチャ](v2/docs/ARCHITECTURE_v2.md) - システム構成とデータベース設計の詳細
+- [モジュール一覧](v2/docs/ModuleList_v2.md) - 全コンポーネントの説明
+- [設定概要](v2/docs/SETTINGS_OVERVIEW.md) - 環境変数・設定項目の詳細
+- [プラグイン開発ガイド](v2/docs/BLUESKY_PLUGIN_GUIDE.md) - プラグイン開発方法
+- [設計方針メモ](v2/docs/v2_DESIGN_POLICY.md) - v2 の仕様と今後の拡張方針
+- [デバッグ・ドライラン](v2/docs/DEBUG_DRY_RUN_GUIDE.md) - トラブルシューティング
+- [将来ロードマップ](v2/docs/FUTURE_ROADMAP_v2.md) - v3+ の計画概要
 
 ### テンプレート・Asset 管理について
 
-- [**テンプレート仕様書**](v2/docs/TEMPLATE_SPECIFICATION_v2.md) - テンプレートファイルの配置ポリシー・仕様・使用方法
-- [**AssetManager 統合ガイド**](v2/docs/ASSET_MANAGER_INTEGRATION_v2.md) - Asset ディレクトリからの自動配置・プラグイン連携の詳細
+- [**テンプレート仕様書**](v2/v2/v2/docs/TEMPLATE_SPECIFICATION_v2.md) - テンプレートファイルの配置ポリシー・仕様・使用方法
+- [**AssetManager 統合ガイド**](v2/v2/docs/ASSET_MANAGER_INTEGRATION_v2.md) - Asset ディレクトリからの自動配置・プラグイン連携の詳細
 - [**Asset ディレクトリ README**](v2/Asset/README.md) - ユーザー向けの Asset 管理方法
 
 ## 設定ファイルについて
@@ -162,7 +162,7 @@ python main_v2.py
 - **error.log**: エラーのみを記録
 - その他のログファイル：プラグイン導入時に自動生成
 
-詳細は [DEBUG_DRY_RUN_GUIDE.md](docs/DEBUG_DRY_RUN_GUIDE.md) を参照してください。
+詳細は [DEBUG_DRY_RUN_GUIDE.md](v2/docs/DEBUG_DRY_RUN_GUIDE.md) を参照してください。
 
 ## ライセンス
 
