@@ -21,22 +21,63 @@ YouTube チャンネルの新着動画を Bluesky に自動投稿するアプリ
 
 ```
 .
-├── v2/                    # v2（推奨、現在のメインアプリケーション）
-│   ├── main_v2.py
-│   ├── config.py
-│   ├── database.py
-│   ├── youtube_rss.py
-│   ├── bluesky_core.py
-│   ├── gui_v2.py
-│   ├── requirements.txt
-│   ├── settings.env.example
-│   ├── plugins/           # プラグインディレクトリ
-│   ├── docs/              # 設計ドキュメント
-│   └── ...
+├── README.md                    # このファイル
+├── LICENSE                      # ライセンス
 │
-├── v1/                    # v1（レガシー、参考用）
+├── v2/                          # v2（推奨、現在のメインアプリケーション）
+│   ├── main_v2.py               # エントリーポイント
+│   ├── config.py                # 設定管理
+│   ├── database.py              # SQLite データベース管理
+│   ├── youtube_rss.py           # YouTube RSS フィード取得
+│   ├── bluesky_core.py          # Bluesky API クライアント
+│   ├── gui_v2.py                # Tkinter GUI インターフェース
+│   ├── plugin_manager.py        # プラグイン管理
+│   ├── plugin_interface.py      # プラグイン基本インターフェース
+│   ├── requirements.txt         # 依存パッケージ
+│   ├── settings.env.example     # 設定ファイル例
+│   │
+│   ├── plugins/                 # プラグインディレクトリ
+│   │   ├── bluesky_plugin.py    # Bluesky 投稿プラグイン
+│   │   ├── youtube_api_plugin.py
+│   │   └── ...
+│   │
+│   ├── docs/                    # 設計ドキュメント（4カテゴリに整理）
+│   │   ├── README_GITHUB_v2.md  # ドキュメント入口
+│   │   ├── Technical/           # 技術資料（アーキテクチャ・仕様）
+│   │   │   ├── ARCHITECTURE_AND_DESIGN.md
+│   │   │   ├── PLUGIN_SYSTEM.md
+│   │   │   ├── TEMPLATE_SYSTEM.md
+│   │   │   ├── DELETED_VIDEO_CACHE.md
+│   │   │   └── ...
+│   │   ├── Guides/              # ユーザーガイド（実装・手順）
+│   │   │   ├── DEBUG_DRY_RUN_GUIDE.md
+│   │   │   ├── IMPLEMENTATION_PLAN.md
+│   │   │   └── ...
+│   │   ├── References/          # 参考資料（構想・ロードマップ）
+│   │   │   ├── FUTURE_ROADMAP_v2.md
+│   │   │   └── ...
+│   │   └── Local/               # ローカル作業用（非公開推奨）
+│   │
+│   ├── data/                    # ローカルデータ
+│   │   └── video_list.db        # SQLite データベース
+│   │
+│   ├── logs/                    # ログファイル出力先
+│   │
+│   ├── templates/               # 投稿テンプレート
+│   │   └── .templates/
+│   │
+│   ├── images/                  # スクリーンショット・参考画像
+│   │
+│   ├── thumbnails/              # キャッシュ済み動画サムネイル
+│   │
+│   ├── Asset/                   # プラグイン用テンプレート・画像
+│   │   └── README.md
+│   │
+│   └── __pycache__/             # Python キャッシュ（Git 管理外）
 │
-└── README.md              # このファイル
+├── v1/                          # v1（レガシー版、参考用）
+│
+└── OLD_App/                     # 旧アプリケーション（参考用）
 ```
 
 ## 必要な環境
