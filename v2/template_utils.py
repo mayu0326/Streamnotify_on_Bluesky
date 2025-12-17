@@ -360,13 +360,18 @@ def load_template_with_fallback(
     try:
         # ★ 相対パス → 絶対パス変換（TEMPLATE_ROOT 基準）
         template_path = Path(path)
+        logger.debug(f"🔍 初期パス: {path}, is_absolute={template_path.is_absolute()}")
+        logger.debug(f"   TEMPLATE_ROOT={TEMPLATE_ROOT}, TEMPLATE_ROOT.parent={TEMPLATE_ROOT.parent}")
+
         if not template_path.is_absolute():
             # 相対パスの場合は TEMPLATE_ROOT を基準に解決
             template_path = TEMPLATE_ROOT.parent / path  # v2 ディレクトリ基準
             logger.debug(f"🔍 相対パスを絶対パスに変換: {path} → {template_path}")
 
         # ファイルの存在確認
-        logger.debug(f"🔍 テンプレートファイル存在確認: {template_path} (exists={template_path.exists()})")
+        logger.debug(f"🔍 テンプレートファイル存在確認: {template_path}")
+        logger.debug(f"   exists={template_path.exists()}")
+
         if not template_path.exists():
             logger.warning(f"⚠️ テンプレートファイルが見つかりません: {template_path}")
             if default_path:
@@ -383,6 +388,7 @@ def load_template_with_fallback(
                 return None
 
         # ファイル読み込み
+        logger.debug(f"🔍 ファイルを開く: {template_path}")
         with open(template_path, encoding="utf-8") as f:
             template_str = f.read()
 
@@ -398,7 +404,8 @@ def load_template_with_fallback(
         return template_obj
 
     except FileNotFoundError as e:
-        logger.error(f"❌ テンプレートファイル読み込みエラー: {path}")
+        logger.error(f"❌ テンプレートファイル読み込みエラー: {template_path} (path={path})")
+        logger.error(f"   詳細: ファイルが見つかりません - {e}")
         if default_path and path != default_path:
             logger.info(f"🔄 デフォルトテンプレートにフォールバック: {default_path}")
             return load_template_with_fallback(
@@ -409,11 +416,14 @@ def load_template_with_fallback(
         return None
 
     except TemplateSyntaxError as e:
-        logger.error(f"❌ テンプレート構文エラー: {path} - {e}")
+        logger.error(f"❌ テンプレート構文エラー: {template_path} - {e}")
         return None
 
     except Exception as e:
-        logger.error(f"❌ テンプレート読み込み予期しないエラー: {e}")
+        import traceback
+        logger.error(f"❌ テンプレート読み込み予期しないエラー: {type(e).__name__}: {e}")
+        logger.error(f"   パス: {template_path}")
+        logger.error(f"   トレースバック: {traceback.format_exc()}")
         return None
 
 
