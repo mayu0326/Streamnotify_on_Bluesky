@@ -187,6 +187,4 @@ def post_video(self, video: dict) -> bool:
 
 ## 📚 参考資料
 
-- `BLUESKY_PLUGIN_GUIDE.md`: Rich Text Facet 実装
-- `bluesky-link-card-guide.md`: リンクカード詳細仕様
-- Bluesky API 公式: https://docs.bsky.app/docs/advanced-guides/posts
+- `PLUGIN_SYSTEM.md`: Rich Text Facet 実装（統合版）

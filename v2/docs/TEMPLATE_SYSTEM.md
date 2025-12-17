@@ -537,8 +537,7 @@ def _get_env_var_from_file(file_path: str, env_var_name: str) -> Optional[str]:
 
 ## 関連ドキュメント
 
-- [TEMPLATE_SPECIFICATION_v2.md](./TEMPLATE_SPECIFICATION_v2.md) - 詳細な技術仕様
-- [TEMPLATE_INTEGRATION_v2.md](./TEMPLATE_INTEGRATION_v2.md) - コード統合の詳細
+- [TEMPLATE_SYSTEM.md](./TEMPLATE_SYSTEM.md) - このドキュメント（テンプレートシステム統合版）
 - [TEMPLATE_IMPLEMENTATION_CHECKLIST.md](./TEMPLATE_IMPLEMENTATION_CHECKLIST.md) - 実装チェックリスト
 - [設定ファイル例](../settings.env.example) - settings.env の詳細設定
 

@@ -10,7 +10,7 @@
 
 ### ステップ 1: テンプレート仕様ドキュメント作成
 
-**ファイル**: `v2/docs/TEMPLATE_SPECIFICATION_v2.md`
+**ファイル**: `v2/docs/TEMPLATE_SYSTEM.md`（統合ドキュメント）
 
 - [x] テンプレートシステム全体像の記載
 - [x] event_context の統一構造定義
@@ -150,12 +150,11 @@
 
 | ファイル | サイズ | チェック |
 |:--|:--:|:--:|
-| `v2/docs/TEMPLATE_SPECIFICATION_v2.md` | 700+ 行 | ✅ |
+| `v2/docs/TEMPLATE_SYSTEM.md` | 統合版（700+ 行） | ✅ |
 | `v2/template_utils.py` | 550+ 行 | ✅ |
 | `v2/template_editor_dialog.py` | 450+ 行 | ✅ |
 | `v2/bluesky_template_manager.py` | 200+ 行 | ✅ |
 | `v2/templates/.templates/default_template.txt` | 6 行 | ✅ |
-| `v2/docs/TEMPLATE_INTEGRATION_v2.md` | 800+ 行 | ✅ |
 
 **小計**: 6 ファイル、3,000+ 行 の新規追加
 
@@ -236,8 +235,7 @@
 
 ### 仕様ドキュメント
 
-- [x] `TEMPLATE_SPECIFICATION_v2.md` - ユーザー向け詳細仕様書
-- [x] `TEMPLATE_INTEGRATION_v2.md` - 実装統合ドキュメント
+- [x] `TEMPLATE_SYSTEM.md` - テンプレートシステム統合ドキュメント
 - [x] README コメント（各ファイルのモジュールドキュメント）
 
 ### コード内ドキュメント

@@ -130,11 +130,13 @@ v2/
 │   │                       # プラグイン導入時に必要なファイルを本番ディレクトリに自動コピー
 │
 ├── docs/                   # 設計ドキュメント
-│   ├── ARCHITECTURE_v2.md
+│   ├── ARCHITECTURE_AND_DESIGN.md （統合版）
+│   ├── PLUGIN_SYSTEM.md （統合版）
+│   ├── TEMPLATE_SYSTEM.md （統合版）
+│   ├── DELETED_VIDEO_CACHE.md （統合版）
+│   ├── SESSION_REPORTS.md （統合版）
 │   ├── ModuleList_v2.md
-│   ├── v2_DESIGN_POLICY.md
 │   ├── SETTINGS_OVERVIEW.md
-│   ├── BLUESKY_PLUGIN_GUIDE.md
 │   ├── DEBUG_DRY_RUN_GUIDE.md
 │   └── FUTURE_ROADMAP_v2.md
 │

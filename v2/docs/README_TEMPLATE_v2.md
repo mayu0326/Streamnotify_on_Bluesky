@@ -189,7 +189,9 @@ python main_v2.py
 │   │                       # （asset_manager.py で実装完了: 2025-12）
 │
 ├── docs/                   # 設計ドキュメント
-│   ├── ARCHITECTURE_v2.md
+│   ├── ARCHITECTURE_AND_DESIGN.md （統合版）
+│   ├── PLUGIN_SYSTEM.md （統合版）
+│   ├── TEMPLATE_SYSTEM.md （統合版）
 │   ├── ModuleList_v2.md
 │   ├── v2_design.md
 │   └── ...
