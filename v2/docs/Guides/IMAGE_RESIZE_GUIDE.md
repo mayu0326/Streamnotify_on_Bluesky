@@ -358,4 +358,4 @@ IMAGE_SIZE_THRESHOLD = 1_800_000  # 品質低下の開始値も上げる
 
 - [Pillow ドキュメント](https://pillow.readthedocs.io/)
 - [Bluesky Upload Blob API](https://docs.bsky.app/docs/api/com-atproto-repo-upload-blob)
-- `IMAGE_RESIZE_GUIDE.md` と連携した投稿テスト手順は [TESTING.md](./TESTING.md) を参照
+- 投稿テスト手順は [DEBUG_DRY_RUN_GUIDE.md](./DEBUG_DRY_RUN_GUIDE.md) を参照

@@ -388,7 +388,7 @@ Bluesky API で投稿
 
 ### 関連ドキュメント
 
-- [PLUGIN_SYSTEM.md](./PLUGIN_SYSTEM.md) - GUI 投稿設定ウィンドウの詳細（統合版）
+- [PLUGIN_SYSTEM.md](../Technical/PLUGIN_SYSTEM.md) - GUI 投稿設定ウィンドウの詳細（統合版）
 
 ---
 

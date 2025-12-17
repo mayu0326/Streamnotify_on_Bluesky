@@ -130,15 +130,30 @@ v2/
 │   │                       # プラグイン導入時に必要なファイルを本番ディレクトリに自動コピー
 │
 ├── docs/                   # 設計ドキュメント
-│   ├── ARCHITECTURE_AND_DESIGN.md （統合版）
-│   ├── PLUGIN_SYSTEM.md （統合版）
-│   ├── TEMPLATE_SYSTEM.md （統合版）
-│   ├── DELETED_VIDEO_CACHE.md （統合版）
-│   ├── SESSION_REPORTS.md （統合版）
-│   ├── ModuleList_v2.md
-│   ├── SETTINGS_OVERVIEW.md
-│   ├── DEBUG_DRY_RUN_GUIDE.md
-│   └── FUTURE_ROADMAP_v2.md
+│   ├── README_GITHUB_v2.md
+│   ├── Technical/          # 技術資料（アーキテクチャ・仕様）
+│   │   ├── ARCHITECTURE_AND_DESIGN.md （統合版）
+│   │   ├── PLUGIN_SYSTEM.md （統合版）
+│   │   ├── TEMPLATE_SYSTEM.md （統合版）
+│   │   ├── DELETED_VIDEO_CACHE.md （統合版）
+│   │   ├── RICHTEXT_FACET_SPECIFICATION.md
+│   │   ├── ModuleList_v2.md
+│   │   └── SETTINGS_OVERVIEW.md
+│   ├── Guides/             # ユーザーガイド（実装・手順）
+│   │   ├── DEBUG_DRY_RUN_GUIDE.md
+│   │   ├── IMPLEMENTATION_PLAN.md
+│   │   ├── TEMPLATE_IMPLEMENTATION_CHECKLIST.md
+│   │   ├── SESSION_REPORTS.md
+│   │   └── IMAGE_RESIZE_GUIDE.md
+│   ├── References/         # 参考資料
+│   │   ├── FUTURE_ROADMAP_v2.md
+│   │   ├── README_TEMPLATE_v2.md
+│   │   ├── YouTube新着動画app（初期構想案）.md
+│   │   └── 投稿テンプレートの引数.md
+│   └── Local/              # ローカル作業用（非公開）
+│       ├── PROJECT_COMPLETION_REPORT.md
+│       ├── DELETION_CHECKLIST_PHASE3.md
+│       └── ...
 │
 └── __pycache__/            # Python キャッシュ（Git 管理外）
 ```
@@ -201,7 +216,7 @@ cp settings.env.example settings.env
 | `BLUESKY_PASSWORD` | Bluesky のアプリパスワード | `xxxx-xxxx-xxxx-xxxx` |
 | `POLL_INTERVAL_MINUTES` | ポーリング間隔（分、最小値 5） | `10` |
 
-その他のオプション設定については、`settings.env` 内のコメント、または [docs/SETTINGS_OVERVIEW.md](docs/SETTINGS_OVERVIEW.md) を参照してください。
+その他のオプション設定については、`settings.env` 内のコメント、または [docs/Technical/SETTINGS_OVERVIEW.md](Technical/SETTINGS_OVERVIEW.md) を参照してください。
 
 ---
 
@@ -295,27 +310,36 @@ Asset/
 
 詳細な情報は以下をご覧ください：
 
-### コア設計・アーキテクチャ
+## 📚 ドキュメント構成
 
-- [**アーキテクチャと設計方針**](ARCHITECTURE_AND_DESIGN.md) - システム構成、プラグインアーキテクチャ、データベース設計（`content_type` / `live_status` の正規化ルール含む）
-- [**モジュール一覧**](ModuleList_v2.md) - 全コンポーネントの説明
-- [**設定概要**](SETTINGS_OVERVIEW.md) - 環境変数・設定項目の詳細
-- [**プラグインシステム**](PLUGIN_SYSTEM.md) - プラグイン開発方法、Rich Text Facet、画像処理
+ドキュメントは以下の4つのカテゴリに分類されています：
 
-### テンプレート・キャッシュ・セッション
+### 🔧 **Technical/** - 技術資料（開発者向け）
+- [**アーキテクチャと設計方針**](Technical/ARCHITECTURE_AND_DESIGN.md) - システム構成、プラグインアーキテクチャ、データベース設計
+- [**モジュール一覧**](Technical/ModuleList_v2.md) - 全コンポーネントの説明
+- [**設定概要**](Technical/SETTINGS_OVERVIEW.md) - 環境変数・設定項目の詳細
+- [**プラグインシステム**](Technical/PLUGIN_SYSTEM.md) - プラグイン開発方法、Rich Text Facet、画像処理
+- [**テンプレートシステム**](Technical/TEMPLATE_SYSTEM.md) - テンプレートファイルの仕様・使用方法
+- [**削除済み動画ブラックリスト**](Technical/DELETED_VIDEO_CACHE.md) - ブラックリスト機能、API リファレンス
+- [**Rich Text Facet 仕様**](Technical/RICHTEXT_FACET_SPECIFICATION.md) - URL・ハッシュタグリンク化の技術仕様
+- [**AssetManager 統合ガイド**](Technical/ASSET_MANAGER_INTEGRATION_v2.md) - Asset 自動配置・プラグイン連携
 
-- [**テンプレートシステム**](TEMPLATE_SYSTEM.md) - テンプレートファイルの仕様・使用方法・トラブルシューティング
-- [**削除済み動画ブラックリスト**](DELETED_VIDEO_CACHE.md) - ブラックリスト機能、API リファレンス、テスト手順
-- [**セッション実装レポート**](SESSION_REPORTS.md) - 2025-12-17～18 実装内容・テスト結果
-- [**ドキュメント統合レポート**](DOCUMENTATION_CONSOLIDATION_COMPLETION_REPORT.md) - 統合作業の進捗状況
+### 📖 **Guides/** - ユーザーガイド・実装手順
+- [**デバッグ・ドライラン**](Guides/DEBUG_DRY_RUN_GUIDE.md) - トラブルシューティング
+- [**実装計画・チェックリスト**](Guides/IMPLEMENTATION_PLAN.md) - 実装ステップ
+- [**テンプレート実装チェックリスト**](Guides/TEMPLATE_IMPLEMENTATION_CHECKLIST.md) - テンプレート導入手順
+- [**セッション実装レポート**](Guides/SESSION_REPORTS.md) - 2025-12-17～18 実装内容・テスト結果
+- [**画像リサイズガイド**](Guides/IMAGE_RESIZE_GUIDE.md) - 画像処理の使用方法
 
-### その他のドキュメント
+### 📑 **References/** - 参考資料
+- [**将来ロードマップ**](References/FUTURE_ROADMAP_v2.md) - v3+ の計画概要
+- [**テンプレート README**](References/README_TEMPLATE_v2.md) - テンプレート機能説明
+- [**YouTube新着動画app（初期構想案）**](References/YouTube新着動画app（初期構想案）.md) - 初期構想資料
+- [**投稿テンプレートの引数**](References/投稿テンプレートの引数.md) - テンプレート引数リファレンス
 
-- [**デバッグ・ドライラン**](DEBUG_DRY_RUN_GUIDE.md) - トラブルシューティング
-- [**将来ロードマップ**](FUTURE_ROADMAP_v2.md) - v3+ の計画概要
-- [**Rich Text Facet 仕様**](RICHTEXT_FACET_SPECIFICATION.md) - URL・ハッシュタグリンク化の技術仕様
-- [**AssetManager 統合ガイド**](ASSET_MANAGER_INTEGRATION_v2.md) - Asset ディレクトリからの自動配置・プラグイン連携の詳細
-- [**Asset ディレクトリ README**](../Asset/README.md) - ユーザー向けの Asset 管理方法
+### 🔒 **Local/** - ローカル作業用（内部用・非公開）
+ドキュメント統合レポート、分析結果、進捗トラッキング等
+- Git 公開時は `.gitignore` で除外推奨
 
 ---
 
