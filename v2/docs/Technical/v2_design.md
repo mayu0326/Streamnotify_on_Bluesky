@@ -193,7 +193,6 @@
 │   │   └── IMAGE_RESIZE_IMPLEMENTATION.md
 │   ├── References/         # 参考資料
 │   │   ├── FUTURE_ROADMAP_v2.md
-│   │   ├── README_TEMPLATE_v2.md
 │   │   ├── YouTube新着動画app（初期構想案）.md
 │   │   └── 投稿テンプレートの引数.md
 │   └── Local/              # ローカル作業用（非公開）

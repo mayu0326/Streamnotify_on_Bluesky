@@ -157,7 +157,6 @@ v2/
 │   │   └── IMAGE_RESIZE_IMPLEMENTATION.md
 │   ├── References/         # 参考資料
 │   │   ├── FUTURE_ROADMAP_v2.md
-│   │   ├── README_TEMPLATE_v2.md
 │   │   ├── YouTube新着動画app（初期構想案）.md
 │   │   └── 投稿テンプレートの引数.md
 │   └── Local/              # ローカル作業用（非公開）
@@ -360,7 +359,6 @@ Asset/
 
 ### 📑 **References/** - 参考資料
 - [**将来ロードマップ**](References/FUTURE_ROADMAP_v2.md) - v3+ の計画概要
-- [**テンプレート README**](References/README_TEMPLATE_v2.md) - テンプレート機能説明
 - [**YouTube新着動画app（初期構想案）**](References/YouTube新着動画app（初期構想案）.md) - 初期構想資料
 - [**投稿テンプレートの引数**](References/投稿テンプレートの引数.md) - テンプレート引数リファレンス
 
