@@ -48,20 +48,24 @@ class AssetManager:
             logger.warning(f"ディレクトリ作成失敗 {dest_path}: {e}")
             return False
 
-    def _copy_file(self, src: Path, dest: Path) -> bool:
-        """ファイルをコピー（既存ファイルは上書きしない）"""
+    def _copy_file(self, src: Path, dest: Path) -> int:
+        """ファイルをコピー（既存ファイルは上書きしない）
+
+        Returns:
+            1: ファイルをコピー、0: 既存ファイルでスキップ、-1: エラー
+        """
         try:
             if dest.exists():
                 logger.debug(f"既に存在するため、スキップしました: {dest}")
-                return True
+                return 0
 
             self._ensure_dest_dir(dest.parent)
             shutil.copy2(src, dest)
-            logger.info(f"✅ ファイルをコピーしました: {src.name} -> {dest}")
-            return True
+            logger.debug(f"✅ ファイルをコピーしました: {src.name} -> {dest}")
+            return 1
         except Exception as e:
             logger.warning(f"ファイルコピー失敗 {src} -> {dest}: {e}")
-            return False
+            return -1
 
     def _copy_directory_recursive(self, src_dir: Path, dest_dir: Path) -> int:
         """ディレクトリ内のファイルを再帰的にコピー"""
@@ -77,7 +81,8 @@ class AssetManager:
                     rel_path = item.relative_to(src_dir)
                     dest_file = dest_dir / rel_path
 
-                    if self._copy_file(item, dest_file):
+                    result = self._copy_file(item, dest_file)
+                    if result == 1:
                         copy_count += 1
         except Exception as e:
             logger.warning(f"ディレクトリコピー失敗 {src_dir} -> {dest_dir}: {e}")
@@ -87,7 +92,7 @@ class AssetManager:
     def deploy_templates(self, services: list = None) -> int:
         """
         テンプレートをコピー
-        
+
         Asset/templates/ は既に小文字で正規化されているため、
         そのまま対応するディレクトリにコピーします
 
@@ -98,7 +103,7 @@ class AssetManager:
         Returns:
             コピーしたファイル数
         """
-        logger.info("📋 テンプレートの配置を開始します...")
+        logger.debug("📋 テンプレートの配置を開始します...")
         copy_count = 0
 
         if services is None:
@@ -129,7 +134,7 @@ class AssetManager:
     def deploy_images(self, services: list = None) -> int:
         """
         画像をコピー
-        
+
         Asset と v2 両方とも大文字始まりで統一されています：
         - default/ (小文字のまま)
         - YouTube/, Niconico/, Twitch/ (大文字始まり)
@@ -141,7 +146,7 @@ class AssetManager:
         Returns:
             コピーしたファイル数
         """
-        logger.info("🖼️  画像の配置を開始します...")
+        logger.debug("🖼️  画像の配置を開始します...")
         copy_count = 0
 
         if services is None:
@@ -179,7 +184,7 @@ class AssetManager:
         Returns:
             {"templates": コピーしたテンプレート数, "images": コピーした画像数}
         """
-        logger.info(f"🔌 プラグイン '{plugin_name}' のアセット配置を開始します...")
+        logger.debug(f"🔌 プラグイン '{plugin_name}' のアセット配置を確認しています...")
 
         results = {"templates": 0, "images": 0}
 
@@ -223,7 +228,7 @@ class AssetManager:
                 f"✅ プラグイン '{plugin_name}' の {total} 個のアセットを配置しました"
             )
         else:
-            logger.debug(f"プラグイン '{plugin_name}' はアセットがありません")
+            logger.debug(f"プラグイン '{plugin_name}' のアセットはすべて配置済みです")
 
         return results
 

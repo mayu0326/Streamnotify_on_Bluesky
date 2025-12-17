@@ -1,5 +1,8 @@
 ﻿# プラグインマネージャーの統合ガイド
 
+> **対象バージョン**: v2.1.0 時点
+> **最終更新**: 2025-12-17
+
 ## 現在の画面構成
 
 ### GUI レイアウト
@@ -9,7 +12,7 @@
 │ StreamNotify on Bluesky - DB 管理                                                        │
 ├──────────────────────────────────────────────────────────────────────────────────────────────┤
 │                                                                                              │
-│ [🔄 再読込] [☑️ 全選択] [☐ 全解除] | [💾 保存] [🗑️ 削除] | [🧪 ドライラン] [📤 投稿実行] [ℹ️ 統計] [🔌 プラグイン] │
+│ [🔄 再読込] [☑️ 全選択] [☐ 全解除] | [💾 保存] [🗑️ 削除] | [🧪 投稿テスト] [📤 投稿設定] [ℹ️ 統計] [🔌 プラグイン] │
 │                                                                                              │
 ├──────────────────────────────────────────────────────────────────────────────────────────────┤
 │                                                                                              │
@@ -26,6 +29,10 @@
 │  読み込み完了: 11 件の動画（選択: 0 件）                                                    │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
+
+**✨ v2.1.0 新機能:**
+- **🧪 投稿テスト**: DRY RUN モードで投稿をシミュレート
+- **📤 投稿設定**: 投稿設定ウィンドウで画像添付・リサイズ設定を調整
 
 ## 呼び出しフロー
 
@@ -56,7 +63,7 @@ main_v2.py::main()
 
 ## プラグインマネージャーの統合ポイント
 
-### 現在: PluginManager 統合構成（v2実装）
+### 現在: PluginManager 統合構成（v2.1.0 実装）
 
 ```python
 # main_v2.py 内の実装
@@ -69,8 +76,9 @@ plugin_manager.load_plugins_from_directory()
 # GUI に渡す
 gui = StreamNotifyGUI(root, db, plugin_manager)
 
-# GUI 内で使用（複数プラグイン対応）
-results = self.plugin_manager.post_video_with_all_enabled(video)
+# GUI 内で使用（複数プラグイン対応、DRY RUN 対応）
+results = self.plugin_manager.post_video_with_all_enabled(video, dry_run=False)
+# ★ DRY RUN: results = self.plugin_manager.post_video_with_all_enabled(video, dry_run=True)
 ```
 
 ## 統合実装状況（v2で実装済み）
@@ -82,10 +90,12 @@ plugins/
   __init__.py
   bluesky_plugin.py          # Bluesky 投稿プラグイン
   youtube_api_plugin.py      # YouTube Data API 連携
-  youtube_live_plugin.py     # YouTube ライブ判定
+  youtube_live_plugin.py     # YouTube ライブ判定（⚠️ 実験的：枠のみ実装、ロジック未完成）
   niconico_plugin.py         # ニコニコ動画 RSS 監視
   logging_plugin.py          # ロギング統合管理
 ```
+
+**注記**: `youtube_live_plugin.py` は v2 では実験的プラグインであり、ライブ配信開始/終了の検知ロジックとライブ状態の自動更新は**未実装**です。将来の v2.x / v3 での実装を予定しています。
 
 ### Step 2: main_v2.py での PluginManager 統合 ✅
 
@@ -114,8 +124,9 @@ def execute_post(self):
     if not self.plugin_manager:
         messagebox.showerror("エラー", "プラグインが初期化されていません")
         return
-    
+
     # 複数プラグイン対応: 有効なすべてのプラグインで投稿実行
+    # （注: video 辞書の content_type/live_status は database.py で値正規化済み）
     results = self.plugin_manager.post_video_with_all_enabled(video)
     # results: {"bluesky": True, "twitch": False, ...}
 ```
@@ -141,8 +152,8 @@ def execute_post(self):
 | ☐ 全解除 | すべての選択を解除 | `deselect_all()` |
 | 💾 保存 | 選択状態を DB に保存 | `save_selection()` |
 | 🗑️ 削除 | 選択した動画を DB から削除 | `delete_selected()` |
-| 🧪 ドライラン | 投稿をテスト実行 | `dry_run_post()` |
-| 📤 投稿実行 | 選択動画を投稿 | `execute_post()` |
+| 🧪 投稿テスト | 投稿をテスト実行 | `dry_run_post()` |
+| 📤 投稿設定 | 投稿設定ウィンドウを表示 | `execute_post()` |
 | ℹ️ 統計 | 投稿数、投稿予定、未処理などの統計情報を表示 | `show_stats()` |
 | 🔌 プラグイン | 導入プラグイン一覧と有効/無効状態を表示 | `show_plugins()` |
 
@@ -220,8 +231,8 @@ def execute_post(self):
 1. 「☑️」をクリック → 投稿対象を選択
 2. 「投稿予定/投稿日時」をダブルクリック → 投稿日時を設定
 3. 「💾 選択を保存」 → DB に反映
-4. 「🧪 ドライラン」 → テスト実行
-5. 「📤 投稿実行」 → 実投稿
+4. 「🧪 投稿テスト」 → テスト実行
+5. 「📤 投稿設定」 → 投稿設定
 
 ⚠️ 注意
 ━━━━━━━━━━━━━━━━━
@@ -238,13 +249,13 @@ def execute_post(self):
    ↓
    StreamNotifyGUI.on_tree_click()
    self.selected_rows に追加
-   
+
 2. ユーザーが「💾 保存」ボタンをクリック
    ↓
    StreamNotifyGUI.save_selection()
    → db.update_selection()
-   
-3. ユーザーが「📤 投稿実行」をクリック
+
+3. ユーザーが「📤 投稿設定」をクリック
    ↓
    StreamNotifyGUI.execute_post()
    → plugin_manager.post_video_with_all_enabled(video)
@@ -260,7 +271,7 @@ def execute_post(self):
    ↓
    StreamNotifyGUI.on_tree_click()
    self.selected_rows に追加
-   
+
 2. ユーザーが「🗑️ 削除」ボタンをクリック
    ↓
    StreamNotifyGUI.delete_selected()
@@ -273,6 +284,53 @@ def execute_post(self):
 
 ※ 削除操作は確認ダイアログで警告し、取り消せない旨を表示します。
   個別削除は右クリックメニューから「🗑️ 削除」で可能です。
+
+### 投稿テスト（DRY RUN） → 投稿設定ウィンドウ フロー（v2.1.0）
+
+```
+1. ユーザーが「🧪 投稿テスト」または「📤 投稿設定」をクリック
+   ↓
+   StreamNotifyGUI._on_post_settings_clicked()
+   → PostSettingsWindow を起動
+
+2. PostSettingsWindow で設定を調整
+   ├─ ☑ 画像を添付する (True/False)
+   ├─ ☑ 小さい画像を拡大する (True/False)
+   ├─ 画像プレビュー表示
+   └─ 投稿方法を表示
+
+3. ユーザーが「✅ 投稿」をクリック
+   ↓
+   PostSettingsWindow._execute_post(dry_run=False)
+   → plugin_manager.post_video_with_all_enabled(video, dry_run=False)
+   → 各プラグインの post_video() を実行
+   → db.update_selection(selected=False) で DB 更新
+   ↓
+   「✅ 投稿完了」メッセージ表示
+   ↓
+   ウィンドウを閉じる
+
+   または
+
+   ユーザーが「🧪 投稿テスト」をクリック
+   ↓
+   PostSettingsWindow._execute_post(dry_run=True)
+   → plugin_manager.post_video_with_all_enabled(video, dry_run=True)
+   → 画像リサイズ・Facet構築は実行
+   → Blob アップロード・API 呼び出しはスキップ
+   → DB は更新されない
+   ↓
+   「🧪 投稿テスト完了」メッセージ表示
+   ↓
+   ウィンドウを閉じる
+
+```
+
+**関連ドキュメント:**
+- [BLUESKY_PLUGIN_GUIDE.md#4-dry-run投稿テスト機能](./BLUESKY_PLUGIN_GUIDE.md#4-dry-run投稿テスト機能) - DRY RUN 機能の詳細
+- [BLUESKY_PLUGIN_GUIDE.md#5-gui投稿設定ウィンドウ](./BLUESKY_PLUGIN_GUIDE.md#5-gui投稿設定ウィンドウ) - GUI 投稿設定ウィンドウの詳細
+
+---
 
 ## 拡張可能性
 

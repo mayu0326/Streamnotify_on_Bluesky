@@ -30,7 +30,7 @@ _logging_plugin_cache = {}
 
 class FlushTimedRotatingFileHandler(TimedRotatingFileHandler):
     """flush付きハンドラ（即座にディスクに書き込み、改行コードはLF統一）"""
-    
+
     def _open(self):
         """ファイルを開く際に改行コードをLFに統一"""
         # newline='' で自動的なCRLF変換を防ぐ
@@ -39,7 +39,7 @@ class FlushTimedRotatingFileHandler(TimedRotatingFileHandler):
         else:
             stream = open(self.baseFilename, self.mode, encoding=self.encoding, newline='')
         return stream
-    
+
     def emit(self, record):
         """ログレコードを出力（改行コードはLFに統一）"""
         try:
@@ -59,14 +59,14 @@ class LoggingPlugin(NotificationPlugin):
     def __init__(self, env_path: Optional[str] = None):
         """
         初期化
-        
+
         Args:
             env_path: 環境変数ファイルのパス（Noneの場合は自動検出）
         """
         self.env_path = env_path or self._find_env_file()
         self.configured = False
         self.loggers = {}
-        
+
     def _find_env_file(self) -> str:
         """環境変数ファイルを検出"""
         # v2ディレクトリのsettings.envを優先
@@ -83,25 +83,32 @@ class LoggingPlugin(NotificationPlugin):
     def configure_logging(self):
         """ロギングを設定（旧版のconfigure_loggingを移植）"""
         global _logging_plugin_cache
-        
+
         if self.configured and _logging_plugin_cache:
             return _logging_plugin_cache
-        
+
         # ルートロガーをクリア（既存のハンドラーを削除）
         root_logger = logging.getLogger()
         root_logger.handlers.clear()
         root_logger.setLevel(logging.WARNING)
         root_logger.propagate = False
-        
+
         # 環境変数を読み込む
         load_dotenv(dotenv_path=self.env_path)
-        
+
         # logsディレクトリがなければ作成
         os.makedirs("logs", exist_ok=True)
-        
+
+        # DEBUG_MODE の取得（settings.envから）
+        debug_mode = os.getenv("DEBUG_MODE", "false").lower() in ("true", "1", "yes")
+
         # ログレベルや保管日数の設定
         LOG_LEVEL_CONSOLE = os.getenv("LOG_LEVEL_CONSOLE", "INFO").upper()
+        # DEBUG_MODE=false の場合、ファイルログレベルを INFO に設定
         LOG_LEVEL_FILE = os.getenv("LOG_LEVEL_FILE", "DEBUG").upper()
+        if not debug_mode and LOG_LEVEL_FILE == "DEBUG":
+            LOG_LEVEL_FILE = "INFO"
+
         LEVEL_MAP = {
             "DEBUG": logging.DEBUG,
             "INFO": logging.INFO,
@@ -111,7 +118,7 @@ class LoggingPlugin(NotificationPlugin):
         }
         log_level_console = LEVEL_MAP.get(LOG_LEVEL_CONSOLE, logging.INFO)
         log_level_file = LEVEL_MAP.get(LOG_LEVEL_FILE, logging.DEBUG)
-        
+
         # 個別ロガーのログレベル設定（環境変数で指定されていればデフォルト値をオーバーライド）
         log_level_app = LEVEL_MAP.get(os.getenv("LOG_LEVEL_APP", "").upper(), log_level_file)
         log_level_audit = LEVEL_MAP.get(os.getenv("LOG_LEVEL_AUDIT", "").upper(), logging.INFO)
@@ -120,7 +127,7 @@ class LoggingPlugin(NotificationPlugin):
         log_level_thumbnails = LEVEL_MAP.get(log_level_thumbnails_env, log_level_file) if log_level_thumbnails_env else log_level_file
         log_level_youtube = LEVEL_MAP.get(os.getenv("LOG_LEVEL_YOUTUBE", "").upper(), log_level_file)
         log_level_niconico = LEVEL_MAP.get(os.getenv("LOG_LEVEL_NICONICO", "").upper(), log_level_file)
-   
+
         # ログの保管日数を取得（デフォルト14日）
         try:
             log_retention_days_str = os.getenv("LOG_RETENTION_DAYS", "14")
@@ -131,7 +138,7 @@ class LoggingPlugin(NotificationPlugin):
         except ValueError:
             print(f"Warning: Invalid LOG_RETENTION_DAYS value '{os.getenv('LOG_RETENTION_DAYS')}'. Defaulting to 14 days.")
             log_retention_days = 14
-        
+
         # 監査ログ専用ロガー
         audit_logger = logging.getLogger("AuditLogger")
         audit_logger.setLevel(log_level_audit)
@@ -147,20 +154,23 @@ class LoggingPlugin(NotificationPlugin):
         audit_file_handler.setLevel(logging.INFO)
         audit_file_handler.setFormatter(audit_format)
         audit_logger.addHandler(audit_file_handler)
-        
+
         # アプリケーション用ロガーの作成
         logger = logging.getLogger("AppLogger")
         logger.setLevel(log_level_app)
         logger.propagate = False
         logger.handlers.clear()
-        
+
         error_format = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
-        
+
         # 一般ログファイル（app.log）のハンドラ - DEBUG と INFO を出力
         class DebugAndInfoFilter(logging.Filter):
             def filter(self, record):
+                # DEBUG_MODE=false の場合は INFO のみ
+                if not debug_mode and record.levelno == logging.DEBUG:
+                    return False
                 return record.levelno in (logging.DEBUG, logging.INFO)
-        
+
         info_file_handler = FlushTimedRotatingFileHandler(
             "logs/app.log",
             when="D",
@@ -172,12 +182,12 @@ class LoggingPlugin(NotificationPlugin):
         info_file_handler.addFilter(DebugAndInfoFilter())  # DEBUG と INFO のみをフィルタリング
         info_file_handler.setFormatter(error_format)
         logger.addHandler(info_file_handler)
-        
+
         # エラーログファイル（error.log）のハンドラ - WARNING 以上のレベルのみ
         class WarningAndAboveFilter(logging.Filter):
             def filter(self, record):
                 return record.levelno >= logging.WARNING
-        
+
         error_file_handler = FlushTimedRotatingFileHandler(
             "logs/error.log",
             when="D",
@@ -189,13 +199,13 @@ class LoggingPlugin(NotificationPlugin):
         error_file_handler.addFilter(WarningAndAboveFilter())  # WARNING 以上のみをフィルタリング
         error_file_handler.setFormatter(error_format)
         logger.addHandler(error_file_handler)
-        
+
         # コンソール出力用ハンドラ
         console_handler = logging.StreamHandler()
         console_handler.setLevel(log_level_console)
         console_handler.setFormatter(error_format)
         logger.addHandler(console_handler)
-        
+
         app_logger_handlers = [info_file_handler, error_file_handler, console_handler]
 
         # サムネイル関連ロガー               # サムネイル再取得専用ロガーの設定
@@ -213,7 +223,7 @@ class LoggingPlugin(NotificationPlugin):
         thumbnails_file_handler.setLevel(log_level_thumbnails)
         thumbnails_file_handler.setFormatter(thumbnails_format)
         thumbnails_logger.addHandler(thumbnails_file_handler)
-     
+
         # tunnel.log用ロガー
         tunnel_logger = logging.getLogger("tunnel.logger")
         tunnel_logger.setLevel(log_level_tunnel)
@@ -229,7 +239,7 @@ class LoggingPlugin(NotificationPlugin):
         tunnel_file_handler.setLevel(log_level_file)
         tunnel_file_handler.setFormatter(tunnel_format)
         tunnel_logger.addHandler(tunnel_file_handler)
-        
+
         # YouTube専用ロガー
         youtube_logger = logging.getLogger("YouTubeLogger")
         youtube_logger.setLevel(log_level_youtube)
@@ -245,7 +255,7 @@ class LoggingPlugin(NotificationPlugin):
         yt_file_handler.setLevel(log_level_file)
         yt_file_handler.setFormatter(error_format)
         youtube_logger.addHandler(yt_file_handler)
-        
+
         # Niconico専用ロガー
         niconico_logger = logging.getLogger("NiconicoLogger")
         niconico_logger.setLevel(log_level_niconico)
@@ -261,7 +271,7 @@ class LoggingPlugin(NotificationPlugin):
         nico_file_handler.setLevel(log_level_file)
         nico_file_handler.setFormatter(error_format)
         niconico_logger.addHandler(nico_file_handler)
-        
+
         # GUI専用ロガー
         gui_logger = logging.getLogger("GUILogger")
         gui_logger.setLevel(logging.INFO)
@@ -277,7 +287,7 @@ class LoggingPlugin(NotificationPlugin):
         gui_file_handler.setLevel(logging.INFO)
         gui_file_handler.setFormatter(error_format)
         gui_logger.addHandler(gui_file_handler)
-        
+
         # 投稿エラー専用ロガー
         post_error_logger = logging.getLogger("PostErrorLogger")
         post_error_logger.setLevel(logging.WARNING)
@@ -293,10 +303,11 @@ class LoggingPlugin(NotificationPlugin):
         post_error_file_handler.setLevel(logging.WARNING)
         post_error_file_handler.setFormatter(error_format)
         post_error_logger.addHandler(post_error_file_handler)
-        
+
         # 投稿ログ専用ロガー（成功・失敗含む）
         post_logger = logging.getLogger("PostLogger")
-        post_logger.setLevel(logging.DEBUG)
+        # ★ debug_mode に応じてレベルを設定
+        post_logger.setLevel(logging.DEBUG if debug_mode else logging.INFO)
         post_logger.propagate = False  # app.logへの伝播を防止
         post_logger.handlers.clear()
         post_file_handler = FlushTimedRotatingFileHandler(
@@ -307,9 +318,12 @@ class LoggingPlugin(NotificationPlugin):
             encoding="utf-8",
         )
         post_file_handler.setLevel(logging.DEBUG)
+        # ★ debug_mode に応じてフィルターを設定
+        if not debug_mode:
+            post_file_handler.addFilter(lambda record: record.levelno >= logging.INFO)
         post_file_handler.setFormatter(error_format)
         post_logger.addHandler(post_file_handler)
-        
+
         # キャッシュに保存
         _logging_plugin_cache = {
             "logger": logger,
@@ -323,10 +337,10 @@ class LoggingPlugin(NotificationPlugin):
             "post_error_logger": post_error_logger,
             "post_logger": post_logger,
         }
-        
+
         self.loggers = _logging_plugin_cache
         self.configured = True
-        
+
         return _logging_plugin_cache
 
     def is_available(self) -> bool:
@@ -336,10 +350,10 @@ class LoggingPlugin(NotificationPlugin):
     def post_video(self, video: Dict[str, Any]) -> bool:
         """
         動画情報をポスト（このプラグインはログ設定専用なので何もしない）
-        
+
         Args:
             video: 動画情報
-        
+
         Returns:
             bool: 常にTrue（ポスト機能は持たない）
         """
@@ -363,17 +377,17 @@ class LoggingPlugin(NotificationPlugin):
         # ルートロガーをDEBUGに設定（ハンドラーのレベルは変更しない）
         root_logger = logging.getLogger()
         root_logger.setLevel(logging.DEBUG)
-        
+
         # 全ロガー（AppLogger, YouTubeLogger, NiconicoLogger など）をDEBUGに設定
         # ★重要★ ハンドラーレベルは変更しない（ハンドラーごとに出力対象が定義されているため）
-        for logger_name in ['AppLogger', 'AuditLogger', 'PostLogger', 'TunnelLogger', 
+        for logger_name in ['AppLogger', 'AuditLogger', 'PostLogger', 'TunnelLogger',
                             'YouTubeLogger', 'NiconicoLogger', 'ImageLogger', 'GUILogger', 'WebhookLogger']:
             logger = logging.getLogger(logger_name)
             logger.setLevel(logging.DEBUG)  # ロガーのレベルのみをDEBUGに変更
-        
+
         # コンソール出力は通常のDEBUG出力を許可
         app_logger = logging.getLogger("AppLogger")
-        
+
         # DEBUGログはコンソール出力のみ（ファイルには出さない）
         app_logger.debug("🔍 デバッグモードが有効になりました")
 

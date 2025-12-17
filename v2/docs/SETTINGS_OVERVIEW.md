@@ -6,7 +6,7 @@
 - `YOUTUBE_CHANNEL_ID`: 監視対象のYouTubeチャンネルID（UC形式推奨）。
 - `POLL_INTERVAL_MINUTES`: RSSポーリング間隔（分）。
 - `APP_MODE`: 動作モード `normal|auto_post|dry_run|collect`。
-- `DEBUG_MODE`: 詳細ログの有効化。
+- `DEBUG_MODE`: 詳細ログの有効化。**v2.1.0:** `true` で詳細な DEBUG ログを表示、`false` で INFO ログのみ。
 - `TIMEZONE`: タイムゾーン。`system` でOS設定に追従。
 - `BLUESKY_USERNAME` / `BLUESKY_PASSWORD`: Bluesky認証情報。
 - `BLUESKY_POST_ENABLED`: Blueskyへの投稿有効可否。
@@ -48,4 +48,8 @@
 ---
 補足:
 - 実運用では `settings.env.example` を最新基準として参照し、`settings.env` は必要項目のみ有効化してください。
-- 未実装・準備中の項目はコメントアウトし、将来のプラグイン導入時に有効化すると安全です。
+- **v2.1.0 での更新 (2025-12-17 実装済み):**
+  - ✅ DEBUG_MODE: `true`/`false` で DEBUG ログを完全制御
+  - ✅ Bluesky画像投稿: 自動リサイズ、AspectRatio設定で レターボックス解消
+  - ✅ ドライラン機能: `APP_MODE=dry_run` または GUI の「🧪 投稿テスト」で投稿をシミュレート
+  - ✅ アセット管理: テンプレート・画像は初回のみ配置、以降は追加のみ

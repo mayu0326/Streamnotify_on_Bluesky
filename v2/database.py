@@ -25,6 +25,10 @@ DB_PATH = "data/video_list.db"
 DB_TIMEOUT = 10
 DB_RETRY_MAX = 3
 
+# バリデーション用の許可リスト
+VALID_CONTENT_TYPES = {"video", "live", "archive", "none"}
+VALID_LIVE_STATUSES = {None, "none", "upcoming", "live", "completed"}
+
 
 class Database:
     """SQLite データベースを管理するクラス"""
@@ -55,6 +59,40 @@ class Database:
     def _ensure_directory(self):
         """ディレクトリを作成"""
         os.makedirs(os.path.dirname(self.db_path) or ".", exist_ok=True)
+
+    def _validate_content_type(self, content_type: str) -> str:
+        """content_type を検証し、正規化する
+
+        Args:
+            content_type: 検証する content_type の値
+
+        Returns:
+            正規化されたcontent_type（デフォルト値は "video"）
+        """
+        if content_type not in VALID_CONTENT_TYPES:
+            logger.warning(f"⚠️ 不正な content_type: '{content_type}' → デフォルト値 'video' に置き換えます")
+            return "video"
+        return content_type
+
+    def _validate_live_status(self, live_status, content_type: str) -> object:
+        """live_status を検証し、正規化する
+
+        Args:
+            live_status: 検証する live_status の値
+            content_type: 対応する content_type
+
+        Returns:
+            正規化された live_status
+        """
+        if live_status not in VALID_LIVE_STATUSES:
+            logger.warning(f"⚠️ 不正な live_status: '{live_status}' → None に置き換えます")
+            return None
+
+        # content_type="video" で live_status が null 以外の場合は警告
+        if content_type == "video" and live_status is not None:
+            logger.warning(f"⚠️ content_type='video' で live_status='{live_status}' が設定されています。content_type != 'live' の場合は live_status=None を推奨します")
+
+        return live_status
 
     def _get_connection(self):
         """タイムアウト付きで DB 接続を取得"""
@@ -147,6 +185,26 @@ class Database:
             except Exception as e:
                 logger.warning(f"既存データのsourceカラム補完処理に失敗しました: {e}")
 
+            # 既存データの content_type を正規化
+            try:
+                # 不正な値（例："ニコニコ動画"）を "video" に正規化
+                cursor.execute("UPDATE videos SET content_type='video' WHERE content_type NOT IN ('video', 'live', 'archive', 'none')")
+                # NULL値をデフォルト値に設定
+                cursor.execute("UPDATE videos SET content_type='video' WHERE content_type IS NULL")
+                conn.commit()
+                logger.info("✅ 既存データの content_type を正規化しました")
+            except Exception as e:
+                logger.warning(f"既存データの content_type 正規化処理に失敗しました: {e}")
+
+            # 既存データの live_status を正規化
+            try:
+                # 不正な値を NULL に正規化
+                cursor.execute("UPDATE videos SET live_status=NULL WHERE live_status NOT IN ('none', 'upcoming', 'live', 'completed')")
+                conn.commit()
+                logger.info("✅ 既存データの live_status を正規化しました")
+            except Exception as e:
+                logger.warning(f"既存データの live_status 正規化処理に失敗しました: {e}")
+
             if migration_needed:
                 conn.commit()
                 logger.info("✅ DB スキーマのマイグレーションが完了しました")
@@ -160,7 +218,23 @@ class Database:
     def insert_video(self, video_id, title, video_url, published_at, channel_name="", thumbnail_url="", content_type="video", live_status=None, is_premiere=False, source="youtube"):
         """
         動画情報を挿入（リトライ付き）
+
+        Args:
+            video_id: 動画ID
+            title: タイトル
+            video_url: 動画URL
+            published_at: 公開日時
+            channel_name: チャンネル名
+            thumbnail_url: サムネイルURL
+            content_type: コンテンツ種別（"video"/"live"/"archive"/"none"）
+            live_status: ライブ配信状態（null/"none"/"upcoming"/"live"/"completed"）
+            is_premiere: プレミア配信フラグ
+            source: 配信元（"youtube"/"niconico"など）
         """
+        # バリデーション
+        content_type = self._validate_content_type(content_type)
+        live_status = self._validate_live_status(live_status, content_type)
+
         for attempt in range(DB_RETRY_MAX):
             try:
                 conn = self._get_connection()
@@ -225,7 +299,7 @@ class Database:
             cursor = conn.cursor()
 
             cursor.execute("""
-                SELECT * FROM videos 
+                SELECT * FROM videos
                 WHERE selected_for_post = 1 AND posted_to_bluesky = 0
                   AND (scheduled_at IS NULL OR scheduled_at <= datetime('now'))
                 ORDER BY scheduled_at, published_at
@@ -248,7 +322,7 @@ class Database:
             cursor = conn.cursor()
 
             cursor.execute("""
-                SELECT id, video_id, published_at, title, posted_to_bluesky, 
+                SELECT id, video_id, published_at, title, posted_to_bluesky,
                        selected_for_post, scheduled_at, posted_at, video_url, channel_name, thumbnail_url,
                        content_type, live_status, is_premiere, source, image_mode, image_filename
                 FROM videos
@@ -344,7 +418,7 @@ class Database:
             cursor.execute("""
                 SELECT id, video_id, title, source, thumbnail_url, image_mode, image_filename
                 FROM videos
-                WHERE thumbnail_url IS NOT NULL 
+                WHERE thumbnail_url IS NOT NULL
                   AND thumbnail_url != ''
                   AND (image_filename IS NULL OR image_filename = '')
                 ORDER BY published_at DESC
@@ -366,7 +440,7 @@ class Database:
             cursor = conn.cursor()
 
             cursor.execute("""
-                UPDATE videos 
+                UPDATE videos
                 SET image_mode = ?, image_filename = ?
                 WHERE video_id = ?
             """, (image_mode, image_filename, video_id))
@@ -380,6 +454,57 @@ class Database:
             logger.error(f"画像情報の更新に失敗: {video_id} - {e}")
             return False
 
+    def update_video_status(self, video_id: str, content_type: str = None, live_status = None) -> bool:
+        """動画のコンテンツ種別とライブ配信状態を更新
+
+        Args:
+            video_id: 動画ID
+            content_type: コンテンツ種別
+            live_status: ライブ配信状態
+
+        Returns:
+            更新成功フラグ
+        """
+        try:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+
+            # 更新対象のカラムを動的に組み立て
+            update_parts = []
+            params = []
+
+            if content_type is not None:
+                content_type = self._validate_content_type(content_type)
+                update_parts.append("content_type = ?")
+                params.append(content_type)
+
+            if live_status is not None or content_type is not None:
+                # content_typeが指定されていない場合は、既存の値を取得
+                if content_type is None:
+                    cursor.execute("SELECT content_type FROM videos WHERE video_id = ?", (video_id,))
+                    row = cursor.fetchone()
+                    content_type = row[0] if row else "video"
+
+                live_status = self._validate_live_status(live_status, content_type)
+                update_parts.append("live_status = ?")
+                params.append(live_status)
+
+            if not update_parts:
+                return True
+
+            params.append(video_id)
+            sql = f"UPDATE videos SET {', '.join(update_parts)} WHERE video_id = ?"
+            cursor.execute(sql, params)
+
+            conn.commit()
+            conn.close()
+            logger.info(f"✅ 動画ステータス更新: {video_id} (content_type={content_type}, live_status={live_status})")
+            return True
+
+        except Exception as e:
+            logger.error(f"動画ステータス更新に失敗: {video_id} - {e}")
+            return False
+
     def delete_video(self, video_id: str) -> bool:
         """動画をDBから削除"""
         for attempt in range(DB_RETRY_MAX):
@@ -391,7 +516,7 @@ class Database:
                 cursor.execute("DELETE FROM videos WHERE video_id = ?", (video_id,))
                 conn.commit()
                 conn.close()
-                
+
                 return True
 
             except sqlite3.OperationalError as e:
@@ -411,10 +536,10 @@ class Database:
 
     def delete_videos_batch(self, video_ids: list) -> int:
         """複数の動画をDBから削除
-        
+
         Args:
             video_ids: 削除対象の動画ID リスト
-            
+
         Returns:
             削除した数
         """
@@ -422,7 +547,7 @@ class Database:
         for video_id in video_ids:
             if self.delete_video(video_id):
                 deleted_count += 1
-        
+
         return deleted_count
 
 

@@ -1,10 +1,10 @@
 ﻿# -*- coding: utf-8 -*-
 
 """
-Stream notify on Bluesky - v2 Bluesky 画像添付拡張プラグイン
+Stream notify on Bluesky - Bluesky 画像添付拡張プラグイン
 
 Bluesky への画像添付機能を提供する拡張プラグイン。
-bluesky_v2.py のコア機能（投稿・Facet・認証・ドライラン）とは独立。
+bluesky_core.py のコア機能（投稿・Facet・認証・ドライラン）とは独立。
 """
 
 import logging
@@ -13,10 +13,16 @@ import re
 from pathlib import Path
 import os
 
+# PIL (Pillow) をインポート
+from PIL import Image
+
 # 親ディレクトリをパスに追加（image_manager.pyをインポートするため）
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from image_manager import get_image_manager
-from bluesky_v2 import BlueskyMinimalPoster
+from bluesky_core import BlueskyMinimalPoster
+import image_processor
+
+
 
 logger = logging.getLogger("AppLogger")
 post_logger = logging.getLogger("PostLogger")
@@ -45,12 +51,64 @@ def get_env_setting(key: str, default: str = None) -> str:
         logger.warning(f"⚠️ 設定ファイル読み込み失敗: {e}")
     return default
 
+
+# ============ 画像リサイズ設定（環境変数から読み込み） ============
+def _load_image_resize_config():
+    """環境変数から画像リサイズ設定を読み込む
+
+    Returns:
+        dict: 画像リサイズ設定
+    """
+    try:
+        config = {
+            "target_width": int(get_env_setting("IMAGE_RESIZE_TARGET_WIDTH") or "1280"),
+            "target_height": int(get_env_setting("IMAGE_RESIZE_TARGET_HEIGHT") or "800"),
+            "quality_initial": int(get_env_setting("IMAGE_OUTPUT_QUALITY_INITIAL") or "90"),
+            "size_target": int(get_env_setting("IMAGE_SIZE_TARGET") or "800000"),
+            "size_threshold": int(get_env_setting("IMAGE_SIZE_THRESHOLD") or "900000"),
+            "size_limit": int(get_env_setting("IMAGE_SIZE_LIMIT") or "1000000"),
+        }
+        logger.debug(f"🔧 画像リサイズ設定を環境変数から読み込み: {config}")
+        return config
+    except ValueError as e:
+        logger.warning(f"⚠️ 画像リサイズ設定の値が無効: {e}")
+        # デフォルト値で返す
+        return {
+            "target_width": 1280,
+            "target_height": 800,
+            "quality_initial": 90,
+            "size_target": 800_000,
+            "size_threshold": 900_000,
+            "size_limit": 1_000_000,
+        }
+
+# 画像処理ロジックは image_processor モジュールで実装
+
+def get_env_setting(key: str, default=None):
+    """settings.env から設定値を取得（汎用関数）"""
+    try:
+        settings_path = Path("settings.env")
+        if not settings_path.exists():
+            return default
+        with open(settings_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                if not line or line.startswith('#'):
+                    continue
+                if '=' in line:
+                    k, v = line.split('=', 1)
+                    if k.strip() == key:
+                        return v.strip()
+    except Exception as e:
+        logger.warning(f"⚠️ 設定ファイル読み込み失敗: {e}")
+    return default
+
+
 from plugin_interface import NotificationPlugin
 
 
 class BlueskyImagePlugin(NotificationPlugin):
     """Bluesky 画像添付拡張プラグイン（オプション機能）
-    
+
     このプラグインは削除しても Bluesky への投稿は動作します。
     ただし、画像添付機能は無効になります。
     """
@@ -63,28 +121,79 @@ class BlueskyImagePlugin(NotificationPlugin):
         # デフォルト画像パスを設定ファイルから取得
         self.default_image_path = get_env_setting("BLUESKY_IMAGE_PATH")
 
+    def set_dry_run(self, dry_run: bool):
+        """ドライランモードを設定"""
+        self.dry_run = dry_run
+        if hasattr(self.minimal_poster, 'set_dry_run'):
+            self.minimal_poster.set_dry_run(dry_run)
+        post_logger.info(f"🧪 Bluesky プラグイン dry_run={dry_run}")
+
     def post_video(self, video: dict) -> bool:
         """
         動画を投稿（画像添付機能付き）
-        
+
         この post_video は main_v2.py から呼び出されません。
         プラグインマネージャー経由で実行される場合にのみ使用されます。
         """
+        # GUI から use_image フラグが指定されている場合は優先
+        use_image = video.get("use_image", True)  # デフォルトは画像添付
+        resize_small_images = video.get("resize_small_images", True)  # デフォルトはリサイズ有効
+
+        post_logger.info(f"🔍 post_video 開始: use_image={use_image}, resize_small_images={resize_small_images}, image_filename={video.get('image_filename')}")
+
         # DBに画像ファイルが登録されている場合、そのファイルを優先して使用
         image_filename = video.get("image_filename")
+        image_mode = video.get("image_mode")
+        source = video.get("source", "YouTube").lower()
         video = dict(video)  # 元の辞書を変更しないようコピー
-        if image_filename and image_filename.strip():
+        embed = None
+
+        # use_image=False の場合は画像添付を強制的にスキップ
+        if not use_image:
+            post_logger.info(f"🔗 GUI設定により、リンクカード投稿モード")
+            video["use_link_card"] = True
+            video["embed"] = None
+        elif image_filename and image_filename.strip():
+            # ファイル名から完全パスを構築
+            image_path = self._resolve_image_path(image_filename, image_mode, source)
             post_logger.info(f"💾 DB登録済み画像を使用: {image_filename}")
             video["image_source"] = "database"
+            # 画像ファイルをアップロードして embed を取得
+            if image_path and Path(image_path).exists():
+                result = self._upload_blob(image_path, resize_small_images=resize_small_images)
+                if result:
+                    blob, width, height = result
+                    embed = self._build_image_embed(blob, width, height)
+                    post_logger.info(f"✅ 画像埋め込みの準備完了")
+            else:
+                post_logger.warning(f"⚠️ 画像ファイルが見つかりません: {image_filename} (検索パス: {image_path})")
         else:
             # 画像未指定時はデフォルト画像を利用
             if self.default_image_path and Path(self.default_image_path).exists():
                 post_logger.info(f"🖼️ デフォルト画像を使用: {self.default_image_path}")
                 video["image_filename"] = str(self.default_image_path)
                 video["image_source"] = "default"
+                # デフォルト画像をアップロードして embed を取得
+                result = self._upload_blob(str(self.default_image_path), resize_small_images=resize_small_images)
+                if result:
+                    blob, width, height = result
+                    embed = self._build_image_embed(blob, width, height)
+                    post_logger.info(f"✅ デフォルト画像埋め込みの準備完了")
             elif self.default_image_path:
                 post_logger.warning(f"⚠️ デフォルト画像が見つかりません: {self.default_image_path}")
+
+        # embed が取得できた場合は video に追加
+        if embed:
+            video["embed"] = embed
+            video["use_link_card"] = False  # 画像を優先（リンクカードは無効化）
+            post_logger.info(f"🖼️ 画像埋め込み: {embed}")
+        else:
+            # 画像がない場合、リンクカード機能を有効化
+            video["use_link_card"] = True  # リンクカード機能を有効化
+            post_logger.info(f"🔗 リンクカード機能を有効化します（画像なし）")
+
         # 最終的に minimal_poster で投稿
+        post_logger.info(f"📊 最終投稿設定: use_link_card={video.get('use_link_card')}, embed={bool(embed)}")
         return self.minimal_poster.post_video_minimal(video)
 
     def is_available(self) -> bool:
@@ -115,61 +224,194 @@ class BlueskyImagePlugin(NotificationPlugin):
     def on_disable(self) -> None:
         logger.info(f"⛔ プラグイン無効化: {self.get_name()}")
 
+    # ============ ファイルパス解決機能 ============
+
+    def _resolve_image_path(self, image_filename: str, image_mode: str = None, source: str = "youtube") -> str:
+        """
+        画像ファイル名から完全パスを構築
+
+        Args:
+            image_filename: 画像ファイル名（\"video_id.jpg\" など）
+            image_mode: 画像モード（\"import\" など）
+            source: ソース名（\"youtube\" \"niconico\" など）
+
+        Returns:
+            完全パス、見つからない場合は None
+        """
+        if not image_filename:
+            return None
+
+        # ソース名を正規化
+        if source.lower() in ("youtube", "yt"):
+            site_dir = "YouTube"
+        elif source.lower() in ("niconico", "nico"):
+            site_dir = "Niconico"
+        elif source.lower() == "twitch":
+            site_dir = "Twitch"
+        else:
+            site_dir = "YouTube"
+
+        # モードを正規化（デフォルトは \"import\"）
+        if not image_mode:
+            image_mode = "import"
+
+        # パスを構築
+        base_path = Path("images") / site_dir / image_mode / image_filename
+        return str(base_path)
+
     # ============ 画像アップロード機能（拡張機能） ============
-    
-    def _upload_blob(self, file_path: str) -> dict:
+
+    def _upload_blob(self, file_path: str, resize_small_images: bool = True) -> dict:
         """
         画像をBlob としてアップロード
-        
+
         Bluesky API: com.atproto.repo.uploadBlob
         参照: https://docs.bsky.app/docs/api/com-atproto-repo-upload-blob
-        
+
+        処理フロー:
+        1. 画像ファイルを読み込む
+        2. resize_small_images=True の場合、_resize_image() で自動リサイズ・最適化
+        3. resize_small_images=False の場合、元の画像をそのまま使用
+        4. Bluesky API にアップロード
+
         Args:
             file_path: 画像ファイルパス
-            
+            resize_small_images: 画像をリサイズするか（Falseの場合はオリジナル画像を使用）
+
         Returns:
             blob メタデータ、失敗時は None
         """
         try:
+            # DRY RUN モード時はダミーの blob を返す
+            if self.dry_run:
+                post_logger.info(f"🧪 [DRY RUN] 画像アップロード（スキップ）: {file_path}")
+                dummy_blob = {
+                    "$type": "blob",
+                    "mimeType": "image/jpeg",
+                    "size": 1000,
+                    "link": {"$link": "bafkreidummy"}
+                }
+                return (dummy_blob, 1200, 627)  # ★ tuple を返す
+
             if not Path(file_path).exists():
                 post_logger.warning(f"⚠️ 画像ファイルが見つかりません: {file_path}")
                 return None
-            
-            with open(file_path, 'rb') as f:
-                image_data = f.read()
-            
-            # ファイルサイズチェック（1MB = 1,000,000 バイト）
-            if len(image_data) > 1_000_000:
-                post_logger.warning(f"⚠️ 画像ファイルが大きすぎます: {len(image_data)} bytes > 1MB")
+
+            # ========== 元画像の情報を取得してログ出力 ==========
+            file_size_bytes = Path(file_path).stat().st_size
+
+            try:
+                img = Image.open(file_path)
+                original_width, original_height = img.size
+                original_format = img.format or "Unknown"
+                aspect_ratio = original_width / original_height if original_height > 0 else 1.0
+
+                post_logger.info(
+                    f"📊 【元画像情報】\n"
+                    f"  ファイル: {Path(file_path).name}\n"
+                    f"  パス: {file_path}\n"
+                    f"  ファイルサイズ: {file_size_bytes / 1024:.1f}KB\n"
+                    f"  解像度: {original_width}×{original_height}px\n"
+                    f"  フォーマット: {original_format}\n"
+                    f"  アスペクト比: {aspect_ratio:.2f}"
+                )
+            except Exception as e:
+                post_logger.warning(f"⚠️ 元画像情報の取得失敗: {e}")
+                post_logger.info(f"📊 【元画像情報】ファイルサイズ: {file_size_bytes / 1024:.1f}KB")
+
+            # ========== 変換判定ロジックをログ出力 ==========
+            post_logger.info(f"🔍 【変換判定】resize_small_images={resize_small_images}")
+
+            # ========== 画像処理 ==========
+            if resize_small_images:
+                # リサイズして最適化
+                post_logger.info(f"✅ 判定結果: 画像をリサイズ・最適化します")
+                post_logger.info(f"📏 リサイズ処理開始...")
+                image_data = image_processor.resize_image(file_path)
+                if image_data is None:
+                    # リサイズ失敗 → この投稿では画像添付をスキップ
+                    post_logger.error(f"❌ 画像リサイズ失敗のため、この投稿では画像添付をスキップします")
+                    return None
+                mime_type = 'image/jpeg'
+
+                # リサイズ後の画像情報を取得
+                try:
+                    from PIL import Image as PILImage
+                    import io
+                    resized_img = PILImage.open(io.BytesIO(image_data))
+                    resized_width, resized_height = resized_img.size
+                    post_logger.info(f"   リサイズ後の解像度: {resized_width}×{resized_height}px")
+                except Exception as e:
+                    post_logger.warning(f"⚠️ リサイズ後の解像度取得失敗: {e}")
+                    resized_width = None
+                    resized_height = None
+
+                # 変換後の情報をログ出力
+                post_logger.info(
+                    f"✅ 【変換後の画像情報】\n"
+                    f"  ファイルサイズ: {file_size_bytes / 1024:.1f}KB → {len(image_data) / 1024:.1f}KB\n"
+                    f"  圧縮率: {(1 - len(image_data) / file_size_bytes) * 100:.1f}%\n"
+                    f"  フォーマット: {original_format} → JPEG\n"
+                    f"  バイナリサイズ: {len(image_data)} bytes"
+                )
+            else:
+                # オリジナル画像をそのまま使用
+                post_logger.info(f"✅ 判定結果: オリジナル画像をそのまま使用します（リサイズなし）")
+                post_logger.info(f"📷 オリジナル画像のまま処理継続...")
+                with open(file_path, 'rb') as f:
+                    image_data = f.read()
+
+                # MIME タイプを判定
+                try:
+                    img = Image.open(file_path)
+                    img_format = img.format or "JPEG"
+                    mime_type = f'image/{img_format.lower()}'
+                    resized_width, resized_height = img.size  # オリジナルの解像度
+                except:
+                    mime_type = 'image/jpeg'
+                    resized_width = None
+                    resized_height = None
+
+                # 変換なしの情報をログ出力
+                post_logger.info(
+                    f"✅ 【処理後の画像情報】\n"
+                    f"  ファイルサイズ: {len(image_data) / 1024:.1f}KB（変換なし）\n"
+                    f"  フォーマット: {mime_type}\n"
+                    f"  バイナリサイズ: {len(image_data)} bytes"
+                )
+
+            # アクセストークンが存在することを確認
+            if not self.minimal_poster.access_token:
+                post_logger.error(f"❌ Bluesky認証に失敗しています。画像はアップロードできません")
                 return None
-            
-            # MIME タイプを判定
-            mime_type = self._get_mime_type(file_path)
-            
+
             upload_url = "https://bsky.social/xrpc/com.atproto.repo.uploadBlob"
             headers = {
                 "Authorization": f"Bearer {self.minimal_poster.access_token}",
                 "Content-Type": mime_type
             }
-            
+
             import requests
             response = requests.post(upload_url, data=image_data, headers=headers, timeout=30)
             response.raise_for_status()
-            
+
             result = response.json()
             blob = result.get("blob")
-            
+
             if blob:
                 post_logger.info(f"✅ 画像アップロード成功: {blob.get('mimeType')} ({len(image_data)} bytes)")
-                return blob
+
+                # aspRatioはblobではなく、_build_image_embedで設定
+                # ここでは (blob, width, height) のtupleを返す
+                return (blob, resized_width, resized_height)
             else:
                 post_logger.warning(f"⚠️ Blob メタデータが返されませんでした")
                 return None
-                
+
         except Exception as e:
             post_logger.warning(f"⚠️ 画像アップロード失敗: {e}")
             return None
-    
+
     def _get_mime_type(self, file_path: str) -> str:
         """ファイル拡張子から MIME タイプを判定"""
         ext = Path(file_path).suffix.lower()
@@ -181,61 +423,98 @@ class BlueskyImagePlugin(NotificationPlugin):
             '.gif': 'image/gif',
         }
         return mime_types.get(ext, 'image/jpeg')  # デフォルトは JPEG
-    
+
+    def _build_image_embed(self, blob: dict, width: int = None, height: int = None) -> dict:
+        """
+        Blob メタデータから画像埋め込み（embed）オブジェクトを構築
+
+        Bluesky API: app.bsky.embed.images
+        参照: https://docs.bsky.app/docs/advanced-guides/posts
+        aspectRatio: https://atproto.blue/en/latest/atproto/atproto_client.models.app.bsky.embed.defs.html
+
+        Args:
+            blob: uploadBlob で返されたメタデータ
+            width: 画像の幅（ピクセル）- aspectRatio設定用
+            height: 画像の高さ（ピクセル）- aspectRatio設定用
+
+        Returns:
+            embed オブジェクト
+        """
+        if not blob:
+            return None
+
+        image_obj = {
+            "image": blob,
+            "alt": "Posted image"
+        }
+
+        # ★ aspectRatio を設定（Blueskyクライアントの正確な画像表示用）
+        if width and height:
+            image_obj["aspectRatio"] = {
+                "width": width,
+                "height": height
+            }
+            post_logger.debug(f"📐 AspectRatio を設定: {width}×{height}")
+
+        return {
+            "$type": "app.bsky.embed.images",
+            "images": [image_obj]
+        }
+
     def _download_image(self, url: str) -> str:
         """
         URL から画像をダウンロード
-        
+
         Args:
             url: 画像 URL
-            
+
         Returns:
             ダウンロードしたファイルパス、失敗時は None
         """
         try:
             import tempfile
             import requests
-            
+
             response = requests.get(url, timeout=10)
             response.raise_for_status()
-            
+
             # ファイルサイズチェック
             if len(response.content) > 1_000_000:
                 post_logger.warning(f"⚠️ ダウンロード画像が大きすぎます: {len(response.content)} bytes")
                 return None
-            
+
             # 拡張子を URL から推定
             from urllib.parse import urlparse
             parsed = urlparse(url)
             path = parsed.path
-            
+
             # クエリ文字列を削除
             if '?' in url:
                 path = url.split('?')[0]
-            
+
             ext = Path(path).suffix or '.jpg'
-            
+
             # 一時ファイルに保存
             with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
                 tmp.write(response.content)
                 tmp_path = tmp.name
-            
+
             post_logger.info(f"✅ 画像ダウンロード成功: {len(response.content)} bytes")
             return tmp_path
-            
+
         except Exception as e:
             post_logger.warning(f"⚠️ 画像ダウンロード失敗: {e}")
             return None
 
     # ============ 画像取得・テンプレート機能 ============
-    
+
     # 画像取得は ImageManager に委譲（後方互換性のため残す）
     def _get_image_bytes(self, site: str = None, mode: str = None, filename: str = None, url: str = None) -> bytes:
         """画像データを取得（ImageManagerを使用）"""
         return self.image_manager.get_image_bytes(site=site, mode=mode, filename=filename, url=url)
 
     # ============ テンプレート機能 ============
-    
+
     def _render_template(self, template_path: str, context: dict) -> str:
         """Jinja2 テンプレートをレンダリング"""
         try:

@@ -1,5 +1,8 @@
 ﻿# プラグインアーキテクチャの説明
 
+> **対象バージョン**: v2.1.0 時点
+> **最終更新**: 2025-12-17
+
 ## 概要
 
 Streamnotify_on_Bluesky は、拡張性を重視したプラグインアーキテクチャを採用しています。
@@ -12,7 +15,7 @@ Streamnotify_on_Bluesky は、拡張性を重視したプラグインアーキ�
 すべての通知プラグインが実装すべき抽象基底クラスです。
 
 **必須メソッド:**
-- `post_video(video: Dict) -> bool`: 動画情報をポスト
+- `post_video(video: Dict) -> bool`: 動画情報をポスト（**注: video 辞書の `content_type` と `live_status` は database.py で値正規化済みのため、これらの値を信頼して利用可能**）
 - `is_available() -> bool`: プラグインが利用可能か判定
 - `get_name() -> str`: プラグイン名を取得
 - `get_version() -> str`: バージョンを取得
@@ -90,7 +93,7 @@ class TwitchPlugin(NotificationPlugin):
     def __init__(self):
         self.client = None
         # 初期化処理
-    
+
     def post_video(self, video: dict) -> bool:
         """Twitch に投稿"""
         try:
@@ -98,13 +101,13 @@ class TwitchPlugin(NotificationPlugin):
             return True
         except Exception as e:
             return False
-    
+
     def is_available(self) -> bool:
         return self.client is not None
-    
+
     def get_name(self) -> str:
         return "Twitch Notification Plugin"
-    
+
     def get_version(self) -> str:
         return "1.0.0"
 ```
@@ -145,6 +148,18 @@ manager.enable_plugin("twitch")
 
 ## 実装済み情報
 
+### 完成済みプラグイン
+- **Bluesky 投稿プラグイン** (`bluesky_plugin.py`): RichText/Facet 対応、画像添付、DRY RUN 対応
+- **YouTube Data API プラグイン** (`youtube_api_plugin.py`): YouTube API 連携
+- **ニコニコ動画プラグイン** (`niconico_plugin.py`): ニコニコ RSS 監視
+- **ロギング拡張プラグイン** (`logging_plugin.py`): 統合ロギング管理
+
+### 実験的プラグイン
+- **YouTube Live 判定プラグイン** (`youtube_live_plugin.py`) ⚠️
+  - **ステータス**: v2 では実験的プラグインであり、ライブ状態の判定ロジックは**未実装**です。
+  - **今後**: v2.x / v3 での拡張を予定しています。
+
+### プラグイン管理
 - **プラグイン管理**: `plugin_manager.py` が自動ロード方式をサポート
 - **自動ロードプラグイン**: `bluesky_plugin.py`（Bluesky 投稿拡張）、`youtube_api_plugin.py`（YouTube API）、`youtube_live_plugin.py`（YouTube ライブ判定）、`niconico_plugin.py`（ニコニコ監視）、`logging_plugin.py`（ロギング管理）
 - **Asset ディレクトリ**: テンプレート・画像管理用（プラグイン導入時の自動配置機構は `asset_manager.py` で実装完了: 2025-12）

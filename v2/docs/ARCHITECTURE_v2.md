@@ -32,7 +32,7 @@ GUI スレッド起動（gui_v2.py、独立して動作）
   │   ├─ 投稿間隔チェック（POST_INTERVAL_MINUTES = 5分）
   │   └─ 投稿対象あり & 間隔OK なら:
   │       └─ Bluesky に投稿（plugin_manager.post_video_with_all_enabled()）
-  │           ├─ bluesky_plugin.py → bluesky_v2.py（投稿実行）
+  │           ├─ bluesky_plugin.py → bluesky_core.py（投稿実行）
   │           └─ 投稿済みフラグ更新（database.py）
   └─ ポーリング間隔分 sleep（1秒単位でチェック、Ctrl+C 対応）
   ↓
@@ -47,7 +47,7 @@ Ctrl+C で安全終了（ニコニコ監視停止）
 |-----------|------|------|
 | `main_v2.py` | エントリーポイント・メインループ | 起動、プラグイン管理、メインループで RSS → DB → 投稿（GUI と並行実行） |
 | `config.py` | 設定読み込み・バリデーション | settings.env から設定取得、値チェック（ポーリング間隔 5 分以上など） |
-| `database.py` | SQLite 操作 | テーブル作成、動画の INSERT/SELECT/UPDATE/DELETE、投稿済みフラグ管理、バッチ削除 |
+| `database.py` | SQLite 操作 | テーブル作成、動画の INSERT/SELECT/UPDATE/DELETE、投稿済みフラグ管理、バッチ削除、**content_type/live_status の値正規化** |
 | `youtube_rss.py` | RSS 取得・パース | YouTube チャンネル RSS URL 生成、RSS 取得、新着動画抽出 |
 | `plugin_manager.py` | プラグイン管理 | プラグイン自動検出・読み込み・有効化・無効化、メソッド呼び出し |
 | `plugin_interface.py` | プラグイン基本インターフェース | プラグイン基本クラス（BasePlugin） |
@@ -56,11 +56,12 @@ Ctrl+C で安全終了（ニコニコ監視停止）
 
 | ファイル名 | 役割 | 内容 |
 |-----------|------|------|
-| `bluesky_v2.py` | Bluesky 投稿処理 | 画像アップロード、テンプレートレンダ、投稿実行、投稿履歴記録 |
+| `bluesky_core.py` | Bluesky 投稿処理 | 画像アップロード、テンプレートレンダ、投稿実行、投稿履歴記録、AspectRatio 設定 |
 | `logging_config.py` | ロギング設定 | ロガー初期化、ログレベル設定、ファイルローテーション管理 |
 | `image_manager.py` | 画像管理 | 画像ダウンロード、形式変換、リトライ処理 |
+| `image_processor.py` | 画像リサイズ処理 | **v2.1.0** 三段階リサイズ戦略、JPEG品質最適化 |
 | `utils_v2.py` | ユーティリティ関数 | 日時フォーマット、リトライデコレータ、URL バリデーション |
-| `gui_v2.py` | GUI（Tkinter） | 動画一覧表示、選択、投稿実行、削除、ドライラン、統計表示 |
+| `gui_v2.py` | GUI（Tkinter） | 動画一覧表示、選択、投稿実行、削除、ドライラン、統計表示、**投稿設定ウィンドウ** |
 
 ### プラグイン（plugins/）
 
@@ -287,10 +288,10 @@ python -m thumbnails.image_re_fetch_module --execute --verbose
 
 | プラグイン | 実行スレッド | 責務 |
 |-----------|-----------|------|
-| bluesky_plugin | メインループスレッド | 投稿処理ラッパ、event_context 変換 |
+| bluesky_plugin | メインループスレッド | **v2.1.0:** 画像リサイズ処理、DRY RUN 対応、AspectRatio 設定、投稿処理ラッパ |
 | niconico_plugin | 独立スレッド | RSS 監視、新着動画 DB 保存、スケジューリング |
 | youtube_api_plugin | メインループスレッド | チャンネルID解決、動画詳細取得（キャッシュ機構あり） |
-| logging_plugin | 初期化時 | ロギング設定、9つのロガー管理 |
+| logging_plugin | 初期化時 | **v2.1.0:** DEBUG_MODE 対応、ロギング設定、9つのロガー管理 |
 
 ## GUI（gui_v2.py）
 
@@ -327,6 +328,101 @@ python -m thumbnails.image_re_fetch_module --execute --verbose
 - Twitch 連携（実装予定）
 - トンネル通信（実装予定）
 - テーマ設定（実装予定）
+
+---
+
+## v2.1.0 新機能（2025-12-17 実装）
+
+### 1. 画像自動リサイズ機能
+
+**問題**: Bluesky 投稿時に画像がレターボックス表示、ファイルサイズが大きい
+
+**実装内容**:
+- **三段階リサイズ戦略**: アスペクト比に基づいて自動リサイズ
+  - 横長（≥1.3）: 3:2 統一 + 中央トリミング → 1280×800
+  - 正方形/やや横長（0.8-1.3）: 長辺基準で縮小のみ → 最大1280px
+  - 縦長（<0.8）: 長辺基準で縮小のみ → 最大1280px
+- **JPEG品質最適化**: 段階的な品質低下で 1MB 以下に圧縮
+  - 初期品質: 90 → 85 → 75 → 65 → 55 → 50
+  - 目標: 800KB、閾値: 900KB、上限: 1MB
+- **AspectRatio API フィールド**: Bluesky API で width・height 指定
+
+**実装ファイル**:
+- `image_processor.py`: リサイズ・品質最適化処理
+- `bluesky_plugin.py`: リサイズ処理呼び出し、AspectRatio 設定
+
+**ステータス**: ✅ 完全実装・テスト済み
+
+### 2. DRY RUN（投稿テスト）機能
+
+**問題**: 投稿前にテンプレートやリサイズ設定を確認できない
+
+**実装内容**:
+- GUI の「🧪 投稿テスト」ボタンで投稿をシミュレート（実投稿しない）
+- 画像リサイズ・Facet 構築は実行、Blob アップロード・API 呼び出しはスキップ
+- dry_run フラグがすべてのプラグインに伝播
+- テスト投稿後も DB は更新されない（再試行可能）
+
+**実装内容**:
+- `plugin_manager.post_video_with_all_enabled(video, dry_run=True)` パラメータ追加
+- `bluesky_plugin.set_dry_run()` / `bluesky_core.set_dry_run()` メソッド
+- `_upload_blob()` で DRY RUN 時ダミー Blob 返却
+- GUI で「✅ 投稿」「🧪 投稿テスト」ボタン分離
+
+**実装ファイル**:
+- `plugin_manager.py`: dry_run パラメータ伝播
+- `bluesky_plugin.py`: set_dry_run() メソッド
+- `bluesky_core.py`: set_dry_run() メソッド、ダミーデータ処理
+- `gui_v2.py`: 投稿設定ウィンドウで DRY RUN 対応
+
+**ステータス**: ✅ 完全実装・テスト済み
+
+### 3. GUI 投稿設定ウィンドウ
+
+**問題**: 投稿方法（画像 vs リンクカード）を投稿前に確認できない
+
+**実装内容**:
+- 新ウィンドウ: `PostSettingsWindow`
+- 画像添付の有無をチェックボックスで選択
+- 小さい画像を拡大するかを選択
+- 画像プレビュー表示（100×67px サムネイル）
+- 投稿方法の詳細表示
+- 「✅ 投稿」「🧪 投稿テスト」「❌ キャンセル」ボタン
+
+**実装ファイル**:
+- `gui_v2.py`: PostSettingsWindow クラス（行 1100-1333）
+
+**ステータス**: ✅ 完全実装・テスト済み
+
+### 4. DEBUG ログ完全制御
+
+**問題**: DEBUG_MODE=false でも DEBUG レベルのログが出力される
+
+**実装内容**:
+- `logging_plugin.py` で DEBUG_MODE 設定に対応
+- `DebugAndInfoFilter` で DEBUG ログを条件付きフィルタリング
+- `PostLogger` のレベル設定が debug_mode に対応
+
+**実装ファイル**:
+- `logging_plugin.py`: DEBUG_MODE 対応、フィルター実装（行 120-330）
+
+**ステータス**: ✅ 完全実装・テスト済み
+
+### 5. アセット配置の 1 回限定実行
+
+**問題**: アセット（テンプレート・画像）が毎回起動時に配置される
+
+**実装内容**:
+- `asset_manager.py` のファイルコピーロジック改善
+- 既存ファイルはスキップ、新規ファイルのみカウント
+- ログレベル調整（初回のみ INFO で表示）
+
+**実装ファイル**:
+- `asset_manager.py`: ファイルコピーロジック修正（行 50-85, 172-226）
+
+**ステータス**: ✅ 完全実装・テスト済み
+
+---
 
 ## ライセンス
 

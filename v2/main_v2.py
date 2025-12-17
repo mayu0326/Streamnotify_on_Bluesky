@@ -19,6 +19,9 @@ import threading
 import tkinter as tk
 from datetime import datetime, timedelta
 
+# バージョン情報
+from app_version import get_version_info, get_full_version_info
+
 # プラグインマネージャ関連
 from plugin_manager import PluginManager
 
@@ -38,10 +41,10 @@ __copyright__ = "Copyright (C) 2025 mayuneco(mayunya)"
 __license__ = "GPLv2"
 
 
-def run_gui(db, plugin_manager, stop_event):
+def run_gui(db, plugin_manager, stop_event, bluesky_core=None):
     """GUI をスレッドで実行 (プラグイン対応)"""
     root = tk.Tk()
-    gui = StreamNotifyGUI(root, db, plugin_manager)
+    gui = StreamNotifyGUI(root, db, plugin_manager, bluesky_core=bluesky_core)
 
     def on_closing():
         stop_event.set()
@@ -62,11 +65,15 @@ def signal_handler(signum, frame):
 def main():
     """メインエントリポイント (v2: プラグインアーキテクチャ対応)"""
     global logger
-    
+
+    # バージョン情報をコンソールに出力
+    print(f"StreamNotify on Bluesky {get_version_info()}")
+
     try:
         from config import get_config
         config = get_config("settings.env")
         logger = setup_logging(debug_mode=config.debug_mode)
+        logger.info(f"StreamNotify on Bluesky {get_version_info()}")
         logger.info(f"動作モードは: {config.operation_mode} に設定されています。")
     except Exception as e:
         print(f"設定の読み込みに失敗しました: {e}")
@@ -94,11 +101,11 @@ def main():
 
     plugin_manager = PluginManager(plugins_dir="plugins")
     loaded_names = set()
-    
+
     # Asset マネージャーの初期化（プラグイン導入時に資源を配置）
     asset_manager = get_asset_manager()
     logger.info("📦 Asset マネージャーを初期化しました")
-    
+
     plugin_files = [f for f in os.listdir("plugins") if f.endswith(".py") and not f.startswith("_") and f not in ("bluesky_plugin.py", "niconico_plugin.py", "youtube_api_plugin.py", "youtube_live_plugin.py")]
     for pf in plugin_files:
         plugin_name = pf[:-3]
@@ -107,13 +114,13 @@ def main():
         plugin_manager.load_plugin(plugin_name, os.path.join("plugins", pf))
         # 自動ロードされたプラグインを有効化
         plugin_manager.enable_plugin(plugin_name)
-        
+
         # プラグイン別のアセット配置
         try:
             asset_manager.deploy_plugin_assets(plugin_name)
         except Exception as e:
             logger.warning(f"プラグイン '{plugin_name}' のアセット配置失敗: {e}")
-        
+
         loaded_names.add(plugin_name)
 
     # YouTubeAPI プラグインを手動でロード・有効化
@@ -123,7 +130,7 @@ def main():
         asset_manager.deploy_plugin_assets("youtube_api_plugin")
     except Exception as e:
         logger.debug(f"YouTubeAPI プラグインのロード失敗: {e}")
-    
+
     # YouTubeLive 検出プラグインを手動でロード・有効化
     try:
         plugin_manager.load_plugin("youtube_live_plugin", os.path.join("plugins", "youtube_live_plugin.py"))
@@ -144,19 +151,20 @@ def main():
 
     # Bluesky コア機能をロード（プラグインマネージャーには登録しない - 内部ライブラリとして機能）
     try:
-        from bluesky_v2 import BlueskyMinimalPoster
+        from bluesky_core import BlueskyMinimalPoster
         bluesky_core = BlueskyMinimalPoster(
             config.bluesky_username,
             config.bluesky_password,
             dry_run=not config.bluesky_post_enabled
         )
-        logger.info(f"✅ Bluesky コア機能を初期化しました")
+        logger.info(f"✅ Bluesky コア機能を初期化しました（テキスト投稿 + URLリンク化）")
     except Exception as e:
         logger.warning(f"⚠️  Bluesky コア機能の初期化に失敗しました: {e}")
         bluesky_core = None
 
     # Bluesky 拡張機能プラグイン（画像添付・テンプレート）をロード
-    # これだけがプラグインマネージャーに登録される
+    # プラグインがない場合でも、コア機能（テキスト投稿）は引き続き利用可能
+    bluesky_plugin_available = False
     try:
         from plugins.bluesky_plugin import BlueskyImagePlugin
         bluesky_image_plugin = BlueskyImagePlugin(
@@ -168,8 +176,11 @@ def main():
         plugin_manager.loaded_plugins["bluesky_image_plugin"] = bluesky_image_plugin
         plugin_manager.enable_plugin("bluesky_image_plugin")
         asset_manager.deploy_plugin_assets("bluesky_plugin")
+        bluesky_plugin_available = True
+        logger.info(f"✅ Bluesky 拡張機能プラグインを有効化しました（画像添付機能: 有効）")
     except Exception as e:
         logger.warning(f"⚠️  Bluesky 拡張機能プラグインの導入に失敗しました: {e}")
+        logger.info(f"ℹ️ プラグインがない場合でも、コア機能（テキスト投稿 + URLリンク化）は利用可能です")
 
     if config.niconico_plugin_exists:
         try:
@@ -194,7 +205,7 @@ def main():
         logger.info("[ニコニコ連携] ニコニコ連携プラグインは導入されていません。")
 
     stop_event = threading.Event()
-    gui_thread = threading.Thread(target=run_gui, args=(db, plugin_manager, stop_event), daemon=True)
+    gui_thread = threading.Thread(target=run_gui, args=(db, plugin_manager, stop_event, bluesky_core), daemon=True)
     gui_thread.start()
     logger.info("✅ アプリケーションの起動が完了しました。 管理画面を開きます。")
 
