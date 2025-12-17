@@ -151,7 +151,7 @@ def main():
 
     # Bluesky コア機能をロード（プラグインマネージャーには登録しない - 内部ライブラリとして機能）
     try:
-        from bluesky_v2 import BlueskyMinimalPoster
+        from bluesky_core import BlueskyMinimalPoster
         bluesky_core = BlueskyMinimalPoster(
             config.bluesky_username,
             config.bluesky_password,
