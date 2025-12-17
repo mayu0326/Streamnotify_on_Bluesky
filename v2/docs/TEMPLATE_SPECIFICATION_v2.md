@@ -10,7 +10,9 @@
 
 ### 1.1 テンプレートシステムの全体像
 
-v2 テンプレートシステムは、複数の配信プラットフォーム（YouTube、ニコニコ、将来的に Twitch）の動画・配信情報を **Jinja2 形式**で投稿テンプレート化できます。
+v2 テンプレートシステムは、
+複数の配信プラットフォーム（YouTube、ニコニコ、将来的に Twitch）の動画・配信情報を **Jinja2 形式**で
+投稿テンプレート化できます。
 
 - **テンプレートエンジン**: Jinja2 2.11+
 - **テンプレート形式**: `.txt` ファイル（UTF-8）
@@ -45,8 +47,10 @@ v2 テンプレートシステムは、複数の配信プラットフォーム�
 
 **重要な注記**:
 - v2 のデフォルトテンプレート（フォールバック用）は **`templates/.templates/default_template.txt`** を参照します。
-- `template_utils.py` は `TEMPLATE_ROOT / ".templates" / "default_template.txt"` の相対パスで直接参照しており、実行時に使用されます。
-- `Asset/templates/default/default_template.txt` は **配布用の元ソース**として機能します。`AssetManager` が初回起動時やプラグイン導入時に、このファイルを `v2/templates/.templates/` にコピーする際のソースです。
+- `template_utils.py` は `TEMPLATE_ROOT / ".templates" / "default_template.txt"` の相対パスで直接参照しており、
+実行時に使用されます。
+- `Asset/templates/default/default_template.txt` は **配布用の元ソース**として機能します。
+`AssetManager` が初回起動時やプラグイン導入時に、このファイルを `v2/templates/.templates/` にコピーする際のソースです。
 - つまり、Asset フォルダと実行時テンプレートディレクトリは別管理になっています。
 
 ### 1.4 ファイルパスと命名規則
@@ -462,7 +466,8 @@ v2/
 
 ### 6.1 TEMPLATE_VAR_BLACKLIST の概念
 
-ユーザーには見せたくない内部キーを定義します。テンプレート編集ダイアログでは、これらの変数はボタンに表示されません。
+ユーザーには見せたくない内部キーを定義します。
+テンプレート編集ダイアログでは、これらの変数はボタンに表示されません。
 
 **デフォルトブラックリスト:**
 
