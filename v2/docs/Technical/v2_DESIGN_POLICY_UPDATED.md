@@ -428,6 +428,10 @@ logs/
 - **DB正規化（content_type / live_status のバリデーション）**
 
 ### v3（大型機能拡張）
+
+- **詳細は [FUTURE_ROADMAP_v2.md](../References/FUTURE_ROADMAP_v2.md) を参照**。  \
+Phase 3 での実装予定機能、優先度、詳細設計が記載されています。
+
 - テンプレートエディタ（GUI タブ or Web UI）
 - ライブ配信統合管理（live_events, live_cache テーブル正式導入）
 - Web UI 試験版（Tkinter に並行して提供）

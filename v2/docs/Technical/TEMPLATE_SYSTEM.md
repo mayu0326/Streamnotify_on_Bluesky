@@ -533,11 +533,14 @@ def _get_env_var_from_file(file_path: str, env_var_name: str) -> Optional[str]:
 
 ### 🔄 今後の拡張予定
 
+- **詳細は [FUTURE_ROADMAP_v2.md](../References/FUTURE_ROADMAP_v2.md) を参照**。  \
+テンプレート関連の将来実装計画が記載されています。
+
 | 機能 | 状況 | 予定 |
 |:--|:--|:--|
 | YouTube Live テンプレート | ⏳ 将来実装 | v2.x |
 | Twitch テンプレート | ⏳ 将来実装 | v3+ |
-| GUI テンプレートエディタ | ✅ 実装済み | - |
+| GUI テンプレートエディタ | ⏳ 将来実装 | - |
 | リアルタイムプレビュー | ⏳ 将来実装 | v2.x |
 | テンプレート変数自動補完 | ⏳ 将来実装 | v2.x |
 | テンプレート管理機能 | ✅ 実装済み | - |
