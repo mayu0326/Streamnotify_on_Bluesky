@@ -19,6 +19,9 @@ import threading
 import tkinter as tk
 from datetime import datetime, timedelta
 
+# バージョン情報
+from app_version import get_version_info, get_full_version_info
+
 # プラグインマネージャ関連
 from plugin_manager import PluginManager
 
@@ -63,10 +66,14 @@ def main():
     """メインエントリポイント (v2: プラグインアーキテクチャ対応)"""
     global logger
 
+    # バージョン情報をコンソールに出力
+    print(f"StreamNotify on Bluesky {get_version_info()}")
+
     try:
         from config import get_config
         config = get_config("settings.env")
         logger = setup_logging(debug_mode=config.debug_mode)
+        logger.info(f"StreamNotify on Bluesky {get_version_info()}")
         logger.info(f"動作モードは: {config.operation_mode} に設定されています。")
     except Exception as e:
         print(f"設定の読み込みに失敗しました: {e}")
