@@ -88,7 +88,7 @@ cp settings.env.example settings.env
 | `BLUESKY_PASSWORD` | Bluesky のアプリパスワード | `xxxx-xxxx-xxxx-xxxx` |
 | `POLL_INTERVAL_MINUTES` | ポーリング間隔（分、最小値 5） | `10` |
 
-その他のオプション設定については、`settings.env` 内のコメント、または [v2/docs/SETTINGS_OVERVIEW.md](v2/docs/SETTINGS_OVERVIEW.md) を参照してください。
+その他のオプション設定については、`settings.env` 内のコメント、または [v2/docs/Technical/SETTINGS_OVERVIEW.md](v2/docs/Technical/SETTINGS_OVERVIEW.md) を参照してください。
 
 ## 使用方法
 
@@ -120,19 +120,42 @@ python main_v2.py
 
 詳細な情報は以下をご覧ください：
 
-- [アーキテクチャ](v2/docs/ARCHITECTURE_v2.md) - システム構成とデータベース設計の詳細
-- [モジュール一覧](v2/docs/ModuleList_v2.md) - 全コンポーネントの説明
-- [設定概要](v2/docs/SETTINGS_OVERVIEW.md) - 環境変数・設定項目の詳細
-- [プラグイン開発ガイド](v2/docs/BLUESKY_PLUGIN_GUIDE.md) - プラグイン開発方法
-- [設計方針メモ](v2/docs/v2_DESIGN_POLICY.md) - v2 の仕様と今後の拡張方針
-- [デバッグ・ドライラン](v2/docs/DEBUG_DRY_RUN_GUIDE.md) - トラブルシューティング
-- [将来ロードマップ](v2/docs/FUTURE_ROADMAP_v2.md) - v3+ の計画概要
+### 📚 コア設計・アーキテクチャ
 
-### テンプレート・Asset 管理について
+- [アーキテクチャと設計方針](v2/docs/Technical/ARCHITECTURE_AND_DESIGN.md) - システム構成とデータベース設計の詳細
+- [モジュール一覧](v2/docs/Technical/ModuleList_v2.md) - 全コンポーネントの説明
+- [設定概要](v2/docs/Technical/SETTINGS_OVERVIEW.md) - 環境変数・設定項目の詳細
+- [プラグインシステム](v2/docs/Technical/PLUGIN_SYSTEM.md) - プラグイン開発方法、Rich Text Facet、画像処理
 
-- [**テンプレート仕様書**](v2/docs/TEMPLATE_SPECIFICATION_v2.md) - テンプレートファイルの配置ポリシー・仕様・使用方法
-- [**AssetManager 統合ガイド**](v2/docs/ASSET_MANAGER_INTEGRATION_v2.md) - Asset ディレクトリからの自動配置・プラグイン連携の詳細
-- [**Asset ディレクトリ README**](v2/Asset/README.md) - ユーザー向けの Asset 管理方法
+### 🎨 テンプレート・キャッシュ・セッション
+
+- [テンプレートシステム](v2/docs/Technical/TEMPLATE_SYSTEM.md) - テンプレートファイルの仕様・使用方法
+- [削除済み動画ブラックリスト](v2/docs/Technical/DELETED_VIDEO_CACHE.md) - ブラックリスト機能、API リファレンス
+- [セッション実装レポート](v2/docs/Guides/SESSION_REPORTS.md) - 2025-12-17～18 実装内容・テスト結果
+
+### 📋 ユーザーガイド・トラブルシューティング
+
+- [デバッグ・ドライラン](v2/docs/Guides/DEBUG_DRY_RUN_GUIDE.md) - トラブルシューティング
+- [テンプレート実装チェックリスト](v2/docs/Guides/TEMPLATE_IMPLEMENTATION_CHECKLIST.md) - テンプレート導入手順
+- [画像リサイズガイド](v2/docs/Guides/IMAGE_RESIZE_GUIDE.md) - 画像処理の使用方法
+
+### 🚀 その他・参考資料
+
+- [将来ロードマップ](v2/docs/References/FUTURE_ROADMAP_v2.md) - v3+ の計画概要
+- [Rich Text Facet 仕様](v2/docs/Technical/RICHTEXT_FACET_SPECIFICATION.md) - URL・ハッシュタグリンク化の技術仕様
+- [AssetManager 統合ガイド](v2/docs/Technical/ASSET_MANAGER_INTEGRATION_v2.md) - Asset 自動配置・プラグイン連携の詳細
+- [Asset ディレクトリ README](v2/Asset/README.md) - ユーザー向けの Asset 管理方法
+
+### 📂 全ドキュメント構成
+
+ドキュメントは以下のカテゴリに整理されています：
+
+- **Technical/** - 技術資料（アーキテクチャ・仕様・設計）
+- **Guides/** - ユーザーガイド（実装手順・操作方法）
+- **References/** - 参考資料（ロードマップ・構想案）
+- **Local/** - ローカル作業用（内部用・非公開推奨）
+
+詳細は [v2/docs/README_GITHUB_v2.md](v2/docs/README_GITHUB_v2.md) を参照してください。
 
 ## 設定ファイルについて
 
