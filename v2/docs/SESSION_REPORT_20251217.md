@@ -152,7 +152,7 @@ embed={
 - 画像投稿時にリンクカードが重複表示されない ✅
 - ユーザーが投稿スタイルを選択可能 ✅
 
-実装ファイル：`bluesky_v2.py`, `bluesky_plugin.py`
+実装ファイル：`bluesky_core.py`, `bluesky_plugin.py`
 
 ---
 
@@ -242,7 +242,7 @@ video_with_settings["image_source"] = "database"    # ソース
 - 画像 + テキスト（aspetRatio付き）
 - テキスト + URLリンクカード（メタデータ自動取得）
 
-実装ファイル：`gui_v2.py`, `bluesky_plugin.py`, `bluesky_v2.py`
+実装ファイル：`gui_v2.py`, `bluesky_plugin.py`, `bluesky_core.py`
 
 ---
 
@@ -358,7 +358,7 @@ def set_dry_run(self, dry_run: bool):
         self.minimal_poster.set_dry_run(dry_run)
 ```
 
-`bluesky_v2.py` に `set_dry_run()` メソッドを追加：
+`bluesky_core.py` に `set_dry_run()` メソッドを追加：
 ```python
 def set_dry_run(self, dry_run: bool):
     """ドライランモードを設定"""
@@ -437,7 +437,7 @@ if self.dry_run:
 
 **問題：** 400 Bad Request エラー時にエラーレスポンスが不明確だった
 
-**修正：** `bluesky_v2.py` のエラーハンドリングを改善
+**修正：** `bluesky_core.py` のエラーハンドリングを改善
 ```python
 except requests.exceptions.HTTPError as e:
     # HTTP エラーの詳細情報をログ
@@ -552,7 +552,7 @@ else:
 |---------|--------|------|
 | `v2/image_processor.py` | 三段階リサイズ戦略、品質最適化パイプライン実装 | 1-332 |
 | `plugins/bluesky_plugin.py` | blob(width,height)のタプル戻り値、aspectRatio実装、set_dry_run()追加 | 125-127, 158, 398, 446-451 |
-| `bluesky_v2.py` | set_dry_run()追加、エラーハンドリング改善 | 60-62, 215-235 |
+| `bluesky_core.py` | set_dry_run()追加、エラーハンドリング改善 | 60-62, 215-235 |
 | `gui_v2.py` | ドライラン表記を「投稿テスト」に統一、dry_run伝播実装 | 1189, 1263-1330 |
 | `plugin_manager.py` | dry_runパラメータ追加 | 220-240 |
 | `plugins/logging_plugin.py` | DEBUG_MODE対応、フィルター実装、PostLogger修正 | 120-330 |
