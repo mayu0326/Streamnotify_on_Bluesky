@@ -21,7 +21,7 @@
 
 ## インストール
 
-``` 
+```
 git clone <このリポジトリのURL>
 cd <リポジトリディレクトリ>
 
@@ -45,13 +45,13 @@ cp .env.example .env
 
 2. `.env` を編集し、次の項目を設定します。
 
-- `YOUTUBE_CHANNEL_ID`  
-  - 監視対象の YouTube チャンネル ID  
-- `BLUESKY_USERNAME`  
+- `YOUTUBE_CHANNEL_ID`
+  - 監視対象の YouTube チャンネル ID
+- `BLUESKY_USERNAME`
   - Bluesky のハンドル（例: `yourname.bsky.social`）
-- `BLUESKY_PASSWORD`  
+- `BLUESKY_PASSWORD`
   - Bluesky のアプリパスワード
-- `POLL_INTERVAL_MINUTES`  
+- `POLL_INTERVAL_MINUTES`
   - RSS をポーリングする間隔（5〜30 の整数、分単位）
 
 > 注意: `.env` には個人の ID やパスワードを記載するため、公開リポジトリには含めないでください。
@@ -71,21 +71,21 @@ python main.py
 
 ## ディレクトリ構成（予定）
 
-- `main.py`  
+- `main.py`
   - アプリケーションのエントリポイント
-- `config.py`  
+- `config.py`
   - 設定読み込み・バリデーション
-- `database.py`  
+- `database.py`
   - SQLite 操作（動画データの保存・取得）
-- `youtube_rss.py`  
+- `youtube_rss.py`
   - YouTube RSS の取得・パース
-- `bluesky.py` / `bluesky_plugin.py`  
-  - Bluesky への投稿処理とテンプレート処理 
-- `data/`  
+- `bluesky.py` / `bluesky_plugin.py`
+  - Bluesky への投稿処理とテンプレート処理
+- `data/`
   - SQLite DB ファイル（`youtube_notify.db`）
-- `logs/`  
+- `logs/`
   - 投稿履歴 CSV, ログファイル
-- `docs/`  
+- `docs/`
   - 設計メモ（例: `v1_design.md`）
 
 ## 制限事項（v1）
@@ -96,7 +96,9 @@ python main.py
 
 ## ライセンス
 
-- 本アプリケーションは GPL License v2 で提供されます。
+**このリポジトリ全体は GPLv2 です。詳細はルートの LICENSE を参照してください。**
+
+本アプリケーションは GPL License v2 で提供されます。
 
 ## 開発・貢献
 
