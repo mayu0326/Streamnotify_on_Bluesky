@@ -137,8 +137,10 @@ Streamnotify_on_Bluesky/v2/
 | `{{ title }}` | 動画のタイトル | `新作動画を作成しました！` |
 | `{{ video_id }}` | ニコニコ 動画 ID | `sm99999999` |
 | `{{ video_url }}` | 動画への URL | `https://www.nicovideo.jp/watch/sm99999999` |
-| `{{ channel_name }}` | ユーザー名またはチャンネル名 | `MyUser` |
+| `{{ channel_name }}` | ユーザー名またはチャンネル名（※ RSS フィード内に投稿者情報がないため、`settings.env` の `NICONICO_USER_NAME` から取得） | `MyUser` |
 | `{{ published_at }}` | 公開日時（ISO 形式） | `2025-12-18T10:30:00` |
+
+**ご注意**: ニコニコのRSSフィードには投稿者情報が含まれないため、`NICONICO_USER_NAME` 環境変数で設定したユーザー名が使用されます。未設定時は `NICONICO_USER_ID` が表示されます。
 
 ### テンプレート内で使える機能
 
