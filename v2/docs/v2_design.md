@@ -88,7 +88,7 @@
 ├── config.py               # 設定読み込み・バリデーション
 ├── database.py             # SQLite 操作
 ├── youtube_rss.py          # YouTube RSS 取得・パース
-├── bluesky_v2.py           # Bluesky HTTP API 本体（ログイン・投稿・Facet構築）
+├── bluesky_core.py         # Bluesky HTTP API 本体（ログイン・投稿・Facet構築）
 ├── gui_v2.py               # GUI フレーム統合（動画選択・投稿・統計表示）
 ├── image_manager.py        # 画像ダウンロード・保存・リトライ
 ├── logging_config.py       # ロギング統合設定
@@ -185,14 +185,14 @@
 
 ### Bluesky 投稿関連
 
-- `bluesky_v2.py`
+- `bluesky_core.py`
   - Bluesky HTTP API 本体（`BlueskyMinimalPoster` クラス）。
   - ログイン、投稿実行、Facet構築、DRY RUN 対応。
   - 拡張用ラッパー `BlueskyPlugin` クラスも含む（bluesky_plugin.py から利用）。
 
 - `plugins/bluesky_plugin.py`
   - Bluesky 投稿プラグイン実装（プラグイン自動ロード）。
-  - `bluesky_v2.py` の `BlueskyMinimalPoster` API を利用。
+  - `bluesky_core.py` の `BlueskyMinimalPoster` API を利用。
   - 画像添付、DB登録済み画像の優先利用対応。
 
 ### GUI・画像管理・ロギング関連
