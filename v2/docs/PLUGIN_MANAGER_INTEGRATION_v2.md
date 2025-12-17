@@ -1,5 +1,8 @@
 ﻿# プラグインマネージャーの統合ガイド
 
+> **対象バージョン**: v2.1.0 時点  
+> **最終更新**: 2025-12-17
+
 ## 現在の画面構成
 
 ### GUI レイアウト
@@ -87,10 +90,12 @@ plugins/
   __init__.py
   bluesky_plugin.py          # Bluesky 投稿プラグイン
   youtube_api_plugin.py      # YouTube Data API 連携
-  youtube_live_plugin.py     # YouTube ライブ判定
+  youtube_live_plugin.py     # YouTube ライブ判定（⚠️ 実験的：枠のみ実装、ロジック未完成）
   niconico_plugin.py         # ニコニコ動画 RSS 監視
   logging_plugin.py          # ロギング統合管理
 ```
+
+**注記**: `youtube_live_plugin.py` は v2 では実験的プラグインであり、ライブ配信開始/終了の検知ロジックとライブ状態の自動更新は**未実装**です。将来の v2.x / v3 での実装を予定しています。
 
 ### Step 2: main_v2.py での PluginManager 統合 ✅
 
