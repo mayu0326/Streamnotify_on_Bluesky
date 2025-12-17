@@ -1,5 +1,8 @@
 ﻿# StreamNotify on Bluesky (v2)
 
+> **対象バージョン**: v2.1.0 時点  
+> **最終更新**: 2025-12-17
+
 特定の YouTube チャンネルの新着動画を検知し、指定した Bluesky アカウントに自動投稿する常駐ボットです。
 
 ## 機能概要
@@ -9,7 +12,8 @@
 - Bluesky へ自動投稿（動画情報・URL リンク化・ドライラン対応）
 - 投稿履歴をログファイルに記録（バニラ: app.log、プラグイン: post.log/post_error.log）
 - GUI統合（Tkinterベース、動画選択・複数選択・一括削除・投稿・統計表示・プラグイン表示）
-- プラグイン自動ロード（Bluesky機能拡張・YouTube API・YouTube Live・Niconico・ロギング拡張対応）
+- プラグイン自動ロード（Bluesky機能拡張・YouTube API・Niconico・ロギング拡張対応）
+- YouTube Live 判定用プラグインの枠があり、将来のバージョンでライブ状態の自動判定に対応予定
 
 > ℹ️ **GUI の動作**
 > - GUI を最小化しても、バックグラウンドで動作を続けます。
@@ -137,7 +141,7 @@ python main_v2.py
 ├── plugins/                # プラグインディレクトリ
 │   ├── bluesky_plugin.py       # Bluesky 投稿プラグイン実装
 │   ├── youtube_api_plugin.py   # YouTube Data API 連携プラグイン
-│   ├── youtube_live_plugin.py  # YouTube ライブ/アーカイブ判定プラグイン
+│   ├── youtube_live_plugin.py  # YouTube ライブ判定プラグイン（⚠️ 実験的：枠のみ実装、ロジック未完成）
 │   ├── niconico_plugin.py      # ニコニコ動画 RSS 監視プラグイン
 │   └── logging_plugin.py       # ロギング統合管理プラグイン
 │
@@ -202,7 +206,10 @@ python main_v2.py
 
 ## プラグイン導入時の自動ファイル追加
 
-### 動作例: YouTubeLiveプラグイン導入時
+### 動作例: YouTubeLiveプラグイン導入時（実験的）
+
+> ⚠️ **注記**: `youtube_live_plugin` は v2 では実験的プラグインであり、ライブ配信開始/終了の検知ロジックは未実装です。将来の v2.x / v3 での実装を予定しています。
+
 1. YouTubeLive プラグイン読み込み時に以下が自動コピーされます：
    - `Asset/templates/youtube/yt_online_template.txt` → `templates/youtube/yt_online_template.txt`
    - `Asset/templates/youtube/yt_offline_template.txt` → `templates/youtube/yt_offline_template.txt`
@@ -212,12 +219,12 @@ python main_v2.py
 
 ### 対応プラグイン別の配置内容
 
-| プラグイン | テンプレート | 画像 |
-|-----------|-----------|------|
-| `youtube_api_plugin` | `youtube/` | `youtube/` |
-| `youtube_live_plugin` | `youtube/` | `youtube/` |
-| `niconico_plugin` | `niconico/` | `niconico/` |
-| `bluesky_plugin` | `default/` | `default/` |
+| プラグイン | テンプレート | 画像 | 備考 |
+|-----------|-----------|------|------|
+| `youtube_api_plugin` | `youtube/` | `youtube/` | 完成済み |
+| `youtube_live_plugin` | `youtube/` | `youtube/` | ⚠️ v2 では実験的（ロジック未実装） |
+| `niconico_plugin` | `niconico/` | `niconico/` | 完成済み |
+| `bluesky_plugin` | `default/` | `default/` | 完成済み |
 
 ### Asset ディレクトリ構成
 
