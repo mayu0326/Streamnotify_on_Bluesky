@@ -132,19 +132,22 @@ v2/
 ├── docs/                   # 設計ドキュメント
 │   ├── README_GITHUB_v2.md
 │   ├── Technical/          # 技術資料（アーキテクチャ・仕様）
-│   │   ├── ARCHITECTURE_AND_DESIGN.md （統合版）
-│   │   ├── PLUGIN_SYSTEM.md （統合版）
-│   │   ├── TEMPLATE_SYSTEM.md （統合版）
-│   │   ├── DELETED_VIDEO_CACHE.md （統合版）
+│   │   ├── ARCHITECTURE_AND_DESIGN.md
+│   │   ├── PLUGIN_SYSTEM.md
+│   │   ├── TEMPLATE_SYSTEM.md
+│   │   ├── DELETED_VIDEO_CACHE.md
 │   │   ├── RICHTEXT_FACET_SPECIFICATION.md
 │   │   ├── ModuleList_v2.md
-│   │   └── SETTINGS_OVERVIEW.md
+│   │   ├── SETTINGS_OVERVIEW.md
+│   │   ├── ASSET_MANAGER_INTEGRATION_v2.md
+│   │   └── VERSION_MANAGEMENT.md
 │   ├── Guides/             # ユーザーガイド（実装・手順）
 │   │   ├── DEBUG_DRY_RUN_GUIDE.md
 │   │   ├── IMPLEMENTATION_PLAN.md
 │   │   ├── TEMPLATE_IMPLEMENTATION_CHECKLIST.md
 │   │   ├── SESSION_REPORTS.md
-│   │   └── IMAGE_RESIZE_GUIDE.md
+│   │   ├── IMAGE_RESIZE_GUIDE.md
+│   │   └── IMAGE_RESIZE_IMPLEMENTATION.md
 │   ├── References/         # 参考資料
 │   │   ├── FUTURE_ROADMAP_v2.md
 │   │   ├── README_TEMPLATE_v2.md
@@ -153,6 +156,7 @@ v2/
 │   └── Local/              # ローカル作業用（非公開）
 │       ├── PROJECT_COMPLETION_REPORT.md
 │       ├── DELETION_CHECKLIST_PHASE3.md
+│       ├── DOCUMENTATION_CONSOLIDATION_COMPLETION_REPORT.md
 │       └── ...
 │
 └── __pycache__/            # Python キャッシュ（Git 管理外）
