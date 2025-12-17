@@ -61,7 +61,7 @@ v2 テンプレートシステムが完全に統合されました。以下の4�
 
 **対応テンプレート種別**:
 - YouTube: `youtube_new_video`, `youtube_online` ⚠️, `youtube_offline` ⚠️
-- ニコニコ: `nico_new_video`, `nico_online` ⚠️, `nico_offline` ⚠️
+- ニコニコ: `nico_new_video`
 - Twitch: `twitch_online`, `twitch_offline`, `twitch_raid` （v3+ 予定）
 
 ※ ⚠️ 将来実装予定
@@ -305,8 +305,6 @@ TEMPLATE_YOUTUBE_OFFLINE_PATH=templates/youtube/yt_offline_template.txt  # 将�
 
 # ニコニコテンプレートパス
 TEMPLATE_NICO_NEW_VIDEO_PATH=templates/niconico/nico_new_video_template.txt
-TEMPLATE_NICO_ONLINE_PATH=templates/niconico/nico_online_template.txt  # 将来
-TEMPLATE_NICO_OFFLINE_PATH=templates/niconico/nico_offline_template.txt  # 将来
 
 # Twitch テンプレートパス（将来）
 TEMPLATE_TWITCH_ONLINE_PATH=templates/twitch/twitch_online_template.txt
@@ -459,9 +457,7 @@ v2/
 │   │   ├── yt_online_template.txt           [将来]
 │   │   └── yt_offline_template.txt          [将来]
 │   ├── niconico/
-│   │   ├── nico_new_video_template.txt      [設計中]
-│   │   ├── nico_online_template.txt         [将来]
-│   │   └── nico_offline_template.txt        [将来]
+│   │   └── nico_new_video_template.txt      [設計中]
 │   ├── twitch/                              [将来]
 │   └── .templates/
 │       ├── default_template.txt             [✅ 新規]
@@ -486,7 +482,6 @@ v2/
 | 項目 | 予定 | 詳細 |
 |:--|:--|:--|
 | YouTube Live | v2.x | yt_online_template.txt, yt_offline_template.txt の実装 |
-| ニコニコ Live | v2.x | nico_online_template.txt, nico_offline_template.txt の実装 |
 | GUI 統合 | v2.x | gui_v2.py にテンプレート編集メニュー追加 |
 | DB 保存 | v2.x | 選択したテンプレート種別を DB に保存（ユーザー記憶） |
 
