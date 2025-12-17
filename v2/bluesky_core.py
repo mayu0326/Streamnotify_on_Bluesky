@@ -159,7 +159,9 @@ class BlueskyMinimalPoster:
             facets = None
             # video辞書から embed を取得（プラグインが設定した場合）
             embed = video.get("embed", None)
-            # use_link_card フラグを取得（デフォルト: True - プラグインなしの場合）
+            # ★ プラグイン経由フラグを取得（デフォルト: True）
+            via_plugin = video.get("via_plugin", True)
+            # use_link_card フラグを取得（デフォルト: True - プラグイン有効時のみ使用）
             use_link_card = video.get("use_link_card", True)
             created_at = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
 
@@ -173,8 +175,8 @@ class BlueskyMinimalPoster:
                 # パターン2: プラグイン有効 + 画像ありの場合
                 post_logger.info("🖼️ 画像 embed を使用します（リンクカード無効化）")
                 use_link_card = False  # リンクカードは使用しない
-            elif use_link_card and video_url:
-                # パターン1,3: リンクカード機能を有効化
+            elif use_link_card and video_url and via_plugin:
+                # ★ リンクカードはプラグイン機能 - プラグイン経由のときのみ構築
                 post_logger.info("🔗 リンクカード embed を構築しています...")
                 embed = self._build_external_embed(video_url)
                 if embed:
