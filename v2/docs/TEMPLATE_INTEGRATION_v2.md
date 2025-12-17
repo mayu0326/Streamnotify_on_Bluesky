@@ -653,16 +653,300 @@ v2/
 **A**:
 ```bash
 # settings.env に以下を記入
-TEMPLATE_YOUTUBE_NEW_VIDEO_PATH=/custom/path/my_template.txt
+TEMPLATE_YOUTUBE_NEW_VIDEO_PATH=/templates/'サービスごとのフォルダ'/my_template.txt
 ```
 
 ---
 
-## 12. 更新履歴
+## 12. テンプレート機能の投稿統合（2025-12-18 実装完了）
+
+### 12.1 実装概要
+
+- Bluesky プラグインのテンプレート機能が実際の YouTube・ニコニコ新着動画投稿に統合されました。
+- テンプレートレンダリングはプラグイン側で責務を持ち、従来の固定フォーマットからの段階的な移行を実現しています。
+
+### 12.2 実装範囲
+
+#### 変更ファイル
+
+| ファイル | メソッド | 変更内容 | 状態 |
+|:--|:--|:--|:--:|
+| `v2/plugins/bluesky_plugin.py` | `post_video()` | テンプレートレンダリング処理を追加 | ✅ 実装済み |
+| `v2/bluesky_core.py` | `post_video_minimal()` | `text_override` 対応（テンプレート本文優先） | ✅ 実装済み |
+
+### 12.3 処理フロー
+
+```
+GUI / API から post_video() 呼び出し
+   ↓
+[bluesky_plugin.py - post_video()]
+   ├─ 画像処理（embed 構築）
+   ├─ テンプレートレンダリング
+   │  ├─ source = "youtube" → youtube_new_video テンプレート使用
+   │  ├─ source = "niconico" → nico_new_video テンプレート使用
+   │  └─ rendered → video["text_override"] に格納
+   │     ├─ 成功時: "✅ テンプレートを使用して本文を生成しました"（post.log に INFO 出力）
+   │     └─ 失敗時: "ℹ️ テンプレート未使用またはレンダリング失敗"（DEBUG 出力）
+   └─ minimal_poster.post_video_minimal(video) 呼び出し
+   ↓
+[bluesky_core.py - post_video_minimal()]
+   ├─ text_override が存在？
+   │  ├─ YES → text_override（テンプレート本文）を使用
+   │  │        "📝 テンプレート生成済みの本文を使用します"（post.log に INFO 出力）
+   │  └─ NO → 従来フォーマットにフォールバック
+   │           ├─ YouTube: "{title}\n\n🎬 {channel_name}\n📅 {published_at[:10]}\n\n{video_url}"
+   │           └─ ニコニコ: "{title}\n\n📅 {published_at[:10]}\n\n{video_url}"
+   ├─ Facet 構築（URL リンク化）
+   ├─ embed / リンクカード 適用
+   └─ Bluesky に投稿
+   ↓
+✅ post.log に投稿内容とテンプレート使用状況を記録
+```
+
+### 12.4 実装詳細
+
+#### A. `bluesky_plugin.py` の `post_video()` メソッド
+
+**変更前**:
+```python
+        # 最終的に minimal_poster で投稿
+        post_logger.info(f"📊 最終投稿設定: use_link_card={video.get('use_link_card')}, embed={bool(embed)}")
+        return self.minimal_poster.post_video_minimal(video)
+```
+
+**変更後**:
+```python
+        # embed が取得できた場合は video に追加
+        if embed:
+            video["embed"] = embed
+            video["use_link_card"] = False  # 画像を優先（リンクカードは無効化）
+            post_logger.info(f"🖼️ 画像埋め込み: {embed}")
+        else:
+            # 画像がない場合、リンクカード機能を有効化
+            video["use_link_card"] = True  # リンクカード機能を有効化
+            post_logger.info(f"🔗 リンクカード機能を有効化します（画像なし）")
+
+        # ============ テンプレートレンダリング（新着動画投稿用） ============
+        # YouTube / ニコニコの新着動画投稿時にテンプレートを使用
+        source = video.get("source", "youtube").lower()
+        rendered = ""
+
+        if source == "youtube":
+            # YouTube 新着動画用テンプレート
+            rendered = self.render_template_with_utils("youtube_new_video", video)
+            if rendered:
+                video["text_override"] = rendered
+                post_logger.info(f"✅ テンプレートを使用して本文を生成しました: youtube_new_video")
+            else:
+                post_logger.debug(f"ℹ️ youtube_new_video テンプレート未使用またはレンダリング失敗（従来フォーマットを使用）")
+        elif source in ("niconico", "nico"):
+            # ニコニコ新着動画用テンプレート
+            rendered = self.render_template_with_utils("nico_new_video", video)
+            if rendered:
+                video["text_override"] = rendered
+                post_logger.info(f"✅ テンプレートを使用して本文を生成しました: nico_new_video")
+            else:
+                post_logger.debug(f"ℹ️ nico_new_video テンプレート未使用またはレンダリング失敗（従来フォーマットを使用）")
+
+        # 最終的に minimal_poster で投稿
+        post_logger.info(f"📊 最終投稿設定: use_link_card={video.get('use_link_card')}, embed={bool(embed)}, text_override={bool(video.get('text_override'))}")
+        return self.minimal_poster.post_video_minimal(video)
+```
+
+**ポイント**:
+- `source` に応じて適切なテンプレート種別を選択
+- `render_template_with_utils()` でレンダリング実行
+- 成功時は `video["text_override"]` に本文を格納
+- 失敗時は空文字列を返し、後段でフォールバック処理
+- `post.log` にテンプレート使用状況を記録
+
+#### B. `bluesky_core.py` の `post_video_minimal()` メソッド
+
+**変更前（抜粋）**:
+```python
+    def post_video_minimal(self, video: dict) -> bool:
+        """最小限の動画投稿API（テキスト + オプション画像埋め込み）"""
+        try:
+            post_logger.debug(f"🔍 post_video_minimal に受け取ったフィールド:")
+            post_logger.debug(f"   embed: {bool(video.get('embed'))}")
+
+            title = video.get("title", "【新着動画】")
+            video_url = video.get("video_url", "")
+            channel_name = video.get("channel_name", "")
+            published_at = video.get("published_at", "")
+            source = video.get("source", "youtube").lower()
+
+            if not video_url:
+                logger.error("❌ video_url が見つかりません")
+                return False
+
+            # source に応じたテンプレートを生成
+            if source == "niconico":
+                post_text = f"{title}\n\n📅 {published_at[:10]}\n\n{video_url}"
+            else:
+                # YouTube（デフォルト）
+                post_text = f"{title}\n\n🎬 {channel_name}\n📅 {published_at[:10]}\n\n{video_url}"
+
+            post_logger.info(f"投稿内容:\n{post_text}")
+```
+
+**変更後（抜粋）**:
+```python
+    def post_video_minimal(self, video: dict) -> bool:
+        """最小限の動画投稿API（テキスト + オプション画像埋め込み）"""
+        try:
+            post_logger.debug(f"🔍 post_video_minimal に受け取ったフィールド:")
+            post_logger.debug(f"   embed: {bool(video.get('embed'))}")
+            post_logger.debug(f"   text_override: {bool(video.get('text_override'))}")
+
+            # text_override がある場合は優先（テンプレートレンダリング済み）
+            text_override = video.get("text_override")
+
+            title = video.get("title", "【新着動画】")
+            video_url = video.get("video_url", "")
+            channel_name = video.get("channel_name", "")
+            published_at = video.get("published_at", "")
+            source = video.get("source", "youtube").lower()
+
+            if not video_url:
+                logger.error("❌ video_url が見つかりません")
+                return False
+
+            # source に応じたテンプレートを生成
+            if text_override:
+                # プラグイン側でテンプレートから生成した本文を優先
+                post_text = text_override
+                post_logger.info(f"📝 テンプレート生成済みの本文を使用します")
+            elif source == "niconico":
+                post_text = f"{title}\n\n📅 {published_at[:10]}\n\n{video_url}"
+            else:
+                # YouTube（デフォルト）
+                post_text = f"{title}\n\n🎬 {channel_name}\n📅 {published_at[:10]}\n\n{video_url}"
+
+            post_logger.info(f"投稿内容:\n{post_text}")
+```
+
+**ポイント**:
+- `text_override` フィールドを最初にチェック
+- テンプレートからのレンダリング済み本文を優先使用
+- テンプレート未使用時は従来フォーマットでフォールバック
+- `post.log` にテンプレート使用状況を明記
+
+### 12.5 必須キー検証
+
+テンプレートレンダリング時に必須キーが不足している場合の動作：
+
+| 状況 | 動作 | ログ出力 | 本文 |
+|:--|:--|:--|:--:|
+| 必須キー完備 | テンプレート適用 | ✅ INFO | テンプレートレンダリング済み |
+| 必須キー不足 | 従来フォーマット使用 | ℹ️ DEBUG | 固定フォーマット |
+| テンプレートファイルなし | 従来フォーマット使用 | ⚠️ DEBUG | 固定フォーマット |
+| レンダリング構文エラー | 従来フォーマット使用 | ❌ ERROR | 固定フォーマット |
+
+### 12.6 ログ出力例
+
+#### 成功時（テンプレート使用）
+
+```
+[INFO] ✅ テンプレートを使用して本文を生成しました: youtube_new_video
+[INFO] 📝 テンプレート生成済みの本文を使用します
+[INFO] 投稿内容:
+新しい動画が公開されました🎬
+
+【タイトル】素晴らしい動画
+【チャンネル】My Channel
+【公開日】2025-12-18
+
+https://www.youtube.com/watch?v=abc123
+
+[INFO] 文字数: 85 / 300
+[INFO] バイト数: 256
+```
+
+#### フォールバック時（テンプレート未使用）
+
+```
+[DEBUG] ℹ️ youtube_new_video テンプレート未使用またはレンダリング失敗（従来フォーマットを使用）
+[INFO] 投稿内容:
+素晴らしい動画
+
+🎬 My Channel
+📅 2025-12-18
+
+https://www.youtube.com/watch?v=abc123
+
+[INFO] 文字数: 62 / 300
+[INFO] バイト数: 184
+```
+
+### 12.7 後方互換性
+
+#### プラグイン未導入時
+
+- `text_override` は設定されない
+- `bluesky_core.py` のデフォルト固定フォーマットを使用
+- 既存の動作と完全に同一
+
+#### テンプレートファイルが存在しない場合
+
+- `render_template_with_utils()` は空文字列を返す
+- `video["text_override"]` は設定されない
+- フォールバックして従来フォーマットを使用
+- **既存ユーザーに影響なし**
+
+### 12.8 設定ファイル
+
+テンプレートパスは `settings.env` で指定：
+
+```bash
+# YouTube 新着動画テンプレート
+TEMPLATE_YOUTUBE_NEW_VIDEO_PATH=templates/youtube/yt_new_video_template.txt
+
+# ニコニコ新着動画テンプレート
+TEMPLATE_NICONICO_NEW_VIDEO_PATH=templates/niconico/nico_new_video_template.txt
+```
+
+デフォルト値は `template_utils.py` の `TEMPLATE_REQUIRED_KEYS` で定義されています。
+
+### 12.9 拡張可能性
+
+新しいサービスに対応する場合：
+
+1. `template_utils.py` に新しいテンプレート種別を定義
+2. `bluesky_plugin.py` の `post_video()` に対応 `elif` ブロックを追加
+3. `Asset/templates/` に新テンプレートファイルを配置
+4. AssetManager に plugin_asset_map を追加
+
+---
+
+## 12. トラブルシューティング
+
+### Q: テンプレートが使用されていない
+
+**A**: 以下を確認してください：
+
+1. `settings.env` でテンプレートパスが正しく指定されているか
+2. `templates/youtube/yt_new_video_template.txt` が存在するか
+3. `post.log` で「✅ テンプレートを使用して本文を生成しました」が出力されているか
+4. テンプレートファイルに Jinja2 構文エラーがないか
+
+**デバッグログ**を確認:
+```bash
+# DEBUG ログを有効化
+settings.env: DEBUG_MODE=true
+
+# ログ確認
+tail -f logs/post.log | grep "テンプレート"
+```
+
+---
+
+## 13. 更新履歴
 
 | 日時 | 変更内容 | 対象バージョン |
 |:-|:--|:--:|
 | 2025-12-17 | v2 テンプレート処理統合完了（4 ステップ実装） | v2.1.0+ |
+| 2025-12-18 | テンプレート機能の投稿統合実装完了（YouTube/ニコニコ対応） | v2.1.0+ |
 
 ---
 
