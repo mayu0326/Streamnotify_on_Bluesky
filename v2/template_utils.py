@@ -69,11 +69,13 @@ TEMPLATE_ARGS = {
     ],
 
     # ニコニコ 新着動画
+    # ご注意: ニコニコのRSSフィードには投稿者情報が含まれないため、
+    #        settings.env の NICONICO_USER_NAME から取得します
     "nico_new_video": [
         ("動画タイトル", "title"),
         ("動画 ID", "video_id"),
         ("動画 URL", "video_url"),
-        ("投稿者名", "channel_name"),
+        ("投稿者名", "channel_name"),  # settings.env の NICONICO_USER_NAME から取得
         ("投稿日時", "published_at"),
     ],
 
