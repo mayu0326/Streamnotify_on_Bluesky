@@ -1,11 +1,11 @@
 # StreamNotify on Bluesky
 
-YouTube チャンネルの新着動画を Bluesky に自動投稿するアプリケーションです。  
+YouTube チャンネルの新着動画を Bluesky に自動投稿するアプリケーションです。
 （Twitch / ニコニコなどの対応はプラグインで拡張予定）
 
 ## 概要
 
-このプロジェクトは、特定の YouTube チャンネルの新着動画を RSS で監視し、Bluesky に自動投稿する常駐ボットです。  
+このプロジェクトは、特定の YouTube チャンネルの新着動画を RSS で監視し、Bluesky に自動投稿する常駐ボットです。
 設定ファイルで簡単にカスタマイズでき、将来的にはプラグインで複数の配信プラットフォームに対応予定です。
 
 ## 主な機能
@@ -54,7 +54,7 @@ cp settings.env.example settings.env
 python main_v2.py
 ```
 
-GUI が起動し、YouTube RSS から新着動画を取得して表示します。  
+GUI が起動し、YouTube RSS から新着動画を取得して表示します。
 GUI から動画を選択して「投稿」ボタンを押すと Bluesky へ投稿されます。
 
 ---
@@ -293,13 +293,19 @@ Asset/
 
 詳細な情報は以下をご覧ください：
 
-- [**アーキテクチャ**](docs/ARCHITECTURE_v2.md) - システム構成とデータベース設計の詳細（`content_type` / `live_status` の正規化ルール含む）
-- [**モジュール一覧**](docs/ModuleList_v2.md) - 全コンポーネントの説明
-- [**設定概要**](docs/SETTINGS_OVERVIEW.md) - 環境変数・設定項目の詳細
-- [**設計方針メモ**](docs/v2_DESIGN_POLICY.md) - v2 の仕様確定と v3+ への拡張ロードマップ
-- [**プラグイン開発ガイド**](docs/BLUESKY_PLUGIN_GUIDE.md) - プラグイン開発方法
-- [**デバッグ・ドライラン**](docs/DEBUG_DRY_RUN_GUIDE.md) - トラブルシューティング
-- [**将来ロードマップ**](docs/FUTURE_ROADMAP_v2.md) - v3+ の計画概要
+- [**アーキテクチャ**](ARCHITECTURE_v2.md) - システム構成とデータベース設計の詳細（`content_type` / `live_status` の正規化ルール含む）
+- [**モジュール一覧**](ModuleList_v2.md) - 全コンポーネントの説明
+- [**設定概要**](SETTINGS_OVERVIEW.md) - 環境変数・設定項目の詳細
+- [**設計方針メモ**](v2_DESIGN_POLICY.md) - v2 の仕様確定と v3+ への拡張ロードマップ
+- [**プラグイン開発ガイド**](BLUESKY_PLUGIN_GUIDE.md) - プラグイン開発方法
+- [**デバッグ・ドライラン**](DEBUG_DRY_RUN_GUIDE.md) - トラブルシューティング
+- [**将来ロードマップ**](FUTURE_ROADMAP_v2.md) - v3+ の計画概要
+
+### テンプレート・Asset 管理について
+
+- [**テンプレート仕様書**](TEMPLATE_SPECIFICATION_v2.md) - テンプレートファイルの配置ポリシー・仕様・使用方法
+- [**AssetManager 統合ガイド**](ASSET_MANAGER_INTEGRATION_v2.md) - Asset ディレクトリからの自動配置・プラグイン連携の詳細
+- [**Asset ディレクトリ README**](../Asset/README.md) - ユーザー向けの Asset 管理方法
 
 ---
 
@@ -381,4 +387,3 @@ Asset/
 ---
 
 **最終更新**: 2025-12-17
-
