@@ -47,7 +47,7 @@ Ctrl+C で安全終了（ニコニコ監視停止）
 |-----------|------|------|
 | `main_v2.py` | エントリーポイント・メインループ | 起動、プラグイン管理、メインループで RSS → DB → 投稿（GUI と並行実行） |
 | `config.py` | 設定読み込み・バリデーション | settings.env から設定取得、値チェック（ポーリング間隔 5 分以上など） |
-| `database.py` | SQLite 操作 | テーブル作成、動画の INSERT/SELECT/UPDATE/DELETE、投稿済みフラグ管理、バッチ削除 |
+| `database.py` | SQLite 操作 | テーブル作成、動画の INSERT/SELECT/UPDATE/DELETE、投稿済みフラグ管理、バッチ削除、**content_type/live_status の値正規化** |
 | `youtube_rss.py` | RSS 取得・パース | YouTube チャンネル RSS URL 生成、RSS 取得、新着動画抽出 |
 | `plugin_manager.py` | プラグイン管理 | プラグイン自動検出・読み込み・有効化・無効化、メソッド呼び出し |
 | `plugin_interface.py` | プラグイン基本インターフェース | プラグイン基本クラス（BasePlugin） |
