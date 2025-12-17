@@ -121,6 +121,7 @@ def execute_post(self):
         return
 
     # 複数プラグイン対応: 有効なすべてのプラグインで投稿実行
+    # （注: video 辞書の content_type/live_status は database.py で値正規化済み）
     results = self.plugin_manager.post_video_with_all_enabled(video)
     # results: {"bluesky": True, "twitch": False, ...}
 ```

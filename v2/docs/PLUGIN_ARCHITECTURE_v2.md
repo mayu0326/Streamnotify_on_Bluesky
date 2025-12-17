@@ -12,7 +12,7 @@ Streamnotify_on_Bluesky は、拡張性を重視したプラグインアーキ�
 すべての通知プラグインが実装すべき抽象基底クラスです。
 
 **必須メソッド:**
-- `post_video(video: Dict) -> bool`: 動画情報をポスト
+- `post_video(video: Dict) -> bool`: 動画情報をポスト（**注: video 辞書の `content_type` と `live_status` は database.py で値正規化済みのため、これらの値を信頼して利用可能**）
 - `is_available() -> bool`: プラグインが利用可能か判定
 - `get_name() -> str`: プラグイン名を取得
 - `get_version() -> str`: バージョンを取得
@@ -90,7 +90,7 @@ class TwitchPlugin(NotificationPlugin):
     def __init__(self):
         self.client = None
         # 初期化処理
-    
+
     def post_video(self, video: dict) -> bool:
         """Twitch に投稿"""
         try:
@@ -98,13 +98,13 @@ class TwitchPlugin(NotificationPlugin):
             return True
         except Exception as e:
             return False
-    
+
     def is_available(self) -> bool:
         return self.client is not None
-    
+
     def get_name(self) -> str:
         return "Twitch Notification Plugin"
-    
+
     def get_version(self) -> str:
         return "1.0.0"
 ```
