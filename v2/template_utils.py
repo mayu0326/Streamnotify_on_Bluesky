@@ -32,8 +32,6 @@ TEMPLATE_REQUIRED_KEYS = {
 
     # ニコニコ
     "nico_new_video": ["title", "video_id", "video_url", "channel_name"],
-    "nico_online": ["title", "video_url", "channel_name", "live_status"],
-    "nico_offline": ["title", "channel_name", "live_status"],
 
     # Twitch（将来）
     "twitch_online": ["title", "stream_url", "broadcaster_user_name", "game_name"],
@@ -77,21 +75,6 @@ TEMPLATE_ARGS = {
         ("動画 URL", "video_url"),
         ("投稿者名", "channel_name"),
         ("投稿日時", "published_at"),
-    ],
-
-    # ニコニコ 生放送開始
-    "nico_online": [
-        ("放送タイトル", "title"),
-        ("放送 URL", "video_url"),
-        ("投稿者名", "channel_name"),
-        ("放送ステータス", "live_status"),
-    ],
-
-    # ニコニコ 生放送終了
-    "nico_offline": [
-        ("投稿者名", "channel_name"),
-        ("放送タイトル", "title"),
-        ("放送ステータス", "live_status"),
     ],
 
     # Twitch 配信開始（将来）
@@ -164,26 +147,6 @@ TEMPLATE_VAR_BLACKLIST = {
         "image_source",
     },
 
-    "nico_online": {
-        "image_mode",
-        "image_filename",
-        "posted_at",
-        "selected_for_post",
-        "use_link_card",
-        "embed",
-        "image_source",
-    },
-
-    "nico_offline": {
-        "image_mode",
-        "image_filename",
-        "posted_at",
-        "selected_for_post",
-        "use_link_card",
-        "embed",
-        "image_source",
-    },
-
     # Twitch（将来）
     "twitch_online": {
         "image_mode",
@@ -213,6 +176,37 @@ FALLBACK_TEMPLATE_PATH = DEFAULT_TEMPLATE_DIR / "fallback_template.txt"
 # ============ ユーティリティ関数 ============
 
 
+def _get_legacy_env_var_name(template_type: str) -> str:
+    """
+    テンプレート種別からレガシー形式の環境変数名を生成（後方互換性用）。
+
+    Args:
+        template_type: テンプレート種別（例: "youtube_new_video"）
+
+    Returns:
+        レガシー形式の環境変数名
+        例: "youtube_new_video" → "BLUESKY_YT_NEW_VIDEO_TEMPLATE_PATH"
+            "nico_new_video" → "BLUESKY_NICO_NEW_VIDEO_TEMPLATE_PATH"
+    """
+    parts = template_type.split("_")
+    if len(parts) >= 2:
+        service_name = parts[0]
+        event_type = "_".join(parts[1:])
+
+        # ショートカット生成
+        service_short = {
+            "youtube": "YT",
+            "nico": "NICO",
+            "niconico": "NICO",
+            "twitch": "TW",
+        }.get(service_name, service_name.upper())
+
+        legacy_var = f"BLUESKY_{service_short}_{event_type.upper()}_TEMPLATE_PATH"
+        return legacy_var
+
+    return f"BLUESKY_{template_type.upper()}_TEMPLATE_PATH"
+
+
 def get_template_path(
     template_type: str,
     env_var_name: str = None,
@@ -224,17 +218,36 @@ def get_template_path(
     Args:
         template_type: テンプレート種別（例: "youtube_new_video"）
         env_var_name: 環境変数名（省略時は自動生成）
+                     例: "TEMPLATE_YOUTUBE_NEW_VIDEO_PATH" （推奨）
+                         or "BLUESKY_YT_NEW_VIDEO_TEMPLATE_PATH" （レガシー）
         default_fallback: フォールバック先デフォルトパス
 
     Returns:
         テンプレートファイルパス（文字列）、見つからない場合は None
-    """
-    # 環境変数名が指定されなければ自動生成
-    if not env_var_name:
-        env_var_name = f"TEMPLATE_{template_type.upper()}_PATH"
 
-    # 環境変数から読み込み
-    env_path = os.getenv(env_var_name)
+    環境変数の解決順序:
+        1. env_var_name で明示的に指定された名前
+        2. TEMPLATE_{template_type}_PATH 形式
+        3. BLUESKY_*_TEMPLATE_PATH 形式（レガシー）
+        4. default_fallback（指定時）
+        5. 自動推論（service_short と event_type から）
+    """
+    # 明示的に指定された環境変数名が最優先
+    if env_var_name:
+        env_path = os.getenv(env_var_name)
+        if env_path:
+            return env_path
+
+    # 新形式: TEMPLATE_{template_type}_PATH
+    new_format_env_var = f"TEMPLATE_{template_type.upper()}_PATH"
+    env_path = os.getenv(new_format_env_var)
+    if env_path:
+        return env_path
+
+    # レガシー形式: BLUESKY_*_TEMPLATE_PATH（後方互換性）
+    # 例: youtube_new_video → BLUESKY_YT_NEW_VIDEO_TEMPLATE_PATH
+    legacy_format_env_var = _get_legacy_env_var_name(template_type)
+    env_path = os.getenv(legacy_format_env_var)
     if env_path:
         return env_path
 
