@@ -163,7 +163,7 @@ plugin_manager.post_video_with_all_enabled(video, dry_run=True)
     ↓
 各プラグインに dry_run=True を設定
     ├─ bluesky_plugin.set_dry_run(True)
-    └─ bluesky_v2.set_dry_run(True)
+    └─ bluesky_core.set_dry_run(True)
     ↓
 テキスト構築（通常通り）
     ↓
@@ -252,7 +252,7 @@ Facet: [富] 0-65 (リンク化)
 |---------|--------|------|
 | `plugin_manager.py` | dry_run パラメータ追加 | 220-240 |
 | `plugins/bluesky_plugin.py` | set_dry_run() メソッド | 446-451 |
-| `bluesky_v2.py` | set_dry_run() メソッド、ダミーデータ | 60-62, 215-235 |
+| `bluesky_core.py` | set_dry_run() メソッド、ダミーデータ | 60-62, 215-235 |
 | `gui_v2.py` | 投稿設定ウィンドウで dry_run 対応 | 1263-1330 |
 
 ---
