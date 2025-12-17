@@ -1,10 +1,10 @@
 ﻿# -*- coding: utf-8 -*-
 
 """
-Stream notify on Bluesky - v2 Bluesky 画像添付拡張プラグイン
+Stream notify on Bluesky - Bluesky 画像添付拡張プラグイン
 
 Bluesky への画像添付機能を提供する拡張プラグイン。
-bluesky_v2.py のコア機能（投稿・Facet・認証・ドライラン）とは独立。
+bluesky_core.py のコア機能（投稿・Facet・認証・ドライラン）とは独立。
 """
 
 import logging
@@ -19,7 +19,7 @@ from PIL import Image
 # 親ディレクトリをパスに追加（image_manager.pyをインポートするため）
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from image_manager import get_image_manager
-from bluesky_v2 import BlueskyMinimalPoster
+from bluesky_core import BlueskyMinimalPoster
 import image_processor
 
 
