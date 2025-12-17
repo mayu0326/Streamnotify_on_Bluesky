@@ -125,6 +125,10 @@ class BlueskyMinimalPoster:
             post_logger.debug(f"   image_mode: {video.get('image_mode')}")
             post_logger.debug(f"   image_filename: {video.get('image_filename')}")
             post_logger.debug(f"   embed: {bool(video.get('embed'))}")
+            post_logger.debug(f"   text_override: {bool(video.get('text_override'))}")
+
+            # text_override がある場合は優先（テンプレートレンダリング済み）
+            text_override = video.get("text_override")
 
             title = video.get("title", "【新着動画】")
             video_url = video.get("video_url", "")
@@ -137,7 +141,11 @@ class BlueskyMinimalPoster:
                 return False
 
             # source に応じたテンプレートを生成
-            if source == "niconico":
+            if text_override:
+                # プラグイン側でテンプレートから生成した本文を優先
+                post_text = text_override
+                post_logger.info(f"📝 テンプレート生成済みの本文を使用します")
+            elif source == "niconico":
                 post_text = f"{title}\n\n📅 {published_at[:10]}\n\n{video_url}"
             else:
                 # YouTube（デフォルト）
