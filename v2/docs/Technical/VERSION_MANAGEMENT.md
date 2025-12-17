@@ -302,9 +302,9 @@ git tag -a v2.2.0 -m "v2.2.0 release"
 
 ## 📚 関連ドキュメント
 
-- [ARCHITECTURE_AND_DESIGN.md](ARCHITECTURE_AND_DESIGN.md) - アーキテクチャ全体（統合版）
-- [PLUGIN_SYSTEM.md](PLUGIN_SYSTEM.md) - プラグインシステム（統合版）
-- [FUTURE_ROADMAP_v2.md](FUTURE_ROADMAP_v2.md) - 開発予定
+- [ARCHITECTURE_AND_DESIGN.md](./ARCHITECTURE_AND_DESIGN.md) - アーキテクチャ全体（統合版）
+- [PLUGIN_SYSTEM.md](./PLUGIN_SYSTEM.md) - プラグインシステム（統合版）
+- [FUTURE_ROADMAP_v2.md](../References/FUTURE_ROADMAP_v2.md) - 開発予定
 
 ---
 
