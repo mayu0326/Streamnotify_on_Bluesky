@@ -22,7 +22,7 @@ logging.basicConfig(
 
 # PluginInterfaceをインポート
 from plugin_interface import NotificationPlugin
-from bluesky_plugin import BlueskyImagePlugin
+from plugins.bluesky_plugin import BlueskyImagePlugin
 
 # ロガー
 logger = logging.getLogger("AppLogger")
