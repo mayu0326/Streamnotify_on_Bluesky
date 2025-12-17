@@ -123,7 +123,7 @@ python main_v2.py
 ├── config.py               # 設定読み込み・バリデーション
 ├── database.py             # SQLite 操作
 ├── youtube_rss.py          # YouTube RSS 取得・パース
-├── bluesky_v2.py           # Bluesky HTTP API 本体（ログイン・投稿・Facet構築）
+├── bluesky_core.py         # Bluesky HTTP API 本体（ログイン・投稿・Facet構築）
 ├── gui_v2.py               # GUI フレーム統合（動画選択・投稿・統計表示）
 ├── image_manager.py        # 画像ダウンロード・保存・リトライ
 ├── logging_config.py       # ロギング統合設定
