@@ -130,8 +130,8 @@ python main_v2.py
 
 ### テンプレート・Asset 管理について
 
-- [**テンプレート仕様書**](v2/v2/v2/docs/TEMPLATE_SPECIFICATION_v2.md) - テンプレートファイルの配置ポリシー・仕様・使用方法
-- [**AssetManager 統合ガイド**](v2/v2/docs/ASSET_MANAGER_INTEGRATION_v2.md) - Asset ディレクトリからの自動配置・プラグイン連携の詳細
+- [**テンプレート仕様書**](v2/docs/TEMPLATE_SPECIFICATION_v2.md) - テンプレートファイルの配置ポリシー・仕様・使用方法
+- [**AssetManager 統合ガイド**](v2/docs/ASSET_MANAGER_INTEGRATION_v2.md) - Asset ディレクトリからの自動配置・プラグイン連携の詳細
 - [**Asset ディレクトリ README**](v2/Asset/README.md) - ユーザー向けの Asset 管理方法
 
 ## 設定ファイルについて
