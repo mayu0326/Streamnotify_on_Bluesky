@@ -1,4 +1,4 @@
-# 画像自動リサイズ機能（v2.1.0+）
+# 画像自動リサイズ機能（v2.1.0）
 
 ## 概要
 
@@ -271,7 +271,7 @@ if len(image_data) > 1_000_000:
     return None  # エラー
 ```
 
-新しい（v2.1.0+）:
+新しい（v2.1.0）:
 ```python
 image_data = self._resize_image(file_path)  # ← リサイズ処理を呼び出し
 if image_data is None:
