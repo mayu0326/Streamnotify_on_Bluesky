@@ -196,10 +196,7 @@
 │   │   ├── YouTube新着動画app（初期構想案）.md
 │   │   └── 投稿テンプレートの引数.md
 │   └── Local/              # ローカル作業用（非公開）
-│       ├── PROJECT_COMPLETION_REPORT.md
-│       ├── DELETION_CHECKLIST_PHASE3.md
-│       ├── DOCUMENTATION_CONSOLIDATION_COMPLETION_REPORT.md
-│       └── ...
+│       └── DELETION_CHECKLIST_PHASE3.md
 │
 └── __pycache__/            # Python キャッシュ（Git 管理外）
 ```
