@@ -258,7 +258,7 @@ class NiconicoPlugin(NotificationPlugin):
             "video_url": link,
             "published_at": published_at,
             "channel_name": author,
-            "content_type": "ニコニコ動画",
+            "content_type": "video",
             "source": "niconico",
             "thumbnail_url": self._fetch_thumbnail_url(video_id) or "",
         }
@@ -285,7 +285,7 @@ class NiconicoPlugin(NotificationPlugin):
         video_url = video.get("video_url", "")
         published_at = video.get("published_at", "")
         channel_name = video.get("channel_name", "")
-        content_type = video.get("content_type", "ニコニコ動画")
+        content_type = video.get("content_type", "video")
         thumbnail_url = video.get("thumbnail_url", "")
 
         try:
