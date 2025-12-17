@@ -27,6 +27,10 @@
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
+**✨ v2.1.0+ 新機能:**
+- **🧪 投稿テスト**: DRY RUN モードで投稿をシミュレート
+- **📤 投稿設定**: 投稿設定ウィンドウで画像添付・リサイズ設定を調整
+
 ## 呼び出しフロー
 
 ### メインフロー
@@ -56,7 +60,7 @@ main_v2.py::main()
 
 ## プラグインマネージャーの統合ポイント
 
-### 現在: PluginManager 統合構成（v2実装）
+### 現在: PluginManager 統合構成（v2.1.0+ 実装）
 
 ```python
 # main_v2.py 内の実装
@@ -69,8 +73,9 @@ plugin_manager.load_plugins_from_directory()
 # GUI に渡す
 gui = StreamNotifyGUI(root, db, plugin_manager)
 
-# GUI 内で使用（複数プラグイン対応）
-results = self.plugin_manager.post_video_with_all_enabled(video)
+# GUI 内で使用（複数プラグイン対応、DRY RUN 対応）
+results = self.plugin_manager.post_video_with_all_enabled(video, dry_run=False)
+# ★ DRY RUN: results = self.plugin_manager.post_video_with_all_enabled(video, dry_run=True)
 ```
 
 ## 統合実装状況（v2で実装済み）
@@ -273,6 +278,53 @@ def execute_post(self):
 
 ※ 削除操作は確認ダイアログで警告し、取り消せない旨を表示します。
   個別削除は右クリックメニューから「🗑️ 削除」で可能です。
+
+### 投稿テスト（DRY RUN） → 投稿設定ウィンドウ フロー（v2.1.0+）
+
+```
+1. ユーザーが「🧪 投稿テスト」または「📤 投稿設定」をクリック
+   ↓
+   StreamNotifyGUI._on_post_settings_clicked()
+   → PostSettingsWindow を起動
+
+2. PostSettingsWindow で設定を調整
+   ├─ ☑ 画像を添付する (True/False)
+   ├─ ☑ 小さい画像を拡大する (True/False)
+   ├─ 画像プレビュー表示
+   └─ 投稿方法を表示
+
+3. ユーザーが「✅ 投稿」をクリック
+   ↓
+   PostSettingsWindow._execute_post(dry_run=False)
+   → plugin_manager.post_video_with_all_enabled(video, dry_run=False)
+   → 各プラグインの post_video() を実行
+   → db.update_selection(selected=False) で DB 更新
+   ↓
+   「✅ 投稿完了」メッセージ表示
+   ↓
+   ウィンドウを閉じる
+
+   または
+
+   ユーザーが「🧪 投稿テスト」をクリック
+   ↓
+   PostSettingsWindow._execute_post(dry_run=True)
+   → plugin_manager.post_video_with_all_enabled(video, dry_run=True)
+   → 画像リサイズ・Facet構築は実行
+   → Blob アップロード・API 呼び出しはスキップ
+   → DB は更新されない
+   ↓
+   「🧪 投稿テスト完了」メッセージ表示
+   ↓
+   ウィンドウを閉じる
+
+```
+
+**関連ドキュメント:**
+- [BLUESKY_PLUGIN_GUIDE.md#4-dry-run投稿テスト機能](./BLUESKY_PLUGIN_GUIDE.md#4-dry-run投稿テスト機能) - DRY RUN 機能の詳細
+- [BLUESKY_PLUGIN_GUIDE.md#5-gui投稿設定ウィンドウ](./BLUESKY_PLUGIN_GUIDE.md#5-gui投稿設定ウィンドウ) - GUI 投稿設定ウィンドウの詳細
+
+---
 
 ## 拡張可能性
 
