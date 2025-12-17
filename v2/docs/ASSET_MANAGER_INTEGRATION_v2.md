@@ -75,53 +75,48 @@ v2/
 ### 2.2 処理フロー
 
 ```
-┌─────────────────────────────────────────────────┐
-│ main_v2.py 起動時                               │
-│ if not VANILLA_MODE:                            │
-│   asset_manager.ensure_assets_initialized()     │
-└────────────────┬────────────────────────────────┘
+┌──────────────────────────────────────────────────┐
+│ main_v2.py 起動時                                │
+│ asset_manager = get_asset_manager()              │
+└────────────────┬─────────────────────────────────┘
                  │
-                 ▼
-        ┌────────────────────┐
-        │ AssetManager 初期化  │
-        └────────┬───────────┘
-                 │
-      ┌──────────┴──────────┐
-      │                     │
-      ▼                     ▼
-┌──────────────┐   ┌──────────────────┐
-│ テンプレート │   │ 画像ファイル      │
-│ 配置確認     │   │ 配置確認          │
-└──────┬───────┘   └────────┬─────────┘
-       │                    │
-       ▼                    ▼
-┌──────────────────────────────────┐
-│ Asset/ 内のファイルを検出         │
-│ - default_template.txt           │
-│ - *.png, *.jpg                   │
-└──────┬───────────────────────────┘
-       │
-       ▼
-┌────────────────────────────────────┐
-│ 配置先ファイルが存在するか？       │
-├────────────────────────────────────┤
-│ YES → スキップ                     │
-│ NO  → コピー処理実行               │
-└──────┬─────────────────────────────┘
-       │
-       ▼
-┌───────────────────────────┐
-│ ファイルコピー実行        │
-│ Asset → templates/        │
-│        → images/          │
-└───────┬───────────────────┘
-        │
-        ▼
-┌─────────────────────────────┐
-│ logs/app.log に結果を記録    │
-│ "✅ コピー: A → B"          │
-│ "ℹ️ スキップ: X (既存)"    │
-└─────────────────────────────┘
+       ┌─────────┴──────────────┐
+       │                        │
+       ▼                        ▼
+┌────────────────┐      ┌──────────────────┐
+│ 自動ロード済み  │      │ 個別プラグイン   │
+│ プラグイン     │      │ (YouTube等)      │
+│ のアセット     │      │ のアセット配置   │
+└────┬───────────┘      └────────┬─────────┘
+     │                           │
+     ▼                           ▼
+┌────────────────────────────────────────┐
+│ deploy_plugin_assets(plugin_name)      │
+│ ↓                                      │
+│ plugin_asset_map から対応を検出        │
+│ - templates: ["youtube", "default"]   │
+│ - images: ["YouTube", "default"]      │
+└────┬───────────────────────────────────┘
+     │
+     ├─→ deploy_templates(services)  ┐
+     │                               ├─→ _copy_directory_recursive()
+     └─→ deploy_images(services)     ┘
+     │
+     ▼
+┌──────────────────────────────────────┐
+│ 既存ファイルをチェック               │
+├──────────────────────────────────────┤
+│ 存在する → スキップ（保護）         │
+│ 存在しない → コピー実行              │
+└────┬─────────────────────────────────┘
+     │
+     ▼
+┌──────────────────────────────────────┐
+│ ファイルコピー完了                   │
+│ logs/app.log に記録                  │
+│ "✅ コピー: A → B"                  │
+│ "ℹ️ スキップ: X (既存)"            │
+└──────────────────────────────────────┘
 ```
 
 ---
@@ -133,23 +128,48 @@ v2/
 **実装例**:
 
 ```python
-# main_v2.py 内
+# main_v2.py 内（実装コード）
 
 def main():
     """アプリケーションのメインエントリポイント"""
 
-    # 1. 設定読み込み
-    config = get_config("settings.env")
+    # AssetManager の初期化（プラグイン導入時に資源を配置）
+    asset_manager = get_asset_manager()
+    logger.info("📦 Asset マネージャーを初期化しました")
 
-    # 2. Vanilla モード判定
-    if not config.VANILLA_MODE:
-        # 3. AssetManager でファイル配置
-        from asset_manager import get_asset_manager
-        asset_manager = get_asset_manager()
-        asset_manager.ensure_assets_initialized()
+    # 自動ロード済みプラグインのアセット配置
+    plugin_files = [f for f in os.listdir("plugins")
+                    if f.endswith(".py") and not f.startswith("_")
+                    and f not in ("bluesky_plugin.py", "niconico_plugin.py", ...)]  # 例外除外
 
-    # 4. 以降の初期化処理...
-    # GUI, Database, Plugins...
+    for pf in plugin_files:
+        plugin_name = pf[:-3]
+        plugin_manager.load_plugin(plugin_name, os.path.join("plugins", pf))
+        plugin_manager.enable_plugin(plugin_name)
+
+        # プラグイン別のアセット配置
+        try:
+            asset_manager.deploy_plugin_assets(plugin_name)
+        except Exception as e:
+            logger.warning(f"プラグイン '{plugin_name}' のアセット配置失敗: {e}")
+
+    # YouTubeAPI プラグイン配置
+    try:
+        plugin_manager.load_plugin("youtube_api_plugin", ...)
+        plugin_manager.enable_plugin("youtube_api_plugin")
+        asset_manager.deploy_plugin_assets("youtube_api_plugin")  # ← YouTube テンプレート配置
+    except Exception as e:
+        logger.debug(f"YouTubeAPI プラグインのロード失敗: {e}")
+
+    # Bluesky プラグイン配置
+    try:
+        plugin_manager.load_plugin("bluesky_plugin", ...)
+        plugin_manager.enable_plugin("bluesky_plugin")
+        asset_manager.deploy_plugin_assets("bluesky_plugin")  # ← デフォルトテンプレート配置（ここで実行）
+    except Exception as e:
+        logger.debug(f"Bluesky プラグインのロード失敗: {e}")
+
+    # 以後の初期化処理...
 ```
 
 ### 3.2 AssetManager の内部構造
@@ -169,155 +189,283 @@ class AssetManager:
         self.image_root = Path(__file__).parent / "images"
         self.logger = get_logger("AssetManager")
 
-    def ensure_assets_initialized(self) -> bool:
+    def deploy_templates(self, services: list = None) -> int:
         """
-        アセットの初期化を保証する。
+        テンプレートをコピー（サービス別）
+
+        Asset/templates/ から templates/{service}/ へコピー。
+        既存ファイルは上書きしない（ユーザー編集を保護）。
+
+        Args:
+            services: コピー対象のサービス一覧 (None = すべて)
+                     例: ["youtube", "default", "niconico"]
 
         Returns:
-            bool: すべてのコピーが成功した場合 True
+            int: コピーしたファイル数
         """
-        success = True
+        logger.debug("📋 テンプレートの配置を開始します...")
+        copy_count = 0
 
-        # テンプレート配置
-        success &= self._copy_default_template()
-        success &= self._copy_plugin_templates()
+        if services is None:
+            # すべてのサービスをコピー
+            services = []
+            if self.templates_src.exists():
+                services = [d.name for d in self.templates_src.iterdir() if d.is_dir()]
 
-        # 画像配置
-        success &= self._copy_images()
+        for service in services:
+            src_service_dir = self.templates_src / service
+            dest_service_dir = self.templates_dest / service
 
-        if success:
-            self.logger.info("✅ アセット初期化完了")
+            if not src_service_dir.exists():
+                logger.debug(f"テンプレートディレクトリが見つかりません: {src_service_dir}")
+                continue
+
+            count = self._copy_directory_recursive(src_service_dir, dest_service_dir)
+            copy_count += count
+            if count > 0:
+                logger.info(f"✅ [{service}] {count} 個のテンプレートをコピーしました")
+
+        if copy_count == 0:
+            logger.debug("テンプレートのコピー対象がありません")
+
+        return copy_count
+
+    def deploy_images(self, services: list = None) -> int:
+        """
+        画像をコピー（サービス別）
+
+        Asset/images/ から images/{service}/ へコピー。
+        サービス名は大文字始まり: default, YouTube, Niconico など
+        既存ファイルは上書きしない。
+
+        Args:
+            services: コピー対象のサービス一覧 (None = すべて)
+                     例: ["default", "YouTube", "Niconico"]
+
+        Returns:
+            int: コピーしたファイル数
+        """
+        logger.debug("🖼️  画像の配置を開始します...")
+        copy_count = 0
+
+        if services is None:
+            # すべてのサービスをコピー
+            services = []
+            if self.images_src.exists():
+                services = [d.name for d in self.images_src.iterdir() if d.is_dir()]
+
+        for service in services:
+            src_service_dir = self.images_src / service
+            dest_service_dir = self.images_dest / service
+
+            if not src_service_dir.exists():
+                logger.debug(f"画像ディレクトリが見つかりません: {src_service_dir}")
+                continue
+
+            count = self._copy_directory_recursive(src_service_dir, dest_service_dir)
+            copy_count += count
+            if count > 0:
+                logger.info(f"✅ [{service}] {count} 個の画像をコピーしました")
+
+        if copy_count == 0:
+            logger.debug("画像のコピー対象がありません")
+
+        return copy_count
+
+    def deploy_plugin_assets(self, plugin_name: str) -> dict:
+        """
+        プラグイン導入時に必要なアセットをコピー
+
+        plugin_asset_map に従い、プラグイン別のテンプレート・画像を配置。
+
+        Args:
+            plugin_name: プラグイン名
+                        例: "youtube_api_plugin", "niconico_plugin", "bluesky_plugin"
+
+        Returns:
+            dict: {"templates": コピー数, "images": コピー数}
+        """
+        logger.debug(f"🔌 プラグイン '{plugin_name}' のアセット配置を確認しています...")
+
+        results = {"templates": 0, "images": 0}
+
+        # プラグイン別のマッピング定義
+        plugin_asset_map = {
+            "youtube_live_plugin": {
+                "templates": ["youtube"],
+                "images": ["YouTube"],
+            },
+            "niconico_plugin": {
+                "templates": ["niconico"],
+                "images": ["Niconico"],
+            },
+            "bluesky_plugin": {
+                "templates": ["default"],      # ← デフォルトテンプレート
+                "images": ["default"],
+            },
+            "youtube_api_plugin": {
+                "templates": ["youtube"],
+                "images": ["YouTube"],
+            },
+        }
+
+        if plugin_name not in plugin_asset_map:
+            logger.debug(f"プラグイン '{plugin_name}' はアセット定義を持ちません")
+            return results
+
+        config = plugin_asset_map[plugin_name]
+
+        # テンプレートをコピー
+        if "templates" in config and config["templates"]:
+            results["templates"] = self.deploy_templates(config["templates"])
+
+        # 画像をコピー
+        if "images" in config and config["images"]:
+            results["images"] = self.deploy_images(config["images"])
+
+        total = results["templates"] + results["images"]
+        if total > 0:
+            logger.info(f"✅ プラグイン '{plugin_name}' の {total} 個のアセットを配置しました")
         else:
-            self.logger.warning("⚠️ 一部アセット配置がスキップされました")
+            logger.debug(f"プラグイン '{plugin_name}' のアセットはすべて配置済みです")
 
-        return success
+        return results
 
-    def _copy_default_template(self) -> bool:
+    def deploy_all(self) -> dict:
         """
-        デフォルトテンプレートを Asset から .templates へコピー。
+        すべてのテンプレート・画像をコピー
 
-        既存ファイルは上書きしない（ユーザー編集を保護）。
+        Asset/ 配下のすべてのテンプレートと画像を templates/ と images/ に配置。
+
+        Returns:
+            dict: {"templates": コピー数, "images": コピー数}
         """
-        src = self.asset_root / "templates" / "default" / "default_template.txt"
-        dst = self.template_root / ".templates" / "default_template.txt"
+        logger.info("🚀 すべてのアセットを配置しています...")
 
-        if not src.exists():
-            self.logger.warning(f"⚠️ ソースなし: {src}")
-            return False
+        templates_count = self.deploy_templates()
+        images_count = self.deploy_images()
 
-        if dst.exists():
-            self.logger.info(f"ℹ️ スキップ: {dst} (既存)")
-            return True
+        logger.info(
+            f"✅ アセット配置完了: テンプレート {templates_count} 個、画像 {images_count} 個"
+        )
 
-        try:
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(src, dst)
-            self.logger.info(f"✅ コピー: {src} → {dst}")
-            return True
-        except Exception as e:
-            self.logger.error(f"❌ コピー失敗: {e}")
-            return False
-
-    def _copy_plugin_templates(self) -> bool:
-        """
-        プラグイン用テンプレートを配置。
-
-        youtube/, niconico/ 等のディレクトリを処理。
-        """
-        service_dirs = ["youtube", "niconico", "twitch"]
-        all_success = True
-
-        for service in service_dirs:
-            src_dir = self.asset_root / "templates" / service
-            dst_dir = self.template_root / service
-
-            if not src_dir.exists():
-                continue  # Asset に存在しないサービスはスキップ
-
-            success = self._copy_directory_recursive(src_dir, dst_dir)
-            all_success &= success
-
-        return all_success
-
-    def _copy_images(self) -> bool:
-        """画像ファイルを配置"""
-        # 同様のロジックで image_root 内のファイルを処理
-        pass
-
-    def _copy_directory_recursive(self, src_dir: Path, dst_dir: Path) -> bool:
-        """
-        ディレクトリをリカーシブにコピー。
-        既存ファイルは保護（上書きしない）。
-        """
-        all_success = True
-
-        for item in src_dir.iterdir():
-            dst_item = dst_dir / item.name
-
-            if item.is_dir():
-                dst_item.mkdir(parents=True, exist_ok=True)
-                success = self._copy_directory_recursive(item, dst_item)
-                all_success &= success
-            elif item.is_file():
-                if dst_item.exists():
-                    self.logger.debug(f"スキップ: {dst_item} (既存)")
-                else:
-                    try:
-                        dst_dir.mkdir(parents=True, exist_ok=True)
-                        shutil.copy2(item, dst_item)
-                        self.logger.info(f"✅ コピー: {item} → {dst_item}")
-                    except Exception as e:
-                        self.logger.error(f"❌ コピー失敗: {e}")
-                        all_success = False
-
-        return all_success
+        return {"templates": templates_count, "images": images_count}
 
 
-def get_asset_manager() -> AssetManager:
-    """AssetManager シングルトンを取得"""
-    global _asset_manager_instance
-    if _asset_manager_instance is None:
-        _asset_manager_instance = AssetManager()
-    return _asset_manager_instance
+def get_asset_manager(asset_dir="Asset", base_dir=".") -> AssetManager:
+    """AssetManager インスタンスを取得"""
+    return AssetManager(asset_dir=asset_dir, base_dir=base_dir)
+```
+
+### 3.3 実装済みメソッド一覧
+
+| メソッド | 用途 | 呼ばれるタイミング |
+|:--|:--|:--|
+| `deploy_templates(services)` | サービス別テンプレート配置 | deploy_plugin_assets から |
+| `deploy_images(services)` | サービス別画像配置 | deploy_plugin_assets から |
+| `deploy_plugin_assets(plugin_name)` | プラグイン別アセット配置 | main_v2.py でプラグイン有効化時 |
+| `deploy_all()` | 全アセット一括配置 | 必要に応じて手動呼び出し可能 |
+| `_copy_directory_recursive(src, dst)` | ディレクトリ再帰コピー | deploy_templates/deploy_images から |
+| `_copy_file(src, dst)` | 単一ファイルコピー | _copy_directory_recursive から |
+| `_ensure_dest_dir(path)` | 宛先ディレクトリ作成 | _copy_file から |
 ```
 
 ---
 
-## 4. テンプレート配置の詳細
+## 4. プラグイン別アセットマッピング
 
-### 4.1 デフォルトテンプレート配置フロー
+### 4.1 plugin_asset_map の構造
 
-**初回起動（.templates/ が存在しない場合）**:
+**asset_manager.py 内の定義**:
 
-```
-起動
-  ↓
-templates/.templates/ 存在確認
-  ↓ (存在しない)
-Asset/templates/default/default_template.txt を検出
-  ↓
-templates/.templates/default_template.txt へコピー
-  ↓
-✅ 次回から .templates/default_template.txt を使用
-```
-
-**2回目以降の起動（.templates/ が存在する場合）**:
-
-```
-起動
-  ↓
-templates/.templates/ 存在確認
-  ↓ (存在する)
-Asset/templates/default/default_template.txt と比較
-  ↓
-identical または ユーザー編集済み
-  ↓
-❌ 上書きしない（保護）
-  ↓
-✅ 既存ファイル継続使用
+```python
+plugin_asset_map = {
+    "youtube_live_plugin": {
+        "templates": ["youtube"],
+        "images": ["YouTube"],
+    },
+    "niconico_plugin": {
+        "templates": ["niconico"],
+        "images": ["Niconico"],
+    },
+    "bluesky_plugin": {
+        "templates": ["default"],       # ← デフォルトテンプレート（全サービス共通フォールバック）
+        "images": ["default"],
+    },
+    "youtube_api_plugin": {
+        "templates": ["youtube"],
+        "images": ["YouTube"],
+    },
+}
 ```
 
-### 4.2 バージョン更新時の動作
+### 4.2 プラグイン別配置一覧
+
+| プラグイン | テンプレート | 画像 | 配置先 | 備考 |
+|:--|:--|:--|:--|:--|
+| `youtube_live_plugin` | youtube/ | YouTube/ | templates/youtube/  images/YouTube/ | YouTube Live 検出用 |
+| `youtube_api_plugin` | youtube/ | YouTube/ | templates/youtube/  images/YouTube/ | YouTube Data API 用 |
+| `niconico_plugin` | niconico/ | Niconico/ | templates/niconico/  images/Niconico/ | ニコニコ対応 |
+| `bluesky_plugin` | **default/** | default/ | templates/.templates/  images/default/ | **デフォルト（フォールバック）** |
+
+### 4.3 デフォルトテンプレート配置タイミング
+
+**重要**: デフォルトテンプレートは **Bluesky プラグイン有効化時**に配置されます
+
+```
+main_v2.py の実行順序
+  ↓
+自動ロード済みプラグイン処理
+  ↓
+YouTubeAPI プラグイン配置  (youtube/ テンプレート配置)
+  ↓
+YouTubeLive プラグイン配置  (youtube/ テンプレート配置)
+  ↓
+Bluesky プラグイン配置  ← ★ ここで default_template.txt が templates/.templates/ へコピーされる
+  ↓
+✅ 初期化完了
+```
+
+---
+
+## 5. テンプレート配置の詳細
+
+### 5.1 デフォルトテンプレート配置フロー
+
+**Bluesky プラグイン有効化時（初回）**:
+
+```
+asset_manager.deploy_plugin_assets("bluesky_plugin")
+  ↓
+plugin_asset_map["bluesky_plugin"] から ["default"] を取得
+  ↓
+deploy_templates(["default"])
+  ↓
+Asset/templates/default/ → templates/.templates/ へコピー
+  ↓
+.templates/default_template.txt が存在するか確認
+  ├─ YES（既存） → スキップ（保護）
+  └─ NO（新規） → コピー実行
+  ↓
+✅ templates/.templates/default_template.txt が配置完了
+```
+
+**次回以降の起動（既存ファイルがある場合）**:
+
+```
+asset_manager.deploy_plugin_assets("bluesky_plugin")
+  ↓
+_copy_directory_recursive が実行
+  ↓
+.templates/default_template.txt 存在確認
+  ├─ YES → dest.exists() = True → スキップ
+  │ "ℹ️ スキップ: templates/.templates/default_template.txt (既存)"
+  └─ NO → コピー
+  ↓
+✅ ユーザー編集ファイルは保護される
+```
+
+### 5.2 バージョン更新時の動作
 
 **Asset 内のテンプレートが更新された場合**:
 
@@ -346,59 +494,92 @@ templates/.templates/default_template.txt はユーザー編集済み
 
 ---
 
-## 5. ログ出力例
+## 6. ログ出力例
 
-### 5.1 初回起動時
-
-```
-2025-12-18 14:30:05 [AssetManager] ✅ コピー: Asset/templates/default/default_template.txt → templates/.templates/default_template.txt
-2025-12-18 14:30:05 [AssetManager] ✅ コピー: Asset/templates/youtube/yt_new_video_template.txt → templates/youtube/yt_new_video_template.txt
-2025-12-18 14:30:05 [AssetManager] ✅ コピー: Asset/images/default/logo.png → images/default/logo.png
-2025-12-18 14:30:05 [AssetManager] ✅ アセット初期化完了
-```
-
-### 5.2 既存ファイルがある場合
+### 6.1 初回起動時（プラグイン別配置）
 
 ```
-2025-12-18 14:32:15 [AssetManager] ℹ️ スキップ: templates/.templates/default_template.txt (既存)
-2025-12-18 14:32:15 [AssetManager] ℹ️ スキップ: templates/youtube/yt_new_video_template.txt (既存)
-2025-12-18 14:32:15 [AssetManager] ✅ アセット初期化完了
+[INFO] 📦 Asset マネージャーを初期化しました
+
+[DEBUG] 🔌 プラグイン 'youtube_api_plugin' のアセット配置を確認しています...
+[DEBUG] 📋 テンプレートの配置を開始します...
+[DEBUG] ✅ ファイルをコピーしました: yt_new_video_template.txt -> templates/youtube/yt_new_video_template.txt
+[INFO] ✅ [youtube] 1 個のテンプレートをコピーしました
+[DEBUG] 🖼️  画像の配置を開始します...
+[DEBUG] ✅ ファイルをコピーしました: thumbnail.png -> images/YouTube/thumbnail.png
+[INFO] ✅ [YouTube] 1 個の画像をコピーしました
+[INFO] ✅ プラグイン 'youtube_api_plugin' の 2 個のアセットを配置しました
+
+[DEBUG] 🔌 プラグイン 'bluesky_plugin' のアセット配置を確認しています...
+[DEBUG] 📋 テンプレートの配置を開始します...
+[DEBUG] ✅ ファイルをコピーしました: default_template.txt -> templates/.templates/default_template.txt
+[INFO] ✅ [default] 1 個のテンプレートをコピーしました
+[INFO] ✅ プラグイン 'bluesky_plugin' の 1 個のアセットを配置しました
 ```
 
-### 5.3 エラーが発生した場合
+### 6.2 既存ファイルがある場合（2回目起動）
 
 ```
-2025-12-18 14:35:00 [AssetManager] ⚠️ ソースなし: Asset/templates/default/default_template.txt
-2025-12-18 14:35:00 [AssetManager] ❌ コピー失敗: Permission denied
-2025-12-18 14:35:00 [AssetManager] ⚠️ 一部アセット配置がスキップされました
+[INFO] 📦 Asset マネージャーを初期化しました
+
+[DEBUG] 🔌 プラグイン 'youtube_api_plugin' のアセット配置を確認しています...
+[DEBUG] 📋 テンプレートの配置を開始します...
+[DEBUG] 既に存在するため、スキップしました: templates/youtube/yt_new_video_template.txt
+[DEBUG] テンプレートのコピー対象がありません
+[DEBUG] 🖼️  画像の配置を開始します...
+[DEBUG] 既に存在するため、スキップしました: images/YouTube/thumbnail.png
+[DEBUG] 画像のコピー対象がありません
+[DEBUG] プラグイン 'youtube_api_plugin' のアセットはすべて配置済みです
+
+[DEBUG] 🔌 プラグイン 'bluesky_plugin' のアセット配置を確認しています...
+[DEBUG] 📋 テンプレートの配置を開始します...
+[DEBUG] 既に存在するため、スキップしました: templates/.templates/default_template.txt
+[DEBUG] テンプレートのコピー対象がありません
+[DEBUG] プラグイン 'bluesky_plugin' のアセットはすべて配置済みです
+```
+
+### 6.3 エラーが発生した場合
+
+```
+[WARNING] ディレクトリ作成失敗 templates/youtube: Permission denied
+[WARNING] ファイルコピー失敗 Asset/templates/youtube/yt_new_video_template.txt -> templates/youtube/yt_new_video_template.txt: Permission denied
+[WARNING] プラグイン 'youtube_api_plugin' のアセット配置失敗: Permission denied
 ```
 
 ---
 
-## 6. Vanilla モード時の動作
+## 7. Vanilla モード時の動作
 
 **VANILLA_MODE = True の場合**:
 
+AssetManager は常に初期化されますが、プラグイン自体が無効化されるため、実質的にアセット配置は行われません。
+
 ```python
-if not VANILLA_MODE:
-    asset_manager.ensure_assets_initialized()  # ← 実行されない
-else:
-    # Vanilla モード（Asset 処理スキップ）
-    # template_utils.py が templates/.templates/default_template.txt を直接参照
+# main_v2.py では条件判定なく常に AssetManager を初期化
+asset_manager = get_asset_manager()
+
+# ただし config.VANILLA_MODE = True の場合、プラグインが無効化されるため
+# deploy_plugin_assets() は呼ばれないか、呼ばれても無視されます
+
+# template_utils.py は templates/.templates/default_template.txt を直接参照
+# Asset からのコピーは行われない（既存ファイルを使用）
 ```
 
-Vanilla モード時は AssetManager が起動せず、既存ファイルのみを使用します。
+Vanilla モード時の動作：
+- AssetManager は初期化されるが、プラグイン配置は実行されない
+- 既存の templates/ ディレクトリ内ファイルのみを使用
+- Asset フォルダは参照されない
 
 ---
 
-## 7. トラブルシューティング
+## 8. トラブルシューティング
 
 ### Q: テンプレートが更新されない
 
 **A**: 以下を確認してください：
 
-1. `Asset/templates/default/default_template.txt` が更新されているか
-2. `templates/.templates/` 内のファイルを削除し、再起動してみる
+1. `Asset/templates/` 内のテンプレートが更新されているか
+2. プラグインが正しく有効化されているか
 3. `logs/app.log` でエラーメッセージを確認
 
 ### Q: 既存テンプレートが上書きされた
@@ -420,15 +601,21 @@ Vanilla モード時は AssetManager が起動せず、既存ファイルのみ�
 
 ---
 
-## 8. まとめ
+## 9. まとめ
 
 | 項目 | 説明 |
 |:--|:--|
-| **役割** | Asset → templates/ への自動配置 |
-| **呼び出し元** | main_v2.py |
-| **実行タイミング** | アプリケーション起動時（VANILLA_MODE でない場合） |
-| **保護戦略** | 既存ユーザーファイルは上書きしない |
+| **役割** | Asset → templates/ への段階的自動配置 |
+| **呼び出し元** | main_v2.py（プラグイン有効化時） |
+| **実行タイミング** | プラグイン導入・有効化時に個別配置 |
+| **配置方式** | `deploy_plugin_assets(plugin_name)` でプラグイン別に配置 |
+| **デフォルト配置** | Bluesky プラグイン有効化時に実行 |
+| **保護戦略** | 既存ユーザーファイルは上書きしない（`dest.exists()` チェック） |
 | **ログ記録** | すべての操作を `logs/app.log` に記録 |
-| **拡張性** | テンプレート・画像の追加は Asset/ に配置するだけ |
+| **拡張性** | テンプレート・画像の追加は Asset/ に配置、plugin_asset_map に登録 |
 
-AssetManager により、配布と実行時テンプレートの分離が実現され、ユーザーのカスタマイズを安全に保ちながら、更新配布が可能になります。
+AssetManager により、配布と実行時テンプレートの分離が実現され、以下が可能になります：
+- 🔐 ユーザーのカスタマイズテンプレートを安全に保護
+- 📦 プラグイン導入時に必要なアセットのみ自動配置
+- 🔄 バージョン更新時に新テンプレート配布が容易
+- 🛠️ 既存ユーザー環境への影響を最小化
