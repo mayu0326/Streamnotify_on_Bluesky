@@ -6,7 +6,7 @@
 |-----------|------|-----------------|---------|
 | `main_v2.py` | コア | アプリ起動・メインループ・GUI統合・プラグイン管理 | 単体実行（エントリーポイント） |
 | `config.py` | コア | 設定読み込み・バリデーション（拡張設定項目対応） | main_v2.py |
-| `database.py` | コア | SQLite 操作・動画管理（拡張カラム対応） | main_v2.py、youtube_rss.py、bluesky_plugin.py |
+| `database.py` | コア | SQLite 操作・動画管理（拡張カラム対応、**content_type/live_status 値正規化**） | main_v2.py、youtube_rss.py、bluesky_plugin.py |
 | `youtube_rss.py` | コア | RSS 取得・パース | main_v2.py |
 | `plugin_interface.py` | コア | NotificationPlugin 抽象基底クラス（プラグイン定義） | すべてのプラグイン |
 | `plugin_manager.py` | コア | プラグイン自動検出・読み込み・管理 | main_v2.py |
