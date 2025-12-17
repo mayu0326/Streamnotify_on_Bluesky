@@ -1,5 +1,8 @@
 ﻿# プラグインアーキテクチャの説明
 
+> **対象バージョン**: v2.1.0 時点  
+> **最終更新**: 2025-12-17
+
 ## 概要
 
 Streamnotify_on_Bluesky は、拡張性を重視したプラグインアーキテクチャを採用しています。
@@ -145,6 +148,18 @@ manager.enable_plugin("twitch")
 
 ## 実装済み情報
 
+### 完成済みプラグイン
+- **Bluesky 投稿プラグイン** (`bluesky_plugin.py`): RichText/Facet 対応、画像添付、DRY RUN 対応
+- **YouTube Data API プラグイン** (`youtube_api_plugin.py`): YouTube API 連携
+- **ニコニコ動画プラグイン** (`niconico_plugin.py`): ニコニコ RSS 監視
+- **ロギング拡張プラグイン** (`logging_plugin.py`): 統合ロギング管理
+
+### 実験的プラグイン
+- **YouTube Live 判定プラグイン** (`youtube_live_plugin.py`) ⚠️
+  - **ステータス**: v2 では実験的プラグインであり、ライブ状態の判定ロジックは**未実装**です。
+  - **今後**: v2.x / v3 での拡張を予定しています。
+
+### プラグイン管理
 - **プラグイン管理**: `plugin_manager.py` が自動ロード方式をサポート
 - **自動ロードプラグイン**: `bluesky_plugin.py`（Bluesky 投稿拡張）、`youtube_api_plugin.py`（YouTube API）、`youtube_live_plugin.py`（YouTube ライブ判定）、`niconico_plugin.py`（ニコニコ監視）、`logging_plugin.py`（ロギング管理）
 - **Asset ディレクトリ**: テンプレート・画像管理用（プラグイン導入時の自動配置機構は `asset_manager.py` で実装完了: 2025-12）
