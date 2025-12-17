@@ -41,7 +41,15 @@ v2 テンプレートシステムは、複数の配信プラットフォーム�
 - テンプレート側では、これらの値を信頼できます（無効な値は到達しません）。
 - `live_status` が `None` の場合は、通常の動画投稿（`content_type="video"`）です。
 
-### 1.3 ファイルパスと命名規則
+### 1.3 デフォルトテンプレートについて
+
+**重要な注記**:
+- v2 のデフォルトテンプレート（フォールバック用）は **`templates/.templates/default_template.txt`** を参照します。
+- `template_utils.py` は `TEMPLATE_ROOT / ".templates" / "default_template.txt"` の相対パスで直接参照しており、実行時に使用されます。
+- `Asset/templates/default/default_template.txt` は **配布用の元ソース**として機能します。`AssetManager` が初回起動時やプラグイン導入時に、このファイルを `v2/templates/.templates/` にコピーする際のソースです。
+- つまり、Asset フォルダと実行時テンプレートディレクトリは別管理になっています。
+
+### 1.4 ファイルパスと命名規則
 
 テンプレートファイルは以下のディレクトリ構成で管理されます：
 
@@ -68,9 +76,113 @@ v2/
 
 ---
 
-## 2. YouTube 関連テンプレート
+## 2. テンプレートファイルの配置ポリシー
 
-### 2.1 新着動画投稿（yt_new_video）
+### 2.1 3 つのテンプレートファイルの役割
+
+v2 テンプレートシステムでは、テンプレートファイルが 3 つの階層に分かれています：
+
+| 層 | パス | 役割 | 管理者 | 用途 |
+|:--|:--|:--|:--|:--|
+| **配布ソース** | `Asset/templates/default/default_template.txt` | 配布用の元テンプレート | リポジトリ保守者 | 初回配置・更新配布用 |
+| **サービス別実行時** | `templates/{service}/` (e.g., `templates/youtube/`) | 実行時に使用するサービス別テンプレート | ユーザー（編集可能） | YouTube/ニコニコなど別の投稿形式 |
+| **全サービス共通フォールバック** | `templates/.templates/default_template.txt` | 全プラットフォーム共通デフォルト | コード側で直接参照 | エラー時・ユーザー未設定時 |
+
+### 2.2 コード上での参照構造
+
+**template_utils.py における相対パス設定**:
+
+```python
+TEMPLATE_ROOT = Path(__file__).parent / "templates"
+DEFAULT_TEMPLATE_DIR = TEMPLATE_ROOT / ".templates"
+DEFAULT_TEMPLATE_PATH = DEFAULT_TEMPLATE_DIR / "default_template.txt"
+```
+
+これにより、`template_utils.py` は以下のロジックで動作します：
+
+1. **通常時**: ユーザーが指定したテンプレートパス（`templates/youtube/yt_new_video_template.txt` など）を使用
+2. **フォールバック時**: `templates/.templates/default_template.txt` に自動的に切り替え
+3. **コード側参照**: Asset フォルダとは無関係に、`templates/.templates/` を直接参照
+
+### 2.3 AssetManager による配置フロー
+
+**図: AssetManager 初期化フロー**
+
+```
+起動時 (main_v2.py)
+   ↓
+AssetManager が初期化
+   ↓
+Asset/templates/default/default_template.txt を検出
+   ↓
+templates/.templates/default_template.txt が存在するか確認
+   ↓ (存在しない場合)
+Asset/templates/default/default_template.txt を
+templates/.templates/default_template.txt へコピー
+   ↓
+✅ 配置完了
+```
+
+**重要**: Asset フォルダと実行時ディレクトリは独立しており、以下のような特性があります：
+
+- **Asset**: ソース管理（Git で管理、ユーザーは直接編集しない）
+- **templates/**: 実行時用（ユーザーが GUI で編集可能）
+- **.templates/**: 共通フォールバック（コード側で直接参照、ユーザーが意識する必要はない）
+
+### 2.4 ディレクトリ構成の全体像
+
+```
+v2/
+├── Asset/                                          # 配布用ソースディレクトリ
+│   ├── templates/
+│   │   ├── default/
+│   │   │   └── default_template.txt               # ← 配布用の元テンプレート
+│   │   ├── youtube/
+│   │   └── niconico/
+│   └── images/
+│
+├── templates/                                      # 実行時テンプレートディレクトリ
+│   ├── youtube/                                   # ← ユーザーが編集するサービス別テンプレート
+│   │   ├── yt_new_video_template.txt
+│   │   ├── yt_online_template.txt
+│   │   └── yt_offline_template.txt
+│   ├── niconico/
+│   │   └── nico_new_video_template.txt
+│   ├── twitch/                                    # （将来実装予定）
+│   │   ├── twitch_online_template.txt
+│   │   ├── twitch_offline_template.txt
+│   │   └── twitch_raid_template.txt
+│   └── .templates/                                # ← 共通フォールバック専用
+│       └── default_template.txt                  # ← 全サービス共通デフォルト
+│
+└── asset_manager.py                               # ← Asset ディレクトリからのコピー処理
+```
+
+### 2.5 更新・カスタマイズパターン
+
+**パターン 1: デフォルトテンプレートのみ使用（推奨初期状態）**
+
+1. `templates/.templates/default_template.txt` が自動配置される
+2. コード側でフォールバックとして使用
+3. ユーザーが編集の必要はない
+
+**パターン 2: YouTube 用カスタムテンプレート**
+
+1. ユーザーが `templates/youtube/yt_new_video_template.txt` を作成・編集
+2. `template_utils.py` が `templates/youtube/` 配下を優先的に参照
+3. Asset フォルダとは無関係に動作
+
+**パターン 3: バージョン更新によるデフォルト更新**
+
+1. リポジトリメンテナーが `Asset/templates/default/default_template.txt` を更新
+2. 次回起動時に `AssetManager` が検出
+3. ユーザーが削除を許可した場合のみ新版がコピーされる（通常はスキップ）
+
+---
+
+## 3. YouTube 関連テンプレート
+
+### 3.1 新着動画投稿（yt_new_video）
 
 **ファイルパス**: `templates/youtube/yt_new_video_template.txt`
 **イベント**: RSS 取得による新着動画の投稿
