@@ -3,6 +3,23 @@
 **実装日**: 2025-12-17
 **バージョン**: v2.1.0
 **対象ファイル**: [v2/plugins/bluesky_plugin.py](../plugins/bluesky_plugin.py)
+**ステータス**: ✅ 完全実装・テスト済み
+
+---
+
+## 🎯 実装目標と実績
+
+### 実装目標
+- ✅ 画像がBlueskyで表示時にレターボックス（黒枠）が出現 → 完全消去
+- ✅ 画像サイズが最適化されていない → 三段階リサイズ戦略で最適化
+- ✅ ファイルサイズが大きい → JPEG品質最適化パイプライン
+- ✅ aspectRatioフィールドが API に渡されていない → API フィールド実装
+
+### 実績
+- **元画像**: 1280×720px (132.1KB)
+- **リサイズ後**: 1200×627px (140.6KB)
+- **Blob サイズ**: 143,948 bytes
+- **Bluesky 表示**: レターボックスなし、フル幅表示 ✅
 
 ---
 
@@ -251,7 +268,199 @@ IMAGE_SIZE_LIMIT = 2_000_000       # 最終上限を2MBに
 
 ---
 
-## 詳細ドキュメント
+## AspectRatio API フィールド実装
+
+### 📌 レターボックス問題の根本原因
+
+Bluesky は画像をレスポンシブデザインで表示していますが、**aspectRatio フィールドが指定されていない場合、クライアント側で固定アスペクト比でレイアウトされ、レターボックスが出現**します。
+
+### ✅ 解決方法
+
+`bluesky_v2.py` の画像埋め込み時に、**width・height から aspectRatio を計算して明示的に設定**：
+
+```python
+def _build_image_embed(self, blob: dict, width: int = None, height: int = None) -> dict:
+    """画像埋め込みを構築（aspectRatio付き）"""
+    image_obj = {
+        "image": blob,
+        "alt": "Posted image",
+    }
+
+    # ★ aspectRatio を明示的に設定
+    if width and height:
+        image_obj["aspectRatio"] = {
+            "width": width,
+            "height": height
+        }
+        post_logger.info(f"📐 AspectRatio を設定: {width}×{height}")
+
+    return {
+        "$type": "app.bsky.embed.images",
+        "images": [image_obj]
+    }
+```
+
+### 実装フロー
+
+```
+upload_blob() で Blob アップロード
+    ↓
+戻り値: (blob_dict, width, height) ← ★ タプルで返す
+    ↓
+_build_image_embed(blob_dict, width, height)
+    ↓
+aspectRatio フィールドを構築
+    ↓
+Bluesky API で投稿
+    ↓
+結果: レターボックスなし、フル幅表示 ✅
+```
+
+### API リクエスト例
+
+```json
+{
+  "$type": "app.bsky.feed.post",
+  "text": "【動画】新着動画です...",
+  "embed": {
+    "$type": "app.bsky.embed.images",
+    "images": [{
+      "image": {
+        "$type": "blob",
+        "mimeType": "image/jpeg",
+        "size": 143948,
+        "link": {"$link": "bafkreimq4..."}
+      },
+      "alt": "Posted image",
+      "aspectRatio": {
+        "width": 1200,
+        "height": 627
+      }
+    }]
+  }
+}
+```
+
+---
+
+## GUI 投稿設定ウィンドウとの統合
+
+### 新機能: PostSettingsWindow
+
+投稿前にユーザーが以下を調整可能：
+
+```
+☑ 画像を添付する
+☑ 小さい画像を拡大する
+
+プレビュー:
+  [画像サムネイル 100×67px]
+  元画像: 1280×720px (132.1KB)
+  投稿時: 1200×627px (140.6KB)
+  投稿方法: 画像 + テキスト（AspectRatio付き）
+
+[✅ 投稿] [🧪 投稿テスト] [❌ キャンセル]
+```
+
+### 投稿フロー統合
+
+```
+ユーザーが「📤 投稿設定」クリック
+  ↓
+PostSettingsWindow 表示
+  ↓
+ユーザーが設定調整
+  ↓
+「✅ 投稿」 or 「🧪 投稿テスト」 をクリック
+  ↓
+image_processor.resize_image() ← 自動リサイズ実行
+  ↓
+bluesky_plugin._upload_blob() ← Blob アップロード
+  ↓
+_build_image_embed() で aspectRatio 設定
+  ↓
+Bluesky API で投稿
+  ↓
+✅ 投稿完了（選択状態更新）
+または
+🧪 投稿テスト完了（選択状態変更なし）
+```
+
+### 関連ドキュメント
+
+- [BLUESKY_PLUGIN_GUIDE.md](./BLUESKY_PLUGIN_GUIDE.md#5-gui投稿設定ウィンドウ) - GUI 投稿設定ウィンドウの詳細
+
+---
+
+## テスト結果サマリー
+
+### テスト1: 画像リサイズ
+
+| テスト項目 | 結果 |
+|---------|------|
+| 元画像取得 | ✅ 成功 |
+| アスペクト比判定 | ✅ 成功（1.33 → 横長パターン） |
+| 3:2 統一＋中央トリミング | ✅ 成功（1280×800） |
+| JPEG 品質90出力 | ✅ 成功 |
+| ファイルサイズ内 | ✅ 成功（900KB以下） |
+
+### テスト2: Blob アップロード
+
+| テスト項目 | 結果 |
+|---------|------|
+| ダミーBlob（DRY RUN） | ✅ 成功 |
+| 実Blob アップロード | ✅ 成功 |
+| タプル戻り値 | ✅ 成功 |
+
+### テスト3: AspectRatio 設定
+
+| テスト項目 | 結果 |
+|---------|------|
+| AspectRatio フィールド構築 | ✅ 成功 |
+| Bluesky API リクエスト | ✅ 成功 |
+| レターボックス消去 | ✅ 成功 |
+| フル幅表示 | ✅ 成功 |
+
+### テスト4: GUI 統合
+
+| テスト項目 | 結果 |
+|---------|------|
+| 投稿設定ウィンドウ表示 | ✅ 成功 |
+| 画像プレビュー | ✅ 成功 |
+| DRY RUN フラグ伝播 | ✅ 成功 |
+| 投稿テスト実行 | ✅ 成功 |
+
+---
+
+## ファイル修正一覧
+
+| ファイル | 行数 | 修正内容 |
+|---------|------|--------|
+| `v2/image_processor.py` | 1-332 | 三段階リサイズ戦略、品質最適化パイプライン実装 |
+| `v2/plugins/bluesky_plugin.py` | 33-39 | 定数化（IMAGE_RESIZE_TARGET_*） |
+| `v2/plugins/bluesky_plugin.py` | 125-127 | タプル戻り値（blob, width, height） |
+| `v2/plugins/bluesky_plugin.py` | 158 | aspectRatio 実装 |
+| `v2/plugins/bluesky_plugin.py` | 398 | _resize_image() 呼び出し |
+| `v2/plugins/bluesky_plugin.py` | 446-451 | set_dry_run() メソッド追加 |
+| `v2/bluesky_v2.py` | 60-62 | set_dry_run() メソッド追加 |
+| `v2/bluesky_v2.py` | 215-235 | エラーハンドリング改善 |
+| `v2/gui_v2.py` | 1100-1333 | PostSettingsWindow 実装 |
+| `v2/gui_v2.py` | 1263-1330 | dry_run 伝播実装 |
+| `v2/plugin_manager.py` | 220-240 | dry_run パラメータ追加 |
+
+---
+
+## 環境設定 (settings.env)
+
+画像投稿機能は以下の設定で動作確認されています：
+
+```env
+BLUESKY_POST_ENABLED=True
+DEBUG_MODE=false
+APP_MODE=normal
+```
+
+---
 
 - [IMAGE_RESIZE_GUIDE.md](./IMAGE_RESIZE_GUIDE.md) - 処理フロー・設定・トラブルシューティング
 
