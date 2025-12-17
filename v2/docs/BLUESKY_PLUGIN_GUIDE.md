@@ -10,8 +10,10 @@
 1. [Rich Text Facet（リンク化）](#1-rich-text-facetリンク化)
 2. [画像付き投稿](#2-画像付き投稿)
 3. [リンクカード埋め込み](#3-リンクカード埋め込み)
-4. [実装チェックリスト](#4-実装チェックリスト)
-5. [トラブルシューティング](#5-トラブルシューティング)
+4. [DRY RUN（投稿テスト）機能](#4-dry-run投稿テスト機能)
+5. [GUI投稿設定ウィンドウ](#5-gui投稿設定ウィンドウ)
+6. [実装チェックリスト](#6-実装チェックリスト)
+7. [トラブルシューティング](#7-トラブルシューティング)
 
 ---
 
@@ -750,7 +752,494 @@ def build_external_embed(url: str) -> dict:
 
 ---
 
-## 4. 実装チェックリスト
+## 4. DRY RUN（投稿テスト）機能
+
+### 📋 概要
+
+DRY RUN（投稿テスト）機能により、実際には Bluesky に投稿せず、**投稿処理をシミュレート** することができます。
+これにより、本投稿前にテンプレート・リサイズ処理・リンクカード設定などの確認ができます。
+
+### ✅ v2.1.0+ での実装
+
+#### 実装コンポーネント
+
+| ファイル | 実装内容 |
+|---------|--------|
+| `plugins/bluesky_plugin.py` | `set_dry_run()` メソッド追加 |
+| `bluesky_v2.py` | `set_dry_run()` メソッド追加、ダミーデータ返却 |
+| `plugin_manager.py` | `post_video_with_all_enabled()` に `dry_run` パラメータ追加 |
+| `gui_v2.py` | 投稿設定ウィンドウで「🧪 投稿テスト」ボタン実装 |
+
+#### フラグの伝播フロー
+
+```
+GUI: 「🧪 投稿テスト」ボタン をクリック
+  ↓
+gui_v2.py: _execute_post(dry_run=True) を呼び出し
+  ↓
+plugin_manager.post_video_with_all_enabled(video, dry_run=True)
+  ↓
+bluesky_plugin.set_dry_run(True) 実行
+  ↓
+bluesky_v2.set_dry_run(True) 実行
+  ↓
+投稿処理実行
+  ├─ テキスト・Facet は通常通り構築
+  ├─ 画像処理は通常通り実行（リサイズ・品質最適化）
+  ├─ Blob アップロードはダミーデータで代替
+  └─ API.createRecord は実行「しない」
+  ↓
+結果: ログに投稿内容が記録され、DB は更新「されない」
+```
+
+#### 実装方法
+
+**1. プラグインに `set_dry_run()` メソッドを追加**
+
+```python
+# plugins/bluesky_plugin.py
+def set_dry_run(self, dry_run: bool):
+    """ドライランモードを設定"""
+    self.dry_run = dry_run
+    if hasattr(self.minimal_poster, 'set_dry_run'):
+        self.minimal_poster.set_dry_run(dry_run)
+    logger.info(f"🧪 Bluesky プラグイン DRY RUN モード: {dry_run}")
+```
+
+**2. コアモジュールに `set_dry_run()` メソッドを追加**
+
+```python
+# bluesky_v2.py
+def set_dry_run(self, dry_run: bool):
+    """ドライランモードを設定"""
+    self.dry_run = dry_run
+    logger.info(f"🧪 Bluesky コア DRY RUN モード: {dry_run}")
+```
+
+**3. API呼び出し時に DRY RUN チェック**
+
+```python
+# bluesky_v2.py::post_video_minimal()
+def post_video_minimal(self, video: dict) -> bool:
+    # ... 投稿データ構築 ...
+
+    if self.dry_run:
+        post_logger.info(f"🧪 [DRY RUN] 投稿をシミュレート")
+        post_logger.info(f"投稿テキスト: {post_data['record']['text'][:100]}...")
+        return True  # ★ API呼び出しはしない
+
+    # 通常投稿
+    response = requests.post(
+        "https://bsky.social/xrpc/com.atproto.repo.createRecord",
+        # ...
+    )
+    return response.status_code == 200
+```
+
+**4. Blob アップロード時のダミーデータ**
+
+```python
+# bluesky_v2.py::_upload_blob()
+def _upload_blob(self, file_path: str) -> tuple:
+    # DRY RUN モード時はダミー blob を返す
+    if self.dry_run:
+        post_logger.info(f"🧪 [DRY RUN] 画像アップロード（スキップ）: {file_path}")
+        dummy_blob = {
+            "$type": "blob",
+            "mimeType": "image/jpeg",
+            "size": 143948,
+            "link": {"$link": "bafkreidummy_for_test"}
+        }
+        return (dummy_blob, 1200, 627)  # ★ タプルで返す
+
+    # 通常のアップロード処理
+    # ...
+```
+
+**5. プラグインマネージャーで dry_run フラグを伝播**
+
+```python
+# plugin_manager.py
+def post_video_with_all_enabled(self, video: dict, dry_run: bool = False) -> Dict[str, bool]:
+    """
+    すべての有効なプラグインで動画をポスト
+
+    Args:
+        video: 動画情報辞書
+        dry_run: DRY RUN モード（デフォルト: False）
+    """
+    results = {}
+
+    for plugin_name, plugin in self.enabled_plugins.items():
+        # ★ dry_run フラグをプラグインに設定
+        if hasattr(plugin, 'set_dry_run'):
+            plugin.set_dry_run(dry_run)
+
+        # 投稿実行
+        result = plugin.post_video(video)
+        results[plugin_name] = result
+
+    return results
+```
+
+**6. GUI から DRY RUN フラグを渡す**
+
+```python
+# gui_v2.py
+def _execute_post(self, dry_run=False):
+    """投稿を実行"""
+    # ...
+    if use_image:
+        # ★ dry_run フラグを渡す
+        results = self.plugin_manager.post_video_with_all_enabled(
+            video_with_settings,
+            dry_run=dry_run
+        )
+    else:
+        # ★ dry_run フラグを設定
+        if hasattr(self.bluesky_core, 'set_dry_run'):
+            self.bluesky_core.set_dry_run(dry_run)
+
+    # ...
+```
+
+#### DRY RUN vs 本投稿の動作比較
+
+| 動作 | DRY RUN | 本投稿 |
+|------|--------|--------|
+| テキスト構築 | ✅ 実行 | ✅ 実行 |
+| Facet 構築 | ✅ 実行 | ✅ 実行 |
+| 画像リサイズ | ✅ 実行 | ✅ 実行 |
+| 画像品質最適化 | ✅ 実行 | ✅ 実行 |
+| Blob アップロード | ❌ ダミーデータ | ✅ 実行 |
+| API.createRecord | ❌ スキップ | ✅ 実行 |
+| DB 更新 | ❌ 更新なし | ✅ selected=False 更新 |
+| ユーザーフィードバック | 🧪 テスト完了 | ✅ 投稿完了 |
+
+#### ログ出力例
+
+**DRY RUN 実行時:**
+```
+2025-12-17 10:15:30,001 [INFO] 🧪 Bluesky プラグイン DRY RUN モード: True
+2025-12-17 10:15:30,150 [INFO] 🧪 [DRY RUN] 画像アップロード（スキップ）: /path/to/image.jpg
+2025-12-17 10:15:30,200 [INFO] 🧪 [DRY RUN] 投稿をシミュレート
+2025-12-17 10:15:30,201 [INFO] 投稿テキスト: 【Twitch同時配信】新着動画です...
+2025-12-17 10:15:30,202 [INFO] 🧪 投稿テスト完了
+```
+
+#### 実装ファイル
+
+| ファイル | 行数 | 実装内容 |
+|---------|------|--------|
+| `plugins/bluesky_plugin.py` | 446-451 | `set_dry_run()` メソッド |
+| `bluesky_v2.py` | 60-62, 215-235 | `set_dry_run()` メソッド、ダミーデータ戻り値 |
+| `plugin_manager.py` | 220-240 | `dry_run` パラメータ伝播 |
+| `gui_v2.py` | 1263-1330 | 「🧪 投稿テスト」ボタン実装 |
+
+---
+
+## 5. GUI投稿設定ウィンドウ
+
+### 📋 概要
+
+投稿設定ウィンドウ（`PostSettingsWindow`）により、ユーザーは投稿前に以下を調整できます：
+
+- **画像添付の有無** - 画像を含める / テキスト+URLのみ
+- **画像リサイズ設定** - 小さい画像を拡大するか
+- **投稿方法の選択** - 本投稿 / テスト投稿
+- **画像プレビュー表示** - 実際に投稿される画像を確認
+
+### ✅ v2.1.0+ での実装
+
+#### GUI レイアウト
+
+```
+┌───────────────────────────────────────────────────────────────┐
+│ 投稿設定 - [動画タイトル]                                    │
+├───────────────────────────────────────────────────────────────┤
+│                                                               │
+│ ☑ 画像を添付する                                              │
+│                                                               │
+│ ☑ 小さい画像を拡大する                                        │
+│                                                               │
+│ ┌─ プレビュー ─────────────────────────────────────────────┐  │
+│ │  [画像サムネイル 100×67px]                               │  │
+│ │                                                           │  │
+│ │  元画像: 1280×720px (132.1KB)                            │  │
+│ │  投稿時: 1200×627px (140.6KB)                            │  │
+│ │  投稿方法: 画像 + テキスト（AspectRatio付き）            │  │
+│ └─────────────────────────────────────────────────────────┘  │
+│                                                               │
+├───────────────────────────────────────────────────────────────┤
+│ [✅ 投稿] [🧪 投稿テスト] [❌ キャンセル]                     │
+└───────────────────────────────────────────────────────────────┘
+```
+
+#### 実装方法
+
+**1. 投稿設定ウィンドウクラス定義**
+
+```python
+# gui_v2.py
+class PostSettingsWindow:
+    """投稿前の設定を調整するウィンドウ"""
+
+    def __init__(self, parent, video, image_path, plugin_manager, db):
+        self.window = tk.Toplevel(parent)
+        self.window.title(f"投稿設定 - {video['title'][:40]}")
+        self.window.geometry("600x500")
+        self.window.resizable(False, False)
+
+        self.video = video
+        self.image_path = image_path
+        self.plugin_manager = plugin_manager
+        self.db = db
+
+        # チェックボックス状態
+        self.use_image_var = tk.BooleanVar(value=True)
+        self.resize_small_var = tk.BooleanVar(value=True)
+
+        self._setup_ui()
+
+    def _setup_ui(self):
+        """UI をセットアップ"""
+        # チェックボックス
+        ttk.Checkbutton(
+            self.window,
+            text="画像を添付する",
+            variable=self.use_image_var,
+            command=self._on_image_toggle
+        ).pack(pady=10)
+
+        ttk.Checkbutton(
+            self.window,
+            text="小さい画像を拡大する",
+            variable=self.resize_small_var
+        ).pack(pady=5)
+
+        # プレビューフレーム
+        preview_frame = ttk.LabelFrame(self.window, text="プレビュー")
+        preview_frame.pack(pady=10, padx=10, fill="both", expand=True)
+
+        # 画像プレビュー
+        self._load_preview_image(preview_frame)
+
+        # 投稿方法情報
+        info_frame = ttk.Frame(preview_frame)
+        info_frame.pack(pady=5)
+
+        self.info_label = ttk.Label(info_frame, text="")
+        self.info_label.pack()
+
+        # ボタン
+        button_frame = ttk.Frame(self.window)
+        button_frame.pack(pady=10)
+
+        ttk.Button(
+            button_frame,
+            text="✅ 投稿",
+            command=self._post
+        ).pack(side="left", padx=5)
+
+        ttk.Button(
+            button_frame,
+            text="🧪 投稿テスト",
+            command=self._dry_run
+        ).pack(side="left", padx=5)
+
+        ttk.Button(
+            button_frame,
+            text="❌ キャンセル",
+            command=self.window.destroy
+        ).pack(side="left", padx=5)
+
+        # 初期表示
+        self._update_info_label()
+
+    def _load_preview_image(self, parent):
+        """投稿される画像のプレビューを表示"""
+        if not self.image_path or not Path(self.image_path).exists():
+            ttk.Label(parent, text="（画像なし）").pack()
+            return
+
+        try:
+            img = Image.open(self.image_path)
+            original_size = img.size
+
+            # 100×67px のサムネイル生成
+            img.thumbnail((100, 67), Image.Resampling.LANCZOS)
+            self.preview_photo = ImageTk.PhotoImage(img)
+
+            preview_label = ttk.Label(parent, image=self.preview_photo)
+            preview_label.pack(pady=5)
+
+            # サイズ情報を表示
+            size_info = f"元画像: {original_size[0]}×{original_size[1]}px"
+            ttk.Label(parent, text=size_info, font=("Arial", 9)).pack()
+        except Exception as e:
+            logger.warning(f"プレビュー生成失敗: {e}")
+
+    def _update_info_label(self):
+        """投稿方法情報を更新"""
+        if self.use_image_var.get():
+            text = "投稿方法: 画像 + テキスト（AspectRatio付き）"
+        else:
+            text = "投稿方法: テキスト + URLリンクカード"
+        self.info_label.config(text=text)
+
+    def _on_image_toggle(self):
+        """画像添付チェックボックスの変更イベント"""
+        self._update_info_label()
+
+    def _post(self):
+        """本投稿を実行"""
+        self._execute_post(dry_run=False)
+
+    def _dry_run(self):
+        """投稿テストを実行"""
+        self._execute_post(dry_run=True)
+
+    def _execute_post(self, dry_run=False):
+        """投稿を実行"""
+        use_image = self.use_image_var.get()
+        resize_small = self.resize_small_var.get()
+
+        # 動画情報に設定を付加
+        video_with_settings = dict(self.video)
+        video_with_settings["use_image"] = use_image
+        video_with_settings["resize_small_images"] = resize_small
+        video_with_settings["image_source"] = "database"
+
+        try:
+            if use_image and self.image_path:
+                # 画像添付投稿
+                results = self.plugin_manager.post_video_with_all_enabled(
+                    video_with_settings,
+                    dry_run=dry_run
+                )
+            else:
+                # テキスト+URLのみ
+                if hasattr(self.bluesky_core, 'set_dry_run'):
+                    self.bluesky_core.set_dry_run(dry_run)
+                results = {"text_only": True}
+
+            # 成功メッセージ
+            msg = f"{'✅ 投稿テスト完了' if dry_run else '✅ 投稿完了'}\n\n"
+            msg += f"{self.video['title'][:60]}...\n\n"
+            msg += f"投稿方法: {'画像' if use_image else 'URLリンクカード'}"
+            messagebox.showinfo("成功", msg)
+
+            # 本投稿の場合、DB を更新
+            if not dry_run:
+                self.db.update_selection(
+                    self.video["video_id"],
+                    selected=False,
+                    scheduled_at=None
+                )
+                logger.info(f"選択状態を更新: {self.video['video_id']} (selected=False)")
+
+            # 窓を閉じる（テスト投稿でも本投稿でも）
+            self.window.destroy()
+
+        except Exception as e:
+            messagebox.showerror("エラー", f"投稿処理エラー:\n{str(e)}")
+            logger.error(f"投稿処理エラー: {e}", exc_info=True)
+```
+
+**2. GUI メインから投稿設定ウィンドウを起動**
+
+```python
+# gui_v2.py::_on_post_settings_clicked()
+def _on_post_settings_clicked(self):
+    """投稿設定ボタン（📤 投稿設定）が クリックされた"""
+    selection = self.tree.selection()
+    if not selection:
+        messagebox.showwarning("警告", "動画を選択してください")
+        return
+
+    item_id = selection[0]
+    video_id = self.tree.item(item_id)["values"][0]
+
+    # DB から動画情報を取得
+    video = self.db.get_video_by_id(video_id)
+    if not video:
+        messagebox.showerror("エラー", f"動画が見つかりません: {video_id}")
+        return
+
+    # 画像パスを取得（存在すれば）
+    image_path = None
+    if video.get("image_path"):
+        image_path = video["image_path"]
+
+    # 投稿設定ウィンドウを起動
+    PostSettingsWindow(
+        parent=self.root,
+        video=video,
+        image_path=image_path,
+        plugin_manager=self.plugin_manager,
+        db=self.db
+    )
+```
+
+**3. GUI メインのボタン配置**
+
+```python
+# gui_v2.py::_setup_toolbar()
+button_frame = ttk.Frame(self.root)
+button_frame.pack(side="top", fill="x", padx=5, pady=5)
+
+ttk.Button(
+    button_frame,
+    text="🧪 投稿テスト",
+    command=self._on_post_test_clicked
+).pack(side="left", padx=2)
+
+ttk.Button(
+    button_frame,
+    text="📤 投稿設定",
+    command=self._on_post_settings_clicked
+).pack(side="left", padx=2)
+```
+
+#### 投稿設定ウィンドウの機能
+
+| 機能 | 説明 | 実装済み |
+|------|------|--------|
+| チェックボックス | 画像添付の有無を選択 | ✅ |
+| チェックボックス | 小さい画像を拡大するか | ✅ |
+| 画像プレビュー | 100×67px のサムネイル表示 | ✅ |
+| サイズ情報 | 元画像のサイズを表示 | ✅ |
+| 投稿方法表示 | 選択状態に応じて表示更新 | ✅ |
+| 本投稿ボタン | 実際に投稿を実行 | ✅ |
+| 投稿テストボタン | DRY RUN で投稿をシミュレート | ✅ |
+| キャンセル | ウィンドウを閉じる | ✅ |
+
+#### ログ出力例
+
+**投稿テスト実行時:**
+```
+2025-12-17 10:15:30,001 [INFO] 🧪 投稿テスト開始: video_id=-Vnx9CUo
+2025-12-17 10:15:30,050 [INFO] ✅ 投稿テスト完了
+```
+
+**本投稿実行時:**
+```
+2025-12-17 10:20:15,001 [INFO] ✅ 投稿開始: video_id=-Vnx9CUo
+2025-12-17 10:20:15,150 [INFO] ✅ Bluesky 投稿成功
+2025-12-17 10:20:15,151 [INFO] 選択状態を更新: -Vnx9CUo (selected=False)
+2025-12-17 10:20:15,152 [INFO] ✅ 投稿完了
+```
+
+#### 実装ファイル
+
+| ファイル | 行数 | 実装内容 |
+|---------|------|--------|
+| `gui_v2.py` | 1100-1333 | PostSettingsWindow クラス |
+| `gui_v2.py` | 150-200 | ボタンイベント実装 |
+
+---
+
+## 6. 実装チェックリスト
 
 ### Rich Text Facet（リンク化）
 
@@ -803,7 +1292,7 @@ def build_external_embed(url: str) -> dict:
 
 ---
 
-## 5. トラブルシューティング
+## 7. トラブルシューティング
 
 ### リンク化されない場合
 
