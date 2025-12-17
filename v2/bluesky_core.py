@@ -1,7 +1,7 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 
 """
-Stream notify on Bluesky - v2 Bluesky コア機能（内部ライブラリ）
+Stream notify on Bluesky - Bluesky コア機能（内部ライブラリ）
 
 【重要】このモジュールはプラグイン層からのみ利用されます。
 直接呼び出しは行わないでください。画像添付機能はプラグイン層で実装されます。
