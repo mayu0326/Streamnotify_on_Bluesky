@@ -548,31 +548,7 @@ templates/.templates/default_template.txt はユーザー編集済み
 
 ---
 
-## 7. Vanilla モード時の動作
-
-**VANILLA_MODE = True の場合**:
-
-AssetManager は常に初期化されますが、プラグイン自体が無効化されるため、実質的にアセット配置は行われません。
-
-```python
-# main_v2.py では条件判定なく常に AssetManager を初期化
-asset_manager = get_asset_manager()
-
-# ただし config.VANILLA_MODE = True の場合、プラグインが無効化されるため
-# deploy_plugin_assets() は呼ばれないか、呼ばれても無視されます
-
-# template_utils.py は templates/.templates/default_template.txt を直接参照
-# Asset からのコピーは行われない（既存ファイルを使用）
-```
-
-Vanilla モード時の動作：
-- AssetManager は初期化されるが、プラグイン配置は実行されない
-- 既存の templates/ ディレクトリ内ファイルのみを使用
-- Asset フォルダは参照されない
-
----
-
-## 8. トラブルシューティング
+## 7. トラブルシューティング
 
 ### Q: テンプレートが更新されない
 
@@ -601,7 +577,7 @@ Vanilla モード時の動作：
 
 ---
 
-## 9. まとめ
+## 8. まとめ
 
 | 項目 | 説明 |
 |:--|:--|
