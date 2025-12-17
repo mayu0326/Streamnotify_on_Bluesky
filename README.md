@@ -248,7 +248,7 @@ python main_v2.py
 - **Issue 報告**: 不具合や機能リクエストは Issue セクションでお願いします
 - **Pull Request**: 改善提案や機能追加は PR でお願いします
 
-詳細な開発ガイドは [CONTRIBUTING.md](CONTRIBUTING.md)を参照してください。
+詳細な開発ガイドは [CONTRIBUTING.md](v2/CONTRIBUTING.md)を参照してください。
 
 ## サポート
 
