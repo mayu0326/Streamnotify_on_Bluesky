@@ -293,17 +293,25 @@ Asset/
 
 詳細な情報は以下をご覧ください：
 
-- [**アーキテクチャ**](ARCHITECTURE_v2.md) - システム構成とデータベース設計の詳細（`content_type` / `live_status` の正規化ルール含む）
+### コア設計・アーキテクチャ
+
+- [**アーキテクチャと設計方針**](ARCHITECTURE_AND_DESIGN.md) - システム構成、プラグインアーキテクチャ、データベース設計（`content_type` / `live_status` の正規化ルール含む）
 - [**モジュール一覧**](ModuleList_v2.md) - 全コンポーネントの説明
 - [**設定概要**](SETTINGS_OVERVIEW.md) - 環境変数・設定項目の詳細
-- [**設計方針メモ**](v2_DESIGN_POLICY.md) - v2 の仕様確定と v3+ への拡張ロードマップ
-- [**プラグイン開発ガイド**](BLUESKY_PLUGIN_GUIDE.md) - プラグイン開発方法
+- [**プラグインシステム**](PLUGIN_SYSTEM.md) - プラグイン開発方法、Rich Text Facet、画像処理
+
+### テンプレート・キャッシュ・セッション
+
+- [**テンプレートシステム**](TEMPLATE_SYSTEM.md) - テンプレートファイルの仕様・使用方法・トラブルシューティング
+- [**削除済み動画ブラックリスト**](DELETED_VIDEO_CACHE.md) - ブラックリスト機能、API リファレンス、テスト手順
+- [**セッション実装レポート**](SESSION_REPORTS.md) - 2025-12-17～18 実装内容・テスト結果
+- [**ドキュメント統合レポート**](DOCUMENTATION_CONSOLIDATION_COMPLETION_REPORT.md) - 統合作業の進捗状況
+
+### その他のドキュメント
+
 - [**デバッグ・ドライラン**](DEBUG_DRY_RUN_GUIDE.md) - トラブルシューティング
 - [**将来ロードマップ**](FUTURE_ROADMAP_v2.md) - v3+ の計画概要
-
-### テンプレート・Asset 管理について
-
-- [**テンプレート仕様書**](TEMPLATE_SPECIFICATION_v2.md) - テンプレートファイルの配置ポリシー・仕様・使用方法
+- [**Rich Text Facet 仕様**](RICHTEXT_FACET_SPECIFICATION.md) - URL・ハッシュタグリンク化の技術仕様
 - [**AssetManager 統合ガイド**](ASSET_MANAGER_INTEGRATION_v2.md) - Asset ディレクトリからの自動配置・プラグイン連携の詳細
 - [**Asset ディレクトリ README**](../Asset/README.md) - ユーザー向けの Asset 管理方法
 
