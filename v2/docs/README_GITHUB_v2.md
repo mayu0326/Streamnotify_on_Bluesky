@@ -1,5 +1,8 @@
 # StreamNotify on Bluesky
 
+> **対象バージョン**: v2.1.0 時点
+> **最終更新**: 2025-12-18
+
 YouTube チャンネルの新着動画を Bluesky に自動投稿するアプリケーションです。
 （Twitch / ニコニコなどの対応はプラグインで拡張予定）
 
@@ -56,6 +59,10 @@ python main_v2.py
 
 GUI が起動し、YouTube RSS から新着動画を取得して表示します。
 GUI から動画を選択して「投稿」ボタンを押すと Bluesky へ投稿されます。
+
+> ℹ️ **GUI の動作**
+> - GUI を最小化しても、バックグラウンドで動作を続けます。
+> - GUI を完全に閉じる（ウィンドウのバツボタンをクリック）と、アプリケーションは終了します。
 
 ---
 
@@ -241,6 +248,21 @@ python main_v2.py
 5. **手動投稿**: GUI から動画を選択して Bluesky に投稿
 6. **ログ記録**: 投稿結果をログファイルに記録
 
+### 動作の詳細
+
+- 起動中は `POLL_INTERVAL_MINUTES` ごとに YouTube RSS を取得し、新着動画を検知します。
+- 新着動画は `data/video_list.db` に保存されます。
+- **バニラ状態**: `BLUESKY_POST_ENABLED=true` かつ `APP_MODE=auto_post` で Bluesky へ自動投稿されます。
+- **プラグイン導入時**: 自動投稿ロジックが拡張され、テンプレート・画像処理などが追加されます。
+- Bluesky への投稿履歴ログ:
+  - **バニラ状態**: `logs/app.log` に投稿結果を記録
+  - **プラグイン導入時**: `logs/post.log` に投稿成功、`logs/post_error.log` にエラーを記録
+- アプリケーションログは `logs/app.log` に記録されます。
+
+### 停止方法
+
+停止する場合は、ターミナルで `Ctrl + C` を押してください。
+
 ### GUI の主な機能
 
 - **動画一覧表示**: DB に保存されている動画を Treeview で表示
@@ -392,13 +414,53 @@ Asset/
 - Bluesky のアプリパスワードは Web 版の設定画面から生成する必要があります
 - `logs/app.log` でエラーメッセージを確認してください
 
-### ログファイルの確認
+### ログの見方
 
-- **app.log**: アプリケーション全般のログ
-- **error.log**: エラーのみを記録
-- その他のログファイル：プラグイン導入時に自動生成
+#### ログファイルの場所
 
-詳細は [DEBUG_DRY_RUN_GUIDE.md](docs/DEBUG_DRY_RUN_GUIDE.md) を参照してください。
+ログファイルは `logs/` ディレクトリに出力されます：
+
+**バニラ状態（プラグイン未導入時）:**
+- `logs/app.log` - アプリケーション全体のログ（起動、RSS取得、投稿試行など）
+- `logs/error.log` - エラーのみを記録
+
+**プラグイン導入時:**
+- `logs/app.log` - アプリケーション全体のログ
+- `logs/post.log` - Bluesky 投稿成功ログ
+- `logs/post_error.log` - 投稿エラーログ
+- `logs/audit.log` - 監査ログ（GUI操作履歴など）
+- `logs/youtube.log` - YouTube RSS 監視ログ
+- `logs/niconico.log` - ニコニコ監視ログ（ニコニコプラグイン導入時）
+- `logs/gui.log` - GUI 操作ログ
+
+#### ログ確認のコツ
+
+1. **最新のログを確認する**
+   ```bash
+   # Windows PowerShell
+   Get-Content logs/app.log -Tail 50
+
+   # Linux / WSL
+   tail -50 logs/app.log
+   ```
+
+2. **エラーのみを表示**
+   ```bash
+   # Windows PowerShell
+   Select-String "ERROR|CRITICAL" logs/app.log
+
+   # Linux / WSL
+   grep -E "ERROR|CRITICAL" logs/app.log
+   ```
+
+3. **特定の時刻のログを確認**
+   ```bash
+   # 例: 2025-12-18 のログのみ表示
+   Select-String "2025-12-18" logs/app.log  # Windows
+   grep "2025-12-18" logs/app.log           # Linux
+   ```
+
+詳細は [DEBUG_DRY_RUN_GUIDE.md](Guides/DEBUG_DRY_RUN_GUIDE.md) を参照してください.
 
 ---
 
@@ -419,10 +481,72 @@ Asset/
 
 ---
 
+## Issue の出し方
+
+問題が解決しない場合は、GitHub の Issue で報告いただけます。以下の情報があると対応が速くなります：
+
+### Issue 報告時に含めるべき情報
+
+1. **実行環境**
+   - OS（Windows 10/11、Ubuntu 20.04 など）
+   - Python バージョン（`python --version`）
+   - v2 のブランチ/コミット（`git log -1 --oneline`）
+
+2. **設定情報（センシティブ情報は除外）**
+   - 動作モード（`APP_MODE` の値）
+   - プラグイン導入状況（導入済みプラグイン一覧）
+   - `DEBUG_MODE` が有効か
+
+3. **問題の説明**
+   - 何をしようとしたか
+   - 実際に何が起きたか
+   - いつから問題が発生しているか
+
+4. **ログファイル**
+   - `logs/app.log` の関連部分（最後の 50～100 行が目安）
+   - エラーが発生している場合は、エラーメッセージ全体
+   - **個人情報（チャンネルID、ユーザー名など）は削除してください**
+
+5. **再現手順**
+   - 問題を再現するための具体的な手順
+   - 例：「GUI で『投稿設定』をクリックしたのに投稿設定画面が表示されない」
+
+### Issue 報告のテンプレート
+
+```markdown
+## 問題の説明
+[簡潔に説明してください]
+
+## 実行環境
+- OS: [例: Windows 11]
+- Python: [例: 3.10.5]
+- 導入プラグイン: [例: YouTube API プラグイン、ロギングプラグイン]
+
+## 動作モード
+- APP_MODE: [例: auto_post]
+- DEBUG_MODE: [有効/無効]
+
+## 再現手順
+1. ...
+2. ...
+
+## ログ出力
+[logs/app.log の関連部分を貼り付け]
+
+## 期待される動作
+[本来はこうなるべきという動作]
+```
+
+### Issue 報告時の注意点
+- ⚠️ ログに含まれる個人情報（チャンネルID、ユーザー名など）は削除してください
+- 🔒 `settings.env` の内容は絶対に共有しないでください
+- 📋 複数の問題がある場合は、Issue を分けて報告してください
+- ✅ 既存の Issue に同じ問題がないか確認してから報告してください
+
 ## サポート
 
 質問や問題がある場合は、GitHub の Issue セクションで報告してください。
 
 ---
 
-**最終更新**: 2025-12-17
+**最終更新**: 2025-12-18
