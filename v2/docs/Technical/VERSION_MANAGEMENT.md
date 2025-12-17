@@ -164,7 +164,7 @@ print(bluesky_core.__version__)   # 1.0.0
 | **bluesky_plugin** | 1.1.0 | Bluesky 画像添付、投稿テンプレート拡張 |
 | **youtube_api_plugin** | 0.2.0 | YouTube チャンネルID 解決、動画詳細取得、API クォータ管理 |
 | **youtube_live_plugin** | 0.2.0 | YouTube ライブ・アーカイブ判定 |
-| **niconico_plugin** | 0.3.0 | ニコニコ動画 RSS 取得、リトライ・タイムアウト対応 |
+| **niconico_plugin** | 0.4.0 | ニコニコ動画 RSS 取得、ユーザー名自動取得・自動保存、リトライ・タイムアウト対応 |
 
 ### 実装例：logging_plugin
 
