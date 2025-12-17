@@ -1303,17 +1303,33 @@ class PostSettingsWindow:
                     messagebox.showerror("エラー", "プラグインマネージャが初期化されていません")
                     return
             else:
-                # テキスト + URLリンク投稿
-                if self.bluesky_core:
-                    logger.info(f"📤 コア機能で投稿（URLリンク）: {video['title']}")
+                # テキスト + URLリンク投稿（プラグイン経由でテンプレート対応）← 修正: 2025-12-18
+                if self.plugin_manager:
+                    logger.info(f"📤 プラグイン経由で投稿（テンプレート対応）: {video['title']}")
+                    video_with_settings = dict(video)
+                    video_with_settings["use_image"] = False  # 画像なしモード
+                    # ★ dry_run フラグを渡す
+                    results = self.plugin_manager.post_video_with_all_enabled(video_with_settings, dry_run=dry_run)
+                    logger.info(f"投稿結果: {results}")
+                    success = any(results.values())  # 任意のプラグイン成功で OK
+                    if success and not dry_run:
+                        self.db.mark_as_posted(video["video_id"])
+                elif self.bluesky_core:
+                    # フォールバック：プラグインがない場合はコア機能を直接呼び出し
+                    logger.info(f"📤 コア機能で投稿（テンプレート非対応、シンプルテキストのみ）: {video['title']}")
+                    # ★ 固定設定値を video 辞書に追加
+                    video_with_settings = dict(video)
+                    video_with_settings["via_plugin"] = False  # プラグイン非導入フラグ
+                    video_with_settings["use_link_card"] = False  # リンクカード無効（プラグイン機能）
+                    video_with_settings["embed"] = None  # 画像埋め込みなし
                     # ★ dry_run フラグを設定
                     if hasattr(self.bluesky_core, 'set_dry_run'):
                         self.bluesky_core.set_dry_run(dry_run)
-                    success = self.bluesky_core.post_video_minimal(video)
+                    success = self.bluesky_core.post_video_minimal(video_with_settings)
                     if success and not dry_run:
                         self.db.mark_as_posted(video["video_id"])
                 else:
-                    messagebox.showerror("エラー", "コア機能が初期化されていません")
+                    messagebox.showerror("エラー", "プラグインもコア機能も初期化されていません")
                     return
 
             msg = f"{'✅ 投稿テスト完了' if dry_run else '✅ 投稿完了'}\n\n{video['title'][:60]}...\n\n投稿方法: {mode_str}"
