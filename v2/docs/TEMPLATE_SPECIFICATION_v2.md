@@ -188,9 +188,9 @@ v2/
 
 ### 3.1 新着動画投稿（yt_new_video）
 
-**ファイルパス**: `templates/youtube/yt_new_video_template.txt`
-**イベント**: RSS 取得による新着動画の投稿
-**状態**: ✅ v2.1.0 で実装済み
+- **ファイルパス**: `templates/youtube/yt_new_video_template.txt`
+- **イベント**: RSS 取得による新着動画の投稿
+- **状態**: ✅ v2.1.0 で実装済み
 
 #### 利用可能な変数
 
@@ -263,10 +263,10 @@ v2/
 
 ### 2.2 配信開始通知（yt_online） ⚠️ 将来実装予定
 
-**ファイルパス**: `templates/youtube/yt_online_template.txt`
-**イベント**: YouTube Live 配信開始時の通知
-**状態**: ⚠️ v2.1.0 では**未実装**（v2.x/v3 予定）
-**理由**: youtube_live_plugin.py がライブ配信検知ロジック未実装
+- **ファイルパス**: `templates/youtube/yt_online_template.txt`
+- **イベント**: YouTube Live 配信開始時の通知
+- **状態**: ⚠️ v2.1.0 では**未実装**（v2.x/v3 予定）
+- **理由**: youtube_live_plugin.py がライブ配信検知ロジック未実装
 
 #### 利用可能な変数（実装時の予定）
 
@@ -303,9 +303,9 @@ v2/
 
 ### 2.3 配信終了通知（yt_offline） ⚠️ 将来実装予定
 
-**ファイルパス**: `templates/youtube/yt_offline_template.txt`
-**イベント**: YouTube Live 配信終了時の通知
-**状態**: ⚠️ v2.1.0 では**未実装**（v2.x/v3 予定）
+- **ファイルパス**: `templates/youtube/yt_offline_template.txt`
+- **イベント**: YouTube Live 配信終了時の通知
+- **状態**: ⚠️ v2.1.0 では**未実装**（v2.x/v3 予定）
 
 #### 利用可能な変数（実装時の予定）
 
@@ -334,9 +334,9 @@ v2/
 
 ### 3.1 新着動画投稿（nico_new_video）
 
-**ファイルパス**: `templates/niconico/nico_new_video_template.txt`
-**イベント**: ニコニコ動画 RSS 取得による新着動画投稿
-**状態**: 📋 設計中（v2.x 実装予定）
+- **ファイルパス**: `templates/niconico/nico_new_video_template.txt`
+- **イベント**: ニコニコ動画 RSS 取得による新着動画投稿
+- **状態**: 📋 設計中（v2.x 実装予定）
 
 #### 利用可能な変数
 
@@ -379,7 +379,7 @@ v2/
 
 ### 4.1 配信開始通知（twitch_online）
 
-**予定**: PubSubHubbub + Webhook による配信開始検知
+- **予定**: PubSubHubbub + Webhook による配信開始検知
 
 #### 利用可能な変数（実装時の予定）
 
