@@ -1,27 +1,50 @@
 ﻿# v2 設計メモ（YouTube → Bluesky）
 
+> **対象バージョン**: v2.1.0 時点  
+> **最終更新**: 2025-12-17
+
 ## 1. 目的
 - 特定の YouTube チャンネルの新着動画を検知し、指定した Bluesky アカウントに自動投稿する常駐ボットを提供する。
 - Windows 10 以降、および Debian/Ubuntu 系 Linux 上で、Python 3.10+ を用いて動作することを目標とする。
 
 ## 2. 対象範囲（スコープ）
 
-### 2.1 v2 で実装する機能
-- YouTube チャンネル 1 件の新着動画検知（RSS ベース）。
-- 新着動画情報のローカル DB（SQLite）への保存。
-- 未投稿動画の Bluesky への自動投稿（テンプレート対応、投稿ログ記録：app.log/post.log/post_error.log）。
-- ポーリング間隔（5〜30 分）のユーザー指定と常駐動作。
-- YouTube Data API を用いた詳細取得や、ライブ／アーカイブ判定。
-- ニコニコ動画の新着動画検知（RSS ベース）。
-- 統合ロギング（環境変数によるログレベル制御）。
-- 画像管理・サムネイル再取得機能。
-- GUI による動画選択・投稿管理。
+### 2.1 v2 で実装済み・完了した機能
 
-### 2.2 v2 では実装しない機能
-- Twitch 配信開始・終了検知と通知。
-- 設定GUI Web UI（Tkinter GUI として実装済み）。
-- トンネル（Cloudflare/ngrok/Tailscale） → 現在実装済み（トンネル通信プラグイン）。
-- Discord 通知 → プラグインアーキテクチャとして設計中（今後対応予定）。
+**コア機能:**
+- YouTube チャンネル 1 件の新着動画検知（RSS ベース、`youtube_rss.py`）
+- 新着動画情報のローカル DB（SQLite）への保存（`database.py`）
+  - `content_type`/`live_status` の値正規化をデータベース層で実装済み
+- DB スキーマ拡張対応（`selected_for_post`, `scheduled_at`, `thumbnail_url`, `content_type`, `live_status`, `is_premiere`, `image_mode`, `image_filename`）
+- テンプレート機能（Jinja2、`event_context` で統一された API）
+- Bluesky への投稿（`bluesky_plugin.py`、RichText/Facet 対応、画像添付、DRY RUN 対応）
+- ポーリング間隔（5〜30 分）のユーザー指定と常駐動作（`main_v2.py`）
+- 統合ロギング（`logging_plugin.py`、環境変数によるログレベル制御）
+- GUI による動画選択・投稿管理・統計表示（`gui_v2.py`）
+
+**プラグインと連携機能:**
+- YouTube Data API 連携（`youtube_api_plugin.py`）
+- ニコニコ動画 RSS 監視（`niconico_plugin.py`）
+- ロギング拡張（`logging_plugin.py`）
+
+**画像・サムネイル機能（thumbnails サブモジュール）:**
+- YouTube サムネイル取得・保存（`youtube_thumb_utils.py`）
+- YouTube サムネイル バックフィル（`youtube_thumb_backfill.py`）
+- ニコニコ OGP 取得（`niconico_ogp_utils.py`）
+- ニコニコ サムネイル バックフィル（`niconico_ogp_backfill.py`）
+- 統合サムネイル再取得機能（`image_re_fetch_module.py`）
+
+### 2.2 v2 では未完了 / 実験的な機能
+
+- **YouTube Live 判定プラグイン** (`youtube_live_plugin.py`)
+  - **ステータス**: プラグインクラスと読み込み枠は実装済みですが、ライブ開始/終了検知と `live_status` 自動更新ロジックは**未実装**です。
+  - **予定**: v2.x 以降で実装予定の実験的プラグインです。
+
+### 2.3 v2 で実装しない機能
+
+- Twitch 配信開始・終了検知と通知
+- 設定 Web UI（Tkinter GUI として実装済み）
+- Discord 通知 → プラグインアーキテクチャとして設計中（今後対応予定）
 
 ## 3. アーキテクチャ概要
 
