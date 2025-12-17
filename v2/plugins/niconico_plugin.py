@@ -329,10 +329,10 @@ class NiconicoPlugin(NotificationPlugin):
         return "ニコニコ動画 RSS取得プラグイン"
 
     def get_version(self) -> str:
-        return "0.3.0"
+        return "0.4.0"
 
     def get_description(self) -> str:
-        return "ニコニコ動画の新着を RSS 監視するプラグイン（リトライ・タイムアウト対応）"
+        return "ニコニコ動画の新着を RSS 監視するプラグイン（ユーザー名自動取得・自動保存、リトライ・タイムアウト対応）"
 
     def start_monitoring(self):
         """監視スレッドを開始"""
