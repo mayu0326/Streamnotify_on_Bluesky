@@ -6,6 +6,7 @@
 - RSS ポーリング方式で実装
 - リトライ・タイムアウト対応
 - NotificationPlugin 準拠
+- ユーザー名自動取得（RSS <dc:creator> > 静画API > ユーザーID）
 """
 
 import os
@@ -31,6 +32,8 @@ RSS_TIMEOUT = 10  # RSS 取得タイムアウト（秒）
 RSS_RETRY_MAX = 3  # リトライ回数
 RSS_RETRY_WAIT = 2  # リトライ待機時間（秒）
 NICONICO_USER_ID_PATTERN = r'^\d+$'  # ユーザーID は数字のみ
+SEIGA_API_URL = "http://seiga.nicovideo.jp/api/user/info"  # ニコニコ静画 API URL
+SEIGA_API_TIMEOUT = 5  # 静画API タイムアウト（秒）
 
 
 class NiconicoPlugin(NotificationPlugin):
@@ -47,7 +50,6 @@ class NiconicoPlugin(NotificationPlugin):
             user_name: ニコニコユーザー名（display用。省略時はIDから推測）
         """
         self.user_id = user_id.strip() if user_id else ""
-        self.user_name = user_name or os.getenv("NICONICO_USER_NAME", "") or self.user_id
         self.poll_interval_min = max(int(poll_interval), 5)  # 最小 5 分
         self.poll_interval_sec = self.poll_interval_min * 60
         self.db = db
@@ -56,6 +58,10 @@ class NiconicoPlugin(NotificationPlugin):
         self.last_video_id = None
         self._validation_error = None
         self.image_manager = get_image_manager()
+
+        # ユーザー名キャッシング（初回のみ取得）
+        self._user_name_cache = None
+        self._user_name_env = user_name or os.getenv("NICONICO_USER_NAME", "")
 
         # バリデーション
         self._validate_user_id()
@@ -74,6 +80,127 @@ class NiconicoPlugin(NotificationPlugin):
 
         logger.debug(f"[バリデーション] ユーザーID OK: {self.user_id}")
         self._validation_error = None
+
+    def _get_user_name(self) -> str:
+        """
+        ユーザー名を取得（キャッシング付き）
+
+        優先順位:
+        1. RSS <dc:creator> から取得
+        2. 静画API から取得
+        3. 環境変数または初期化パラメータ (NICONICO_USER_NAME)
+        4. ユーザーID をそのまま使用
+
+        Returns:
+            str: ユーザー名またはユーザーID
+        """
+        # キャッシュがあれば返す
+        if self._user_name_cache is not None:
+            return self._user_name_cache
+
+        # 優先度1: RSSから <dc:creator> を取得
+        rss_author = self._get_user_name_from_rss()
+        if rss_author:
+            logger.debug(f"[ユーザー名取得] RSS <dc:creator> から取得: {rss_author}")
+            self._user_name_cache = rss_author
+            return self._user_name_cache
+
+        # 優先度2: 静画API から取得
+        seiga_author = self._get_user_name_from_seiga_api()
+        if seiga_author:
+            logger.debug(f"[ユーザー名取得] 静画API から取得: {seiga_author}")
+            self._user_name_cache = seiga_author
+            return self._user_name_cache
+
+        # 優先度3: 環境変数が設定されていれば使用
+        if self._user_name_env:
+            logger.debug(f"[ユーザー名取得] 環境変数から取得: {self._user_name_env}")
+            self._user_name_cache = self._user_name_env
+            return self._user_name_cache
+
+        # 優先度4: ユーザーIDをそのまま使用
+        logger.debug(f"[ユーザー名取得] デフォルト（ユーザーID）を使用: {self.user_id}")
+        self._user_name_cache = self.user_id
+        return self._user_name_cache
+
+    def _get_user_name_from_rss(self) -> Optional[str]:
+        """
+        RSS フィード から <dc:creator> を抽出してユーザー名を取得
+
+        Returns:
+            str または None: ユーザー名（取得できない場合は None）
+        """
+        try:
+            url = f"https://www.nicovideo.jp/user/{self.user_id}/video?rss=2.0"
+            logger.debug(f"[RSS著者取得] {url}")
+
+            # feedparser で解析（namespace 対応）
+            feed = feedparser.parse(url)
+
+            if hasattr(feed, 'bozo_exception') and feed.bozo_exception:
+                logger.warning(f"[RSS解析エラー] {feed.bozo_exception}")
+                return None
+
+            if not feed.entries:
+                logger.debug("[RSS著者取得] エントリなし")
+                return None
+
+            # 最初のエントリから dc:creator を取得
+            entry = feed.entries[0]
+
+            # feedparser は dc:creator を "author" または "author_detail" に格納
+            author = entry.get("author", "") or entry.get("author_detail", {}).get("name", "")
+
+            if author:
+                logger.info(f"[RSS著者取得成功] {author}")
+                return author
+
+            logger.debug("[RSS著者取得] dc:creator なし")
+            return None
+
+        except Exception as e:
+            logger.warning(f"[RSS著者取得エラー] {type(e).__name__}: {e}")
+            return None
+
+    def _get_user_name_from_seiga_api(self) -> Optional[str]:
+        """
+        ニコニコ静画 API からユーザー名を取得
+
+        公式API: http://seiga.nicovideo.jp/api/user/info?id=ユーザーID
+        レスポンス: XML形式、<nickname> 要素にニックネームが含まれる
+
+        Returns:
+            str または None: ユーザー名（取得できない場合は None）
+        """
+        try:
+            url = f"{SEIGA_API_URL}?id={self.user_id}"
+            logger.debug(f"[静画API] {url}")
+
+            response = requests.get(url, timeout=SEIGA_API_TIMEOUT)
+            response.raise_for_status()
+
+            # XML をパース
+            root = ET.fromstring(response.content)
+
+            # <nickname> 要素を検索（namespace 考慮）
+            nickname_elem = root.find(".//nickname")
+            if nickname_elem is not None and nickname_elem.text:
+                nickname = nickname_elem.text.strip()
+                logger.info(f"[静画API取得成功] {nickname}")
+                return nickname
+
+            logger.debug("[静画API] <nickname> 要素なし")
+            return None
+
+        except requests.exceptions.RequestException as e:
+            logger.warning(f"[静画APIリクエストエラー] {type(e).__name__}: {e}")
+            return None
+        except ET.ParseError as e:
+            logger.warning(f"[静画APIXML解析エラー] {e}")
+            return None
+        except Exception as e:
+            logger.warning(f"[静画API取得エラー] {type(e).__name__}: {e}")
+            return None
 
     def is_available(self) -> bool:
         """プラグインが利用可能か判定"""
@@ -230,8 +357,8 @@ class NiconicoPlugin(NotificationPlugin):
         title = entry.get("title", "")
         link = entry.get("link", "")
         published = entry.get("published", "")
-        # ニコニコのRSSにはauthorフィールドがないため、設定済みのユーザー名を使用
-        author = self.user_name
+        # ユーザー名を自動取得（キャッシング付き）
+        author = self._get_user_name()
 
         # ニコニコ動画IDをlinkから抽出
         video_id = ""
