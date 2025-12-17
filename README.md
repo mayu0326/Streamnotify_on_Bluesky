@@ -185,7 +185,7 @@ python main_v2.py
 - **error.log**: エラーのみを記録
 - その他のログファイル：プラグイン導入時に自動生成
 
-詳細は [DEBUG_DRY_RUN_GUIDE.md](v2/docs/DEBUG_DRY_RUN_GUIDE.md) を参照してください。
+詳細は [DEBUG ログとドライラン機能 ガイド](v2/docs/Guides/DEBUG_DRY_RUN_GUIDE.md) を参照してください。
 
 ## ライセンス
 
