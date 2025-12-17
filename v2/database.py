@@ -506,17 +506,34 @@ class Database:
             return False
 
     def delete_video(self, video_id: str) -> bool:
-        """動画をDBから削除"""
+        """動画をDBから削除（ブラックリスト連携付き）"""
         for attempt in range(DB_RETRY_MAX):
             try:
                 conn = sqlite3.connect(self.db_path, timeout=DB_TIMEOUT)
                 conn.row_factory = sqlite3.Row
                 cursor = conn.cursor()
 
+                # 削除前に source を取得
+                cursor.execute("SELECT source FROM videos WHERE video_id = ?", (video_id,))
+                row = cursor.fetchone()
+                source = row["source"] if row else "youtube"
+
+                # DB から削除
                 cursor.execute("DELETE FROM videos WHERE video_id = ?", (video_id,))
                 conn.commit()
                 conn.close()
 
+                # ★ 新: ブラックリストに追加
+                try:
+                    from deleted_video_cache import get_deleted_video_cache
+                    cache = get_deleted_video_cache()
+                    cache.add_deleted_video(video_id, source=source)
+                except ImportError:
+                    logger.warning("deleted_video_cache モジュールが見つかりません")
+                except Exception as e:
+                    logger.error(f"ブラックリスト登録エラー: {video_id} - {e}")
+
+                logger.info(f"✅ 動画を削除しました: {video_id}")
                 return True
 
             except sqlite3.OperationalError as e:
