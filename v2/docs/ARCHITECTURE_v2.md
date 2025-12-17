@@ -59,7 +59,7 @@ Ctrl+C で安全終了（ニコニコ監視停止）
 | `bluesky_v2.py` | Bluesky 投稿処理 | 画像アップロード、テンプレートレンダ、投稿実行、投稿履歴記録、AspectRatio 設定 |
 | `logging_config.py` | ロギング設定 | ロガー初期化、ログレベル設定、ファイルローテーション管理 |
 | `image_manager.py` | 画像管理 | 画像ダウンロード、形式変換、リトライ処理 |
-| `image_processor.py` | 画像リサイズ処理 | **v2.1.0+** 三段階リサイズ戦略、JPEG品質最適化 |
+| `image_processor.py` | 画像リサイズ処理 | **v2.1.0** 三段階リサイズ戦略、JPEG品質最適化 |
 | `utils_v2.py` | ユーティリティ関数 | 日時フォーマット、リトライデコレータ、URL バリデーション |
 | `gui_v2.py` | GUI（Tkinter） | 動画一覧表示、選択、投稿実行、削除、ドライラン、統計表示、**投稿設定ウィンドウ** |
 
@@ -288,10 +288,10 @@ python -m thumbnails.image_re_fetch_module --execute --verbose
 
 | プラグイン | 実行スレッド | 責務 |
 |-----------|-----------|------|
-| bluesky_plugin | メインループスレッド | **v2.1.0+:** 画像リサイズ処理、DRY RUN 対応、AspectRatio 設定、投稿処理ラッパ |
+| bluesky_plugin | メインループスレッド | **v2.1.0:** 画像リサイズ処理、DRY RUN 対応、AspectRatio 設定、投稿処理ラッパ |
 | niconico_plugin | 独立スレッド | RSS 監視、新着動画 DB 保存、スケジューリング |
 | youtube_api_plugin | メインループスレッド | チャンネルID解決、動画詳細取得（キャッシュ機構あり） |
-| logging_plugin | 初期化時 | **v2.1.0+:** DEBUG_MODE 対応、ロギング設定、9つのロガー管理 |
+| logging_plugin | 初期化時 | **v2.1.0:** DEBUG_MODE 対応、ロギング設定、9つのロガー管理 |
 
 ## GUI（gui_v2.py）
 
