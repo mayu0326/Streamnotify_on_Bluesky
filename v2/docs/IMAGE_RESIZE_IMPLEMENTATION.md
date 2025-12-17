@@ -276,7 +276,7 @@ Bluesky は画像をレスポンシブデザインで表示していますが、
 
 ### ✅ 解決方法
 
-`bluesky_v2.py` の画像埋め込み時に、**width・height から aspectRatio を計算して明示的に設定**：
+`bluesky_core.py` の画像埋め込み時に、**width・ height から aspectRatio を計算して明示的に設定**：
 
 ```python
 def _build_image_embed(self, blob: dict, width: int = None, height: int = None) -> dict:
@@ -442,8 +442,8 @@ Bluesky API で投稿
 | `v2/plugins/bluesky_plugin.py` | 158 | aspectRatio 実装 |
 | `v2/plugins/bluesky_plugin.py` | 398 | _resize_image() 呼び出し |
 | `v2/plugins/bluesky_plugin.py` | 446-451 | set_dry_run() メソッド追加 |
-| `v2/bluesky_v2.py` | 60-62 | set_dry_run() メソッド追加 |
-| `v2/bluesky_v2.py` | 215-235 | エラーハンドリング改善 |
+| `v2/bluesky_core.py` | 60-62 | set_dry_run() メソッド追加 |
+| `v2/bluesky_core.py` | 215-235 | エラーハンドリング改善 |
 | `v2/gui_v2.py` | 1100-1333 | PostSettingsWindow 実装 |
 | `v2/gui_v2.py` | 1263-1330 | dry_run 伝播実装 |
 | `v2/plugin_manager.py` | 220-240 | dry_run パラメータ追加 |
