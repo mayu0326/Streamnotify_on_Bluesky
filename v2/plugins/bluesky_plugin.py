@@ -530,6 +530,105 @@ class BlueskyImagePlugin(NotificationPlugin):
             logger.error(f"❌ テンプレートレンダリング失敗: {e}")
             return ""
 
+    # ============ テンプレート処理統合（新規: v2.1.0+） ============
+
+    def render_template_with_utils(
+        self,
+        template_type: str,
+        event_context: dict
+    ) -> str:
+        """
+        テンプレート共通関数（template_utils.py）を使用してレンダリング。
+
+        この方法は、テンプレート仕様の一元管理と検証を実現します。
+
+        Args:
+            template_type: テンプレート種別（例: "youtube_new_video"）
+            event_context: 投稿イベント情報
+
+        Returns:
+            レンダリング済みテキスト、失敗時は空文字列
+
+        ログ出力:
+            - 成功時: DEBUG レベル
+            - 必須キー不足: WARNING レベル
+            - 失敗時: ERROR レベル
+
+        例:
+            rendered = plugin.render_template_with_utils(
+                "youtube_new_video",
+                {"title": "新作", "video_id": "abc123", ...}
+            )
+        """
+        try:
+            from template_utils import (
+                load_template_with_fallback,
+                validate_required_keys,
+                render_template,
+                get_template_path,
+                TEMPLATE_REQUIRED_KEYS,
+                DEFAULT_TEMPLATE_PATH,
+            )
+
+            # 1. テンプレートパスを取得（環境変数から、またはデフォルト）
+            template_path = get_template_path(
+                template_type,
+                default_fallback=str(DEFAULT_TEMPLATE_PATH)
+            )
+
+            # 2. テンプレートをロード（失敗時はフォールバック）
+            template_obj = load_template_with_fallback(
+                path=template_path,
+                default_path=str(DEFAULT_TEMPLATE_PATH),
+                template_type=template_type
+            )
+
+            if not template_obj:
+                post_logger.error(f"❌ テンプレート読み込み失敗: {template_type}")
+                return ""
+
+            # 3. 必須キーをチェック
+            required_keys = TEMPLATE_REQUIRED_KEYS.get(template_type, [])
+            is_valid, missing_keys = validate_required_keys(
+                event_context=event_context,
+                required_keys=required_keys,
+                event_type=template_type
+            )
+
+            if not is_valid:
+                post_logger.warning(f"⚠️ 必須キー不足（{template_type}）: {missing_keys}")
+                # 必須キーがない場合はデフォルトテンプレートで試す
+                template_obj = load_template_with_fallback(
+                    path=str(DEFAULT_TEMPLATE_PATH),
+                    default_path=None,
+                    template_type=template_type
+                )
+                if not template_obj:
+                    post_logger.error(f"❌ デフォルトテンプレートもロード失敗")
+                    return ""
+
+            # 4. レンダリング実行
+            rendered_text = render_template(
+                template_obj=template_obj,
+                event_context=event_context,
+                template_type=template_type
+            )
+
+            if rendered_text:
+                post_logger.debug(f"✅ テンプレートレンダリング成功: {template_type}")
+                return rendered_text
+            else:
+                post_logger.error(f"❌ テンプレートレンダリング失敗: {template_type}")
+                return ""
+
+        except ImportError as e:
+            post_logger.error(f"❌ template_utils インポート失敗: {e}")
+            return ""
+
+        except Exception as e:
+            post_logger.error(f"❌ テンプレート処理予期しないエラー: {e}")
+            return ""
+
 
 def get_bluesky_plugin(username: str, password: str, dry_run: bool = False) -> BlueskyImagePlugin:
     """Bluesky 画像添付拡張プラグインを取得"""
