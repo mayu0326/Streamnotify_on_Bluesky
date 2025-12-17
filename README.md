@@ -1,82 +1,180 @@
-# Streamnotify on Bluesky
+# StreamNotify on Bluesky
 
-複数の配信プラットフォーム（Twitch、YouTube、ニコニコ動画など）の配信情報をBlueSkyに自動投稿するアプリケーションです。
+YouTube チャンネルの新着動画を Bluesky に自動投稿するアプリケーションです。
+（Twitch / ニコニコなどの対応はプラグインで拡張予定）
 
 ## 概要
 
-このプロジェクトは、配信開始通知や配信情報の更新をリアルタイムで検知し、Bluesky社交ネットワークに自動投稿する機能を提供します。
+このプロジェクトは、特定の YouTube チャンネルの新着動画を RSS で監視し、Bluesky に自動投稿する常駐ボットです。
+設定ファイルで簡単にカスタマイズでき、将来的にはプラグインで複数の配信プラットフォームに対応予定です。
 
 ## 主な機能
 
-- **マルチプラットフォーム対応**: Twitch、YouTube、ニコニコ動画などからの配信情報を監視
-- **自動投稿**: 配信開始時に自動的にBlueSkyへ投稿
-- **カスタマイズ可能**: 投稿テンプレートのカスタマイズが可能
-- **GUI管理画面**: 設定や監視状態を一元管理
-- **ログ機能**: 詳細なログ出力で問題追跡が容易
+- **YouTube RSS 監視**: 指定チャンネルの新着動画を自動検出
+- **Bluesky 自動投稿**: 動画情報を指定フォーマットで Bluesky へ投稿
+- **ローカル DB**: SQLite で動画情報・投稿状態を管理
+- **Tkinter GUI**: 動画一覧表示・手動投稿・統計表示に対応
+- **プラグイン拡張**: ニコニコ / YouTube Live / ロギング拡張などに対応（将来計画含む）
+- **テンプレートカスタマイズ**: 設定ファイル＋テンプレートファイルで投稿形式をカスタマイズ可能
 
 ## プロジェクト構成
 
-- `v2/` - 最新バージョン（推奨）
-  - 最新の機能と改善を含む現在のメインアプリケーション
-
-- `v1/` - 前のバージョン
-  - レガシーコード（参考用）
+```
+.
+├── v2/                    # v2（推奨、現在のメインアプリケーション）
+│   ├── main_v2.py
+│   ├── config.py
+│   ├── database.py
+│   ├── youtube_rss.py
+│   ├── bluesky_core.py
+│   ├── gui_v2.py
+│   ├── requirements.txt
+│   ├── settings.env.example
+│   ├── plugins/           # プラグインディレクトリ
+│   ├── docs/              # 設計ドキュメント
+│   └── ...
+│
+├── v1/                    # v1（レガシー、参考用）
+│
+└── README.md              # このファイル
+```
 
 ## 必要な環境
 
-- Python 3.8以上
-- 各プラットフォームのAPIキー（Twitch、YouTube等）
-- Blueskyアカウント
+- **OS**: Windows 10 以降、または Debian/Ubuntu 系 Linux
+- **Python**: 3.10 以上
+- **アカウント**: YouTube チャンネル、Bluesky アカウント
 
 ## インストール
 
-1. リポジトリをクローン
+### 1. リポジトリをクローン
+
 ```bash
 git clone https://github.com/yourusername/Streamnotify_on_Bluesky.git
-cd Streamnotify_on_Bluesky
+cd Streamnotify_on_Bluesky/v2
 ```
 
-2. 依存パッケージをインストール
+### 2. 依存パッケージをインストール
+
 ```bash
-pip install -r v2/requirements.txt
+# 仮想環境の作成（推奨）
+python -m venv venv
+
+# Windows
+venv\Scripts\activate
+
+# Linux / WSL
+source venv/bin/activate
+
+# パッケージのインストール
+pip install -r requirements.txt
 ```
 
-3. 設定ファイルを作成
+### 3. 設定ファイルを作成
+
 ```bash
-cp v2/settings.env.example v2/settings.env
+# settings.env.example をコピー
+cp settings.env.example settings.env
 ```
 
-4. `settings.env`を編集して、APIキーと認証情報を設定
+### 4. `settings.env` を編集して必須項目を設定
+
+以下の 4 つの項目は必須です：
+
+| 項目 | 説明 | 例 |
+|-----|------|-----|
+| `YOUTUBE_CHANNEL_ID` | 監視対象の YouTube チャンネル ID（UC から始まる） | `UCxxxxxxxxxxxxxxxx` |
+| `BLUESKY_USERNAME` | Bluesky のハンドル名 | `yourname.bsky.social` |
+| `BLUESKY_PASSWORD` | Bluesky のアプリパスワード | `xxxx-xxxx-xxxx-xxxx` |
+| `POLL_INTERVAL_MINUTES` | ポーリング間隔（分、最小値 5） | `10` |
+
+その他のオプション設定については、`settings.env` 内のコメント、または [docs/SETTINGS_OVERVIEW.md](docs/SETTINGS_OVERVIEW.md) を参照してください。
 
 ## 使用方法
 
 ### アプリケーションの起動
 
 ```bash
-python v2/main_v2.py
+python main_v2.py
 ```
 
-### 設定
+### 基本的な動き
 
-- GUI管理画面から各プラットフォームのアカウント設定
-- 投稿テンプレートのカスタマイズ
-- 通知設定の調整
+1. **RSS 取得**: `POLL_INTERVAL_MINUTES` ごとに YouTube RSS フィードを取得
+2. **新着検出**: DB と比較して新着動画を検出
+3. **DB 保存**: 新着動画をローカル DB に保存
+4. **GUI 表示**: Tkinter GUI で動画一覧を表示
+5. **手動投稿**: GUI から動画を選択して Bluesky に投稿
+6. **ログ記録**: 投稿結果をログファイルに記録
+
+### GUI の主な機能
+
+- **動画一覧表示**: DB に保存されている動画を Treeview で表示
+- **動画選択**: チェックボックスで投稿対象を選択
+- **投稿実行**: 選択動画を Bluesky に投稿
+- **ドライラン**: 投稿をシミュレート（実際には投稿しない）
+- **統計表示**: 投稿数、未投稿数などを表示
+- **プラグイン状態**: 導入済みプラグイン一覧を表示
 
 ## ドキュメント
 
-- [アーキテクチャ](v2/docs/ARCHITECTURE_v2.md) - システムアーキテクチャの詳細
-- [モジュール一覧](v2/docs/ModuleList_v2.md) - 全モジュールの説明
-- [プラグイン開発ガイド](v2/docs/BLUESKY_PLUGIN_GUIDE.md) - プラグイン開発方法
-- [設定概要](v2/docs/SETTINGS_OVERVIEW.md) - 設定項目の説明
+詳細な情報は以下をご覧ください：
+
+- [アーキテクチャ](docs/ARCHITECTURE_v2.md) - システム構成とデータベース設計の詳細
+- [モジュール一覧](docs/ModuleList_v2.md) - 全コンポーネントの説明
+- [設定概要](docs/SETTINGS_OVERVIEW.md) - 環境変数・設定項目の詳細
+- [プラグイン開発ガイド](docs/BLUESKY_PLUGIN_GUIDE.md) - プラグイン開発方法
+- [設計方針メモ](docs/v2_DESIGN_POLICY.md) - v2 の仕様と今後の拡張方針
+- [デバッグ・ドライラン](docs/DEBUG_DRY_RUN_GUIDE.md) - トラブルシューティング
+- [将来ロードマップ](docs/FUTURE_ROADMAP_v2.md) - v3+ の計画概要
+
+## 設定ファイルについて
+
+設定は `settings.env` で管理されます。テキストエディタで直接編集してください。
+
+**注意**: `settings.env` には個人の ID・パスワード・API キーを記載するため、Git による公開リポジトリには含めないでください（`.gitignore` で除外済み）。
+
+設定編集後は、アプリケーションを再起動して反映させます。
+
+## トラブルシューティング
+
+### YouTube RSS が取得できない
+
+- YouTube サーバーの状態を確認してください
+- インターネット接続を確認してください
+- チャンネル ID が `UC` で始まっているか確認してください
+
+### Bluesky に投稿できない
+
+- `settings.env` でユーザー名とアプリパスワードが正しいか確認してください
+- Bluesky のアプリパスワードは Web 版の設定画面から生成する必要があります
+- `logs/app.log` でエラーメッセージを確認してください
+
+### ログファイルの確認
+
+- **app.log**: アプリケーション全般のログ
+- **error.log**: エラーのみを記録
+- その他のログファイル：プラグイン導入時に自動生成
+
+詳細は [DEBUG_DRY_RUN_GUIDE.md](docs/DEBUG_DRY_RUN_GUIDE.md) を参照してください。
 
 ## ライセンス
 
-詳細は[LICENSE](LICENSE)を参照してください。
+このプロジェクトは **GPL License v2** で提供されます。詳細は [LICENSE](LICENSE) を参照してください。
 
-## 支援
+## 開発・貢献
 
-問題が発生した場合やご質問がある場合は、Issuesセクションで報告してください。
+このプロジェクトは GitHub でオープンソース化されています。
+
+- **Issue 報告**: 不具合や機能リクエストは Issue セクションでお願いします
+- **Pull Request**: 改善提案や機能追加は PR でお願いします
+
+詳細な開発ガイドは [CONTRIBUTING.md](CONTRIBUTING.md)（準備中）を参照してください。
+
+## サポート
+
+質問や問題がある場合は、GitHub の Issue セクションで報告してください。
 
 ---
 
-**最終更新**: 2025年12月
+**最終更新**: 2025-12-17
