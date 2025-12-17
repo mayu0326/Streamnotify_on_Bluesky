@@ -30,8 +30,8 @@ Bluesky 投稿時に、**embed フィールドが Union 型（1種類のみ）**
 
 ### 実装内容
 
-- `bluesky_v2.py` に OGP 取得メソッドを追加
-- `bluesky_v2.py` に外部 embed 構築メソッドを追加
+- `bluesky_core.py` に OGP 取得メソッドを追加
+- `bluesky_core.py` に外部 embed 構築メソッドを追加
 - `post_video_minimal()` で `use_link_card=True` をデフォルトに
 
 ### コード例
@@ -117,7 +117,7 @@ def post_video(self, video: dict) -> bool:
 
 ## 🔧 実装ステップ
 
-### ステップ1: bluesky_v2.py 拡張
+### ステップ1: bluesky_core.py 拡張
 
 - `_build_external_embed()` メソッド追加
   - 入力: URL
