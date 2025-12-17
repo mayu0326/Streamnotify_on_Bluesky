@@ -211,12 +211,13 @@ class PluginManager:
         """
         return self.loaded_plugins.copy()
 
-    def post_video_with_all_enabled(self, video: dict) -> Dict[str, bool]:
+    def post_video_with_all_enabled(self, video: dict, dry_run: bool = False) -> Dict[str, bool]:
         """
         すべての有効なプラグインで動画をポスト
 
         Args:
             video: 動画情報
+            dry_run: ドライランモード（True の場合は実際には投稿しない）
 
         Returns:
             Dict[str, bool]: {プラグイン名: 成功/失敗}
@@ -225,6 +226,10 @@ class PluginManager:
 
         for plugin_name, plugin in self.enabled_plugins.items():
             try:
+                # ★ dry_run フラグをプラグインに設定
+                if hasattr(plugin, 'set_dry_run'):
+                    plugin.set_dry_run(dry_run)
+
                 success = plugin.post_video(video)
                 results[plugin_name] = success
                 if success:

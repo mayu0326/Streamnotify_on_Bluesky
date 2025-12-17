@@ -779,7 +779,7 @@ class StreamNotifyGUI:
             return
 
         msg = f"""
-🧪 ドライラン モード
+🧪 投稿テスト モード
 
 以下の {len(selected)} 件をテスト実行します：
 
@@ -791,7 +791,7 @@ class StreamNotifyGUI:
             msg += f"  ... ほか {len(selected) - 5} 件\n"
 
         msg += """
-投稿設定ウィンドウで「ドライラン」をクリックすると、
+投稿設定ウィンドウで「投稿テスト」をクリックすると、
 ログ出力のみで実際には投稿されません。
         """
 
@@ -1186,7 +1186,7 @@ class PostSettingsWindow:
             side=tk.RIGHT, padx=5
         )
         ttk.Button(button_frame, text="❌ キャンセル", command=self.window.destroy).pack(side=tk.RIGHT, padx=5)
-        ttk.Button(button_frame, text="🧪 ドライラン", command=self._dry_run).pack(side=tk.RIGHT, padx=5)
+        ttk.Button(button_frame, text="🧪 投稿テスト", command=self._dry_run).pack(side=tk.RIGHT, padx=5)
 
     def _display_image_preview(self, parent_frame, image_filename):
         """画像プレビューを表示（右横配置）"""
@@ -1260,11 +1260,11 @@ class PostSettingsWindow:
         self._execute_post(dry_run=False)
 
     def _dry_run(self):
-        """ドライラン実行"""
+        """投稿テスト実行"""
         use_image = self.use_image_var.get()
         resize_small = self.resize_small_var.get()
 
-        logger.info(f"🔍 ドライラン設定: use_image={use_image}, resize_small={resize_small}")
+        logger.info(f"🔍 投稿テスト設定: use_image={use_image}, resize_small={resize_small}")
 
         self.result = {
             "use_image": use_image,
@@ -1283,7 +1283,7 @@ class PostSettingsWindow:
             logger.info(f"📋 _execute_post 開始: use_image={use_image} (type={type(use_image).__name__}), resize_small={resize_small}")
 
             mode_str = "画像" if use_image else "URLリンクカード"
-            dry_str = "【ドライラン】" if dry_run else ""
+            dry_str = "【投稿テスト】" if dry_run else ""
 
             logger.info(f"{dry_str}投稿開始: {video['title'][:40]}... (投稿方法: {mode_str})")
 
@@ -1294,7 +1294,8 @@ class PostSettingsWindow:
                     video_with_settings = dict(video)
                     video_with_settings["use_image"] = True
                     logger.info(f"📤 プラグイン経由で投稿（画像添付）: {video['title']}")
-                    results = self.plugin_manager.post_video_with_all_enabled(video_with_settings)
+                    # ★ dry_run フラグを渡す
+                    results = self.plugin_manager.post_video_with_all_enabled(video_with_settings, dry_run=dry_run)
                     logger.info(f"投稿結果: {results}")
                     if any(results.values()) and not dry_run:
                         self.db.mark_as_posted(video["video_id"])
@@ -1305,6 +1306,9 @@ class PostSettingsWindow:
                 # テキスト + URLリンク投稿
                 if self.bluesky_core:
                     logger.info(f"📤 コア機能で投稿（URLリンク）: {video['title']}")
+                    # ★ dry_run フラグを設定
+                    if hasattr(self.bluesky_core, 'set_dry_run'):
+                        self.bluesky_core.set_dry_run(dry_run)
                     success = self.bluesky_core.post_video_minimal(video)
                     if success and not dry_run:
                         self.db.mark_as_posted(video["video_id"])
@@ -1312,13 +1316,16 @@ class PostSettingsWindow:
                     messagebox.showerror("エラー", "コア機能が初期化されていません")
                     return
 
-            msg = f"{'✅ ドライラン完了' if dry_run else '✅ 投稿完了'}\n\n{video['title'][:60]}...\n\n投稿方法: {mode_str}"
+            msg = f"{'✅ 投稿テスト完了' if dry_run else '✅ 投稿完了'}\n\n{video['title'][:60]}...\n\n投稿方法: {mode_str}"
             messagebox.showinfo("成功", msg)
 
+            # ★ 投稿テスト後でも選択状態を更新（投稿テストは投稿済み扱いにしない）
             if not dry_run:
                 self.db.update_selection(video["video_id"], selected=False, scheduled_at=None)
                 logger.info(f"選択状態を更新: {video['video_id']} (selected=False)")
-                self.window.destroy()
+
+            # 窓を閉じる
+            self.window.destroy()
 
         except Exception as e:
             logger.error(f"投稿エラー: {e}", exc_info=True)

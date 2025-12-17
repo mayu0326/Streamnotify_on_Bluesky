@@ -71,6 +71,11 @@ class BlueskyMinimalPoster:
             logger.error(f"❌ ログイン処理エラー: {e}")
             raise
 
+    def set_dry_run(self, dry_run: bool):
+        """ドライランモードを設定"""
+        self.dry_run = dry_run
+        post_logger.info(f"🧪 BlueskyMinimalPoster dry_run={dry_run}")
+
     def _build_facets_for_url(self, text: str) -> list:
         """
         テキストから URL を検出して Facet を構築
@@ -217,6 +222,17 @@ class BlueskyMinimalPoster:
                 logger.info(f"✅ Bluesky に投稿しました（リンクなし）: {uri}")
 
             return True
+        except requests.exceptions.HTTPError as e:
+            # HTTP エラーの詳細情報をログ
+            try:
+                error_data = e.response.json()
+                logger.error(f"❌ Bluesky API エラー ({e.response.status_code}): {error_data}")
+                post_logger.error(f"❌ Bluesky API エラー ({e.response.status_code}): {error_data}")
+            except:
+                logger.error(f"❌ Bluesky API エラー: {e.response.status_code} - {e.response.text}")
+                post_logger.error(f"❌ Bluesky API エラー: {e.response.status_code} - {e.response.text}")
+            logger.error(f"投稿リクエストボディ: {json.dumps(post_data, indent=2, default=str)}", exc_info=False)
+            return False
         except Exception as e:
             logger.error(f"投稿処理中にエラーが発生しました: {e}", exc_info=True)
             return False

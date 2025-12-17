@@ -20,6 +20,9 @@ from PIL import Image
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from image_manager import get_image_manager
 from bluesky_v2 import BlueskyMinimalPoster
+import image_processor
+
+
 
 logger = logging.getLogger("AppLogger")
 post_logger = logging.getLogger("PostLogger")
@@ -79,18 +82,7 @@ def _load_image_resize_config():
             "size_limit": 1_000_000,
         }
 
-
-# グローバル設定を読み込み
-_IMAGE_CONFIG = _load_image_resize_config()
-
-# 定数として再エクスポート（下位互換性維持）
-IMAGE_RESIZE_TARGET_WIDTH = _IMAGE_CONFIG["target_width"]
-IMAGE_RESIZE_TARGET_HEIGHT = _IMAGE_CONFIG["target_height"]
-IMAGE_OUTPUT_QUALITY_INITIAL = _IMAGE_CONFIG["quality_initial"]
-IMAGE_SIZE_TARGET = _IMAGE_CONFIG["size_target"]
-IMAGE_SIZE_THRESHOLD = _IMAGE_CONFIG["size_threshold"]
-IMAGE_SIZE_LIMIT = _IMAGE_CONFIG["size_limit"]
-
+# 画像処理ロジックは image_processor モジュールで実装
 
 def get_env_setting(key: str, default=None):
     """settings.env から設定値を取得（汎用関数）"""
@@ -129,6 +121,13 @@ class BlueskyImagePlugin(NotificationPlugin):
         # デフォルト画像パスを設定ファイルから取得
         self.default_image_path = get_env_setting("BLUESKY_IMAGE_PATH")
 
+    def set_dry_run(self, dry_run: bool):
+        """ドライランモードを設定"""
+        self.dry_run = dry_run
+        if hasattr(self.minimal_poster, 'set_dry_run'):
+            self.minimal_poster.set_dry_run(dry_run)
+        post_logger.info(f"🧪 Bluesky プラグイン dry_run={dry_run}")
+
     def post_video(self, video: dict) -> bool:
         """
         動画を投稿（画像添付機能付き）
@@ -161,9 +160,10 @@ class BlueskyImagePlugin(NotificationPlugin):
             video["image_source"] = "database"
             # 画像ファイルをアップロードして embed を取得
             if image_path and Path(image_path).exists():
-                blob = self._upload_blob(image_path, resize_small_images=resize_small_images)
-                if blob:
-                    embed = self._build_image_embed(blob)
+                result = self._upload_blob(image_path, resize_small_images=resize_small_images)
+                if result:
+                    blob, width, height = result
+                    embed = self._build_image_embed(blob, width, height)
                     post_logger.info(f"✅ 画像埋め込みの準備完了")
             else:
                 post_logger.warning(f"⚠️ 画像ファイルが見つかりません: {image_filename} (検索パス: {image_path})")
@@ -174,9 +174,10 @@ class BlueskyImagePlugin(NotificationPlugin):
                 video["image_filename"] = str(self.default_image_path)
                 video["image_source"] = "default"
                 # デフォルト画像をアップロードして embed を取得
-                blob = self._upload_blob(str(self.default_image_path), resize_small_images=resize_small_images)
-                if blob:
-                    embed = self._build_image_embed(blob)
+                result = self._upload_blob(str(self.default_image_path), resize_small_images=resize_small_images)
+                if result:
+                    blob, width, height = result
+                    embed = self._build_image_embed(blob, width, height)
                     post_logger.info(f"✅ デフォルト画像埋め込みの準備完了")
             elif self.default_image_path:
                 post_logger.warning(f"⚠️ デフォルト画像が見つかりません: {self.default_image_path}")
@@ -284,41 +285,100 @@ class BlueskyImagePlugin(NotificationPlugin):
             # DRY RUN モード時はダミーの blob を返す
             if self.dry_run:
                 post_logger.info(f"🧪 [DRY RUN] 画像アップロード（スキップ）: {file_path}")
-                return {
+                dummy_blob = {
                     "$type": "blob",
                     "mimeType": "image/jpeg",
                     "size": 1000,
                     "link": {"$link": "bafkreidummy"}
                 }
+                return (dummy_blob, 1200, 627)  # ★ tuple を返す
 
             if not Path(file_path).exists():
                 post_logger.warning(f"⚠️ 画像ファイルが見つかりません: {file_path}")
                 return None
 
+            # ========== 元画像の情報を取得してログ出力 ==========
+            file_size_bytes = Path(file_path).stat().st_size
+
+            try:
+                img = Image.open(file_path)
+                original_width, original_height = img.size
+                original_format = img.format or "Unknown"
+                aspect_ratio = original_width / original_height if original_height > 0 else 1.0
+
+                post_logger.info(
+                    f"📊 【元画像情報】\n"
+                    f"  ファイル: {Path(file_path).name}\n"
+                    f"  パス: {file_path}\n"
+                    f"  ファイルサイズ: {file_size_bytes / 1024:.1f}KB\n"
+                    f"  解像度: {original_width}×{original_height}px\n"
+                    f"  フォーマット: {original_format}\n"
+                    f"  アスペクト比: {aspect_ratio:.2f}"
+                )
+            except Exception as e:
+                post_logger.warning(f"⚠️ 元画像情報の取得失敗: {e}")
+                post_logger.info(f"📊 【元画像情報】ファイルサイズ: {file_size_bytes / 1024:.1f}KB")
+
+            # ========== 変換判定ロジックをログ出力 ==========
+            post_logger.info(f"🔍 【変換判定】resize_small_images={resize_small_images}")
+
             # ========== 画像処理 ==========
             if resize_small_images:
                 # リサイズして最適化
-                post_logger.info(f"📏 画像をリサイズして最適化します")
-                image_data = self._resize_image(file_path)
+                post_logger.info(f"✅ 判定結果: 画像をリサイズ・最適化します")
+                post_logger.info(f"📏 リサイズ処理開始...")
+                image_data = image_processor.resize_image(file_path)
                 if image_data is None:
                     # リサイズ失敗 → この投稿では画像添付をスキップ
-                    post_logger.warning(f"⚠️ 画像リサイズ失敗のため、この投稿では画像添付をスキップします")
+                    post_logger.error(f"❌ 画像リサイズ失敗のため、この投稿では画像添付をスキップします")
                     return None
                 mime_type = 'image/jpeg'
+
+                # リサイズ後の画像情報を取得
+                try:
+                    from PIL import Image as PILImage
+                    import io
+                    resized_img = PILImage.open(io.BytesIO(image_data))
+                    resized_width, resized_height = resized_img.size
+                    post_logger.info(f"   リサイズ後の解像度: {resized_width}×{resized_height}px")
+                except Exception as e:
+                    post_logger.warning(f"⚠️ リサイズ後の解像度取得失敗: {e}")
+                    resized_width = None
+                    resized_height = None
+
+                # 変換後の情報をログ出力
+                post_logger.info(
+                    f"✅ 【変換後の画像情報】\n"
+                    f"  ファイルサイズ: {file_size_bytes / 1024:.1f}KB → {len(image_data) / 1024:.1f}KB\n"
+                    f"  圧縮率: {(1 - len(image_data) / file_size_bytes) * 100:.1f}%\n"
+                    f"  フォーマット: {original_format} → JPEG\n"
+                    f"  バイナリサイズ: {len(image_data)} bytes"
+                )
             else:
                 # オリジナル画像をそのまま使用
-                post_logger.info(f"📷 オリジナル画像をそのまま使用します（リサイズなし）")
+                post_logger.info(f"✅ 判定結果: オリジナル画像をそのまま使用します（リサイズなし）")
+                post_logger.info(f"📷 オリジナル画像のまま処理継続...")
                 with open(file_path, 'rb') as f:
                     image_data = f.read()
 
                 # MIME タイプを判定
-                from PIL import Image
                 try:
                     img = Image.open(file_path)
                     img_format = img.format or "JPEG"
                     mime_type = f'image/{img_format.lower()}'
+                    resized_width, resized_height = img.size  # オリジナルの解像度
                 except:
                     mime_type = 'image/jpeg'
+                    resized_width = None
+                    resized_height = None
+
+                # 変換なしの情報をログ出力
+                post_logger.info(
+                    f"✅ 【処理後の画像情報】\n"
+                    f"  ファイルサイズ: {len(image_data) / 1024:.1f}KB（変換なし）\n"
+                    f"  フォーマット: {mime_type}\n"
+                    f"  バイナリサイズ: {len(image_data)} bytes"
+                )
 
             # アクセストークンが存在することを確認
             if not self.minimal_poster.access_token:
@@ -340,7 +400,10 @@ class BlueskyImagePlugin(NotificationPlugin):
 
             if blob:
                 post_logger.info(f"✅ 画像アップロード成功: {blob.get('mimeType')} ({len(image_data)} bytes)")
-                return blob
+
+                # aspRatioはblobではなく、_build_image_embedで設定
+                # ここでは (blob, width, height) のtupleを返す
+                return (blob, resized_width, resized_height)
             else:
                 post_logger.warning(f"⚠️ Blob メタデータが返されませんでした")
                 return None
@@ -348,219 +411,6 @@ class BlueskyImagePlugin(NotificationPlugin):
         except Exception as e:
             post_logger.warning(f"⚠️ 画像アップロード失敗: {e}")
             return None
-
-    # ============ 画像リサイズ機能 ============
-
-    def _resize_image(self, file_path: str) -> bytes:
-        """
-        画像をリサイズして最適化（アスペクト比別処理）
-
-        処理フロー:
-        1. 元画像の情報を取得（解像度・フォーマット・ファイルサイズ）
-        2. アスペクト比に基づいて3パターンで処理:
-           - 横長（幅/高さ ≥ 1.3）: 3:2（1280×800）に寄せて縮小+中央トリミング
-           - 正方形〜やや横長（0.8〜1.3）: アスペクト比維持、長辺1280px以下に縮小のみ
-           - 縦長（幅/高さ < 0.8）: アスペクト比維持、長辺1280px以下に縮小のみ
-        3. JPEG品質90で出力
-        4. ファイルサイズ確認 → 900KB超過なら品質低下して再圧縮
-        5. 最終的に1MB超過ならNoneを返す（投稿スキップ）
-
-        Args:
-            file_path: 画像ファイルパス
-
-        Returns:
-            リサイズ・最適化済みの JPEG バイナリ、失敗時は None
-        """
-        try:
-            from PIL import Image
-            import io
-
-            if not Path(file_path).exists():
-                post_logger.warning(f"⚠️ 画像ファイルが見つかりません: {file_path}")
-                return None
-
-            # ========== 元画像の情報取得 ==========
-            with open(file_path, 'rb') as f:
-                original_data = f.read()
-            original_size_bytes = len(original_data)
-
-            img = Image.open(file_path)
-            original_width, original_height = img.size
-            original_format = img.format or "Unknown"
-
-            aspect_ratio = original_width / original_height if original_height > 0 else 1.0
-
-            post_logger.debug(f"📏 元画像: {original_width}×{original_height} ({original_format}, {original_size_bytes / 1024:.1f}KB, アスペクト比: {aspect_ratio:.2f})")
-
-            # ========== アスペクト比に基づいた処理 ==========
-            # 元画像のアスペクト比を維持したまま、長辺が1280以下になるようにリサイズのみ
-            # （Blueskyは自動的に適切に表示してくれるため、クロップは行わない）
-            resized_img = self._resize_to_max_dimension(img, _IMAGE_CONFIG["target_width"])
-            post_logger.debug(f"🔄 アスペクト比維持: 長辺{_IMAGE_CONFIG['target_width']}px以下にリサイズ")
-
-            resized_width, resized_height = resized_img.size
-            post_logger.debug(f"   リサイズ後: {resized_width}×{resized_height}")
-
-            # ========== JPEG 出力（初期品質） ==========
-            jpeg_data = self._encode_jpeg(resized_img, _IMAGE_CONFIG["quality_initial"])
-            current_size_bytes = len(jpeg_data)
-            post_logger.debug(f"   JPEG品質{_IMAGE_CONFIG['quality_initial']}: {current_size_bytes / 1024:.1f}KB")
-
-            # ========== ファイルサイズチェック＆品質調整 ==========
-            if current_size_bytes > _IMAGE_CONFIG["size_threshold"]:
-                # 閾値超過 → 品質を段階的に下げて再圧縮
-                post_logger.info(f"⚠️ ファイルサイズが {_IMAGE_CONFIG['size_threshold'] / 1024:.0f}KB を超過: {current_size_bytes / 1024:.1f}KB")
-                jpeg_data = self._optimize_image_quality(resized_img, current_size_bytes)
-
-                if jpeg_data is None:
-                    post_logger.error(f"❌ ファイルサイズの最適化に失敗しました（{_IMAGE_CONFIG['size_limit']}バイト超過）")
-                    return None
-
-                current_size_bytes = len(jpeg_data)
-
-            # ========== 最終チェック ==========
-            if current_size_bytes > _IMAGE_CONFIG["size_limit"]:
-                post_logger.error(f"❌ 最終的なファイルサイズが上限を超えています: {current_size_bytes / 1024:.1f}KB")
-                return None
-
-            # ========== ログ出力 ==========
-            post_logger.info(
-                f"✅ 画像リサイズ完了: {original_width}×{original_height} ({original_size_bytes / 1024:.1f}KB) "
-                f"→ {resized_width}×{resized_height} ({current_size_bytes / 1024:.1f}KB)"
-            )
-
-            return jpeg_data
-
-        except Exception as e:
-            post_logger.error(f"❌ 画像リサイズ失敗: {e}")
-            return None
-
-    def _resize_to_aspect_ratio(self, img, target_width: int, target_height: int):
-        """
-        アスペクト比を指定値に寄せて縮小+中央トリミング
-
-        ターゲットのアスペクト比に合わせるため、元画像が相対的に横長ならば幅を基準に縮小し、
-        縦長ならば高さを基準に縮小してから中央トリミングを行う
-
-        Args:
-            img: PIL Image オブジェクト
-            target_width: ターゲット幅
-            target_height: ターゲット高さ
-
-        Returns:
-            トリミング後の PIL Image オブジェクト
-        """
-        original_width, original_height = img.size
-
-        # ターゲットのアスペクト比
-        target_ratio = target_width / target_height
-
-        # 元画像のアスペクト比
-        current_ratio = original_width / original_height
-
-        if current_ratio > target_ratio:
-            # 元画像がターゲットより横長 → 幅を基準に縮小（高さがターゲット以下になる）
-            new_width = target_width
-            new_height = int(target_width / current_ratio)
-        else:
-            # 元画像がターゲットより縦長 → 高さを基準に縮小（幅がターゲット以下になる）
-            new_height = target_height
-            new_width = int(target_height * current_ratio)
-
-        # 縮小
-        img_resized = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
-
-        # 中央トリミング
-        left = (new_width - target_width) // 2
-        top = (new_height - target_height) // 2
-        right = left + target_width
-        bottom = top + target_height
-
-        img_cropped = img_resized.crop((left, top, right, bottom))
-
-        return img_cropped
-
-    def _resize_to_max_dimension(self, img, max_dimension: int):
-        """
-        アスペクト比を維持したまま、長辺が max_dimension 以下になるように縮小
-
-        元画像がターゲットより小さい場合は拡大せずそのまま返す
-
-        Args:
-            img: PIL Image オブジェクト
-            max_dimension: 最大長辺（ピクセル）
-
-        Returns:
-            縮小後（または元のまま）の PIL Image オブジェクト
-        """
-        width, height = img.size
-        max_current = max(width, height)
-
-        if max_current <= max_dimension:
-            # 既に小さいので拡大しない
-            return img
-
-        # 縮小比を計算
-        scale = max_dimension / max_current
-        new_width = int(width * scale)
-        new_height = int(height * scale)
-
-        img_resized = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
-        return img_resized
-
-    def _encode_jpeg(self, img, quality: int) -> bytes:
-        """
-        PIL Image を JPEG でエンコードしてバイナリを返す
-
-        Args:
-            img: PIL Image オブジェクト
-            quality: JPEG品質（1-95）
-
-        Returns:
-            JPEG バイナリ
-        """
-        import io
-
-        # RGBに変換（PNG等のアルファチャネルを削除）
-        if img.mode in ('RGBA', 'LA', 'P'):
-            # 白背景で合成
-            background = Image.new('RGB', img.size, (255, 255, 255))
-            background.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
-            img = background
-        elif img.mode != 'RGB':
-            img = img.convert('RGB')
-
-        buffer = io.BytesIO()
-        img.save(buffer, format='JPEG', quality=quality, optimize=True)
-        return buffer.getvalue()
-
-    def _optimize_image_quality(self, img, current_size_bytes: int) -> bytes:
-        """
-        画像の品質を段階的に下げて再圧縮（ファイルサイズを上限未満に）
-
-        Args:
-            img: PIL Image オブジェクト
-            current_size_bytes: 現在のバイナリサイズ
-
-        Returns:
-            最適化された JPEG バイナリ、失敗時は None
-        """
-        # 品質を段階的に下げてテスト: 85, 75, 65, 55, 50
-        quality_levels = [85, 75, 65, 55, 50]
-
-        for quality in quality_levels:
-            jpeg_data = self._encode_jpeg(img, quality)
-            size_bytes = len(jpeg_data)
-
-            post_logger.debug(f"   JPEG品質{quality}: {size_bytes / 1024:.1f}KB")
-
-            if size_bytes <= _IMAGE_CONFIG["size_limit"]:
-                post_logger.info(f"✅ 品質{quality}で {_IMAGE_CONFIG['size_limit'] / 1024:.0f}KB 以下に圧縮: {size_bytes / 1024:.1f}KB")
-                return jpeg_data
-
-        # すべての品質レベルでも上限を超えた
-        post_logger.error(f"❌ 品質{quality_levels[-1]}でも {_IMAGE_CONFIG['size_limit'] / 1024:.0f}KB を超えています")
-        return None
 
     def _get_mime_type(self, file_path: str) -> str:
         """ファイル拡張子から MIME タイプを判定"""
@@ -574,15 +424,18 @@ class BlueskyImagePlugin(NotificationPlugin):
         }
         return mime_types.get(ext, 'image/jpeg')  # デフォルトは JPEG
 
-    def _build_image_embed(self, blob: dict) -> dict:
+    def _build_image_embed(self, blob: dict, width: int = None, height: int = None) -> dict:
         """
         Blob メタデータから画像埋め込み（embed）オブジェクトを構築
 
         Bluesky API: app.bsky.embed.images
         参照: https://docs.bsky.app/docs/advanced-guides/posts
+        aspectRatio: https://atproto.blue/en/latest/atproto/atproto_client.models.app.bsky.embed.defs.html
 
         Args:
             blob: uploadBlob で返されたメタデータ
+            width: 画像の幅（ピクセル）- aspectRatio設定用
+            height: 画像の高さ（ピクセル）- aspectRatio設定用
 
         Returns:
             embed オブジェクト
@@ -590,14 +443,22 @@ class BlueskyImagePlugin(NotificationPlugin):
         if not blob:
             return None
 
+        image_obj = {
+            "image": blob,
+            "alt": "Posted image"
+        }
+
+        # ★ aspectRatio を設定（Blueskyクライアントの正確な画像表示用）
+        if width and height:
+            image_obj["aspectRatio"] = {
+                "width": width,
+                "height": height
+            }
+            post_logger.debug(f"📐 AspectRatio を設定: {width}×{height}")
+
         return {
             "$type": "app.bsky.embed.images",
-            "images": [
-                {
-                    "image": blob,
-                    "alt": "Posted image"
-                }
-            ]
+            "images": [image_obj]
         }
 
     def _download_image(self, url: str) -> str:
