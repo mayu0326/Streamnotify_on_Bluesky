@@ -597,16 +597,19 @@ class BlueskyImagePlugin(NotificationPlugin):
                 template_type,
                 default_fallback=str(DEFAULT_TEMPLATE_PATH)
             )
+            post_logger.debug(f"🔍 テンプレートパス取得: {template_type} → {template_path}")
 
             # 2. テンプレートをロード（失敗時はフォールバック）
+            post_logger.debug(f"🔍 load_template_with_fallback 呼び出し: path={template_path}, default_path={DEFAULT_TEMPLATE_PATH}")
             template_obj = load_template_with_fallback(
                 path=template_path,
                 default_path=str(DEFAULT_TEMPLATE_PATH),
                 template_type=template_type
             )
+            post_logger.debug(f"🔍 load_template_with_fallback 結果: {template_obj is not None}")
 
             if not template_obj:
-                post_logger.error(f"❌ テンプレート読み込み失敗: {template_type}")
+                post_logger.error(f"❌ テンプレート読み込み失敗: {template_type} (path={template_path})")
                 return ""
 
             # 3. 必須キーをチェック
