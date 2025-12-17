@@ -176,6 +176,40 @@ FALLBACK_TEMPLATE_PATH = DEFAULT_TEMPLATE_DIR / "fallback_template.txt"
 # ============ ユーティリティ関数 ============
 
 
+def _get_env_var_from_file(file_path: str, env_var_name: str) -> Optional[str]:
+    """
+    settings.env などの設定ファイルから環境変数を読み込む（os.getenv の補完）。
+
+    Python の os.getenv() は .env ファイルから環境変数を読み込まないため、
+    ここで手動でファイルを読んで、settings.env から値を取得します。
+
+    Args:
+        file_path: 設定ファイルパス（例: "settings.env"）
+        env_var_name: 環境変数名（例: "TEMPLATE_YOUTUBE_NEW_VIDEO_PATH"）
+
+    Returns:
+        環境変数の値、見つからない場合は None
+    """
+    try:
+        file_path_obj = Path(file_path)
+        if not file_path_obj.exists():
+            return None
+
+        with open(file_path_obj, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+                if '=' in line:
+                    key, value = line.split('=', 1)
+                    if key.strip() == env_var_name:
+                        return value.strip()
+    except Exception as e:
+        logger.debug(f"⚠️ 設定ファイル読み込みエラー ({file_path}): {e}")
+
+    return None
+
+
 def _get_legacy_env_var_name(template_type: str) -> str:
     """
     テンプレート種別からレガシー形式の環境変数名を生成（後方互換性用）。
@@ -240,14 +274,33 @@ def get_template_path(
 
     # 新形式: TEMPLATE_{template_type}_PATH
     new_format_env_var = f"TEMPLATE_{template_type.upper()}_PATH"
+
+    # ★ 修正: 複数ソースから読み込む
+    # 優先度 1: os.getenv（システム環境変数）
     env_path = os.getenv(new_format_env_var)
+
+    # 優先度 2: settings.env から直接読み込む
+    if not env_path:
+        env_path = _get_env_var_from_file("settings.env", new_format_env_var)
+        if env_path:
+            logger.debug(f"✅ settings.env から読み込み: {new_format_env_var} = {env_path}")
+
     if env_path:
         return env_path
 
     # レガシー形式: BLUESKY_*_TEMPLATE_PATH（後方互換性）
     # 例: youtube_new_video → BLUESKY_YT_NEW_VIDEO_TEMPLATE_PATH
     legacy_format_env_var = _get_legacy_env_var_name(template_type)
+
+    # 優先度 1: os.getenv（システム環境変数）
     env_path = os.getenv(legacy_format_env_var)
+
+    # 優先度 2: settings.env から直接読み込む
+    if not env_path:
+        env_path = _get_env_var_from_file("settings.env", legacy_format_env_var)
+        if env_path:
+            logger.debug(f"✅ settings.env から読み込み（レガシー形式）: {legacy_format_env_var} = {env_path}")
+
     if env_path:
         return env_path
 
@@ -305,18 +358,32 @@ def load_template_with_fallback(
         path = default_path or str(DEFAULT_TEMPLATE_PATH)
 
     try:
+        # ★ 相対パス → 絶対パス変換（TEMPLATE_ROOT 基準）
+        template_path = Path(path)
+        if not template_path.is_absolute():
+            # 相対パスの場合は TEMPLATE_ROOT を基準に解決
+            template_path = TEMPLATE_ROOT.parent / path  # v2 ディレクトリ基準
+            logger.debug(f"🔍 相対パスを絶対パスに変換: {path} → {template_path}")
+
         # ファイルの存在確認
-        if not Path(path).exists():
-            logger.warning(f"⚠️ テンプレートファイルが見つかりません: {path}")
+        logger.debug(f"🔍 テンプレートファイル存在確認: {template_path} (exists={template_path.exists()})")
+        if not template_path.exists():
+            logger.warning(f"⚠️ テンプレートファイルが見つかりません: {template_path}")
             if default_path:
                 logger.info(f"🔄 デフォルトテンプレートにフォールバック: {default_path}")
                 path = default_path
+                # フォールバック時も相対パス → 絶対パス変換を試みる
+                template_path = Path(path)
+                if not template_path.is_absolute():
+                    template_path = TEMPLATE_ROOT.parent / path
+                    logger.debug(f"🔍 フォールバック時に相対パスを絶対パスに変換: {path} → {template_path}")
+                logger.debug(f"🔍 フォールバック先ファイル存在確認: {template_path} (exists={template_path.exists()})")
             else:
                 logger.warning(f"❌ フォールバックパスも指定されていません")
                 return None
 
         # ファイル読み込み
-        with open(path, encoding="utf-8") as f:
+        with open(template_path, encoding="utf-8") as f:
             template_str = f.read()
 
         # Jinja2 Environment でテンプレート化
