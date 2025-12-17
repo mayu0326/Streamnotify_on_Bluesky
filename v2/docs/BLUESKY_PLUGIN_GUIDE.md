@@ -600,7 +600,7 @@ Bluesky の `embed` フィールドは **1種類のembedのみ** を保持でき
 
 **実装**:
 ```python
-# bluesky_v2.py
+# bluesky_core.py
 def post_video_minimal(self, video: dict) -> bool:
     # ...
     use_link_card = video.get("use_link_card", True)  # デフォルト: True
@@ -766,7 +766,7 @@ DRY RUN（投稿テスト）機能により、実際には Bluesky に投稿せ�
 | ファイル | 実装内容 |
 |---------|--------|
 | `plugins/bluesky_plugin.py` | `set_dry_run()` メソッド追加 |
-| `bluesky_v2.py` | `set_dry_run()` メソッド追加、ダミーデータ返却 |
+| `bluesky_core.py` | `set_dry_run()` メソッド追加、ダミーデータ返却 |
 | `plugin_manager.py` | `post_video_with_all_enabled()` に `dry_run` パラメータ追加 |
 | `gui_v2.py` | 投稿設定ウィンドウで「🧪 投稿テスト」ボタン実装 |
 
@@ -781,7 +781,7 @@ plugin_manager.post_video_with_all_enabled(video, dry_run=True)
   ↓
 bluesky_plugin.set_dry_run(True) 実行
   ↓
-bluesky_v2.set_dry_run(True) 実行
+bluesky_core.set_dry_run(True) 実行
   ↓
 投稿処理実行
   ├─ テキスト・Facet は通常通り構築
@@ -809,7 +809,7 @@ def set_dry_run(self, dry_run: bool):
 **2. コアモジュールに `set_dry_run()` メソッドを追加**
 
 ```python
-# bluesky_v2.py
+# bluesky_core.py
 def set_dry_run(self, dry_run: bool):
     """ドライランモードを設定"""
     self.dry_run = dry_run
@@ -819,7 +819,7 @@ def set_dry_run(self, dry_run: bool):
 **3. API呼び出し時に DRY RUN チェック**
 
 ```python
-# bluesky_v2.py::post_video_minimal()
+# bluesky_core.py::post_video_minimal()
 def post_video_minimal(self, video: dict) -> bool:
     # ... 投稿データ構築 ...
 
@@ -839,7 +839,7 @@ def post_video_minimal(self, video: dict) -> bool:
 **4. Blob アップロード時のダミーデータ**
 
 ```python
-# bluesky_v2.py::_upload_blob()
+# bluesky_core.py::_upload_blob()
 def _upload_blob(self, file_path: str) -> tuple:
     # DRY RUN モード時はダミー blob を返す
     if self.dry_run:
@@ -932,7 +932,7 @@ def _execute_post(self, dry_run=False):
 | ファイル | 行数 | 実装内容 |
 |---------|------|--------|
 | `plugins/bluesky_plugin.py` | 446-451 | `set_dry_run()` メソッド |
-| `bluesky_v2.py` | 60-62, 215-235 | `set_dry_run()` メソッド、ダミーデータ戻り値 |
+| `bluesky_core.py` | 60-62, 215-235 | `set_dry_run()` メソッド、ダミーデータ戻り値 |
 | `plugin_manager.py` | 220-240 | `dry_run` パラメータ伝播 |
 | `gui_v2.py` | 1263-1330 | 「🧪 投稿テスト」ボタン実装 |
 
@@ -1356,7 +1356,7 @@ response = requests.post(
 ## 📝 実装ファイル
 
 - `v2/plugins/bluesky_plugin.py`: Bluesky 画像添付拡張プラグイン（画像リサイズ＆投稿）
-- `v2/bluesky_v2.py`: Bluesky コア認証・投稿管理（Rich Text Facet＆リンクカード）
+- `v2/bluesky_core.py`: Bluesky コア認証・投稿管理（Rich Text Facet＆リンクカード）
 - `v2/image_manager.py`: 画像ファイル管理
 
 ---
