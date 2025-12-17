@@ -119,14 +119,14 @@ class NiconicoPlugin(NotificationPlugin):
             try:
                 logger.info("[ニコニコ] ニコニコ動画から RSS を取得しています...")
                 app_logger.info("[ニコニコ] ニコニコ動画から RSS を取得しています...")
-                
+
                 # 動画をチェック
                 video_entry = self.get_latest_video_entry()
                 if video_entry:
                     if not self.last_video_id or video_entry.get("id") != self.last_video_id:
                         # ニコニコ RSS の取得・照合・判定ログ（新着動画がある場合のみ）
                         niconico_logger.info(f"[ニコニコ RSS] 1 個の動画を DB に照合しています...")
-                        
+
                         video = self._entry_to_video_dict(video_entry)
                         is_new = self.post_video(video)
                         if is_new:
@@ -169,7 +169,7 @@ class NiconicoPlugin(NotificationPlugin):
 
         Args:
             url: RSS フィード URL
-            kind: "video" 
+            kind: "video"
 
         Returns:
             dict または None
@@ -177,7 +177,7 @@ class NiconicoPlugin(NotificationPlugin):
         for attempt in range(1, RSS_RETRY_MAX + 1):
             try:
                 logger.debug(f"[RSS取得試行] {attempt}/{RSS_RETRY_MAX}")
-                
+
                 # feedparser は timeout パラメータに対応していないため、
                 # 基本的なエラーハンドリングのみ実装
                 feed = feedparser.parse(url)
@@ -203,7 +203,7 @@ class NiconicoPlugin(NotificationPlugin):
 
             except Exception as e:
                 logger.warning(f"[RSS取得エラー] 試行 {attempt}/{RSS_RETRY_MAX}: {type(e).__name__}: {e}")
-                
+
                 if attempt < RSS_RETRY_MAX:
                     logger.debug(f"[リトライ待機] {RSS_RETRY_WAIT}秒待機中...")
                     time.sleep(RSS_RETRY_WAIT)
@@ -328,13 +328,13 @@ class NiconicoPlugin(NotificationPlugin):
             # database と image_manager のロガーを一時的に NiconicoLogger に切り替え
             import database as db_module
             import image_manager as im_module
-            
+
             original_db_logger = db_module.logger
             original_im_logger = im_module.logger
             niconico_logger = logging.getLogger("NiconicoLogger")
             db_module.logger = niconico_logger
             im_module.logger = niconico_logger
-            
+
             try:
                 videos = self.db.get_all_videos()
                 video = next((v for v in videos if v.get("video_id") == video_id), None)
@@ -371,4 +371,3 @@ class NiconicoPlugin(NotificationPlugin):
         """定期実行（プラグインマネージャから呼び出される場合用）"""
         # 監視スレッドで処理しているため、ここでは何もしない
         pass
-
