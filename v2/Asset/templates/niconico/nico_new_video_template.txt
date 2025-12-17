@@ -1,6 +1,8 @@
-📽 ニコニコ動画 新着投稿！
+📽 ニコニコ動画 に新しい動画を投稿しました
 
 タイトル: {{ title }}
+投稿者: {{ channel_name }}
+投稿日: {{ published_at | datetimeformat('%Y年%m月%d日') }}
 動画URL: {{ video_url }}
 
-ぜひご覧ください！
+#ニコニコ動画
