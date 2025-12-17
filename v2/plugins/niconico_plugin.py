@@ -36,7 +36,7 @@ NICONICO_USER_ID_PATTERN = r'^\d+$'  # ユーザーID は数字のみ
 class NiconicoPlugin(NotificationPlugin):
     """ニコニコ動画 RSS取得プラグイン"""
 
-    def __init__(self, user_id: str, poll_interval: int, db: Database):
+    def __init__(self, user_id: str, poll_interval: int, db: Database, user_name: str = None):
         """
         初期化
 
@@ -44,8 +44,10 @@ class NiconicoPlugin(NotificationPlugin):
             user_id: 監視対象のニコニコユーザーID（数字のみ）
             poll_interval: ポーリング間隔（分）
             db: Database インスタンス
+            user_name: ニコニコユーザー名（display用。省略時はIDから推測）
         """
         self.user_id = user_id.strip() if user_id else ""
+        self.user_name = user_name or os.getenv("NICONICO_USER_NAME", "") or self.user_id
         self.poll_interval_min = max(int(poll_interval), 5)  # 最小 5 分
         self.poll_interval_sec = self.poll_interval_min * 60
         self.db = db
@@ -228,7 +230,8 @@ class NiconicoPlugin(NotificationPlugin):
         title = entry.get("title", "")
         link = entry.get("link", "")
         published = entry.get("published", "")
-        author = entry.get("author", "")
+        # ニコニコのRSSにはauthorフィールドがないため、設定済みのユーザー名を使用
+        author = self.user_name
 
         # ニコニコ動画IDをlinkから抽出
         video_id = ""
@@ -263,7 +266,7 @@ class NiconicoPlugin(NotificationPlugin):
             "thumbnail_url": self._fetch_thumbnail_url(video_id) or "",
         }
 
-        logger.debug(f"[エントリ変換] video_id={video_id}, title={title}")
+        logger.debug(f"[エントリ変換] video_id={video_id}, title={title}, author={author}")
         return video
 
     def post_video(self, video: Dict[str, Any]) -> bool:
