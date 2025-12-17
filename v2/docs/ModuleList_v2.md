@@ -10,11 +10,11 @@
 | `youtube_rss.py` | コア | RSS 取得・パース | main_v2.py |
 | `plugin_interface.py` | コア | NotificationPlugin 抽象基底クラス（プラグイン定義） | すべてのプラグイン |
 | `plugin_manager.py` | コア | プラグイン自動検出・読み込み・管理 | main_v2.py |
-| `bluesky_v2.py` | ユーティリティ | Bluesky 投稿機能の本体（ログイン・投稿・Facet構築） | bluesky_plugin.py |
+| `bluesky_core.py` | ユーティリティ | Bluesky 投稿機能の本体（ログイン・投稿・Facet構築） | bluesky_plugin.py |
 | `gui_v2.py` | コア | GUI フレーム統合・動画選択・投稿実行・統計表示 | main_v2.py |
-| `image_manager.py` | ユーティリティ | 画像ダウンロード・保存・フォーマット変換・リトライ対応 | bluesky_v2.py、niconico_plugin.py |
+| `image_manager.py` | ユーティリティ | 画像ダウンロード・保存・フォーマット変換・リトライ対応 | bluesky_core.py、niconico_plugin.py |
 | `logging_config.py` | ユーティリティ | ロギング統合設定（ロギングプラグイン対応） | main_v2.py |
-| `utils_v2.py` | ユーティリティ | 共通関数（日時フォーマット・リトライ・URLバリデーション） | bluesky_v2.py、config.py ほか |
+| `utils_v2.py` | ユーティリティ | 共通関数（日時フォーマット・リトライ・URLバリデーション） | bluesky_core.py、config.py ほか |
 
 ## 設定ファイル・テンプレート
 
