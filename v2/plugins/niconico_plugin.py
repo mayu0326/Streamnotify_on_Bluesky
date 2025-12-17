@@ -6,7 +6,7 @@
 - RSS ポーリング方式で実装
 - リトライ・タイムアウト対応
 - NotificationPlugin 準拠
-- ユーザー名自動取得（RSS <dc:creator> > 静画API > ユーザーID）
+- ユーザー名自動取得（RSS <dc:creator> > 静画API > ユーザーページ > 環境変数 > ユーザーID）
 """
 
 import os
@@ -15,10 +15,12 @@ import time
 import re
 from typing import Dict, Any, Optional
 from threading import Thread, Event
+from pathlib import Path
 import feedparser
 from socket import timeout as socket_timeout
 import requests
 import xml.etree.ElementTree as ET
+from bs4 import BeautifulSoup
 from image_manager import get_image_manager
 from thumbnails import get_niconico_ogp_url
 
@@ -34,6 +36,8 @@ RSS_RETRY_WAIT = 2  # リトライ待機時間（秒）
 NICONICO_USER_ID_PATTERN = r'^\d+$'  # ユーザーID は数字のみ
 SEIGA_API_URL = "http://seiga.nicovideo.jp/api/user/info"  # ニコニコ静画 API URL
 SEIGA_API_TIMEOUT = 5  # 静画API タイムアウト（秒）
+NICONICO_USER_PAGE_TIMEOUT = 5  # ユーザーページ取得タイムアウト（秒）
+SETTINGS_ENV_PATH = Path(__file__).parent.parent / "settings.env"  # 設定ファイルパス
 
 
 class NiconicoPlugin(NotificationPlugin):
@@ -88,8 +92,9 @@ class NiconicoPlugin(NotificationPlugin):
         優先順位:
         1. RSS <dc:creator> から取得
         2. 静画API から取得
-        3. 環境変数または初期化パラメータ (NICONICO_USER_NAME)
-        4. ユーザーID をそのまま使用
+        3. ニコニコ公式ユーザーページ から取得（og:title から抽出）
+        4. 環境変数または初期化パラメータ (NICONICO_USER_NAME)
+        5. ユーザーID をそのまま使用
 
         Returns:
             str: ユーザー名またはユーザーID
@@ -110,15 +115,26 @@ class NiconicoPlugin(NotificationPlugin):
         if seiga_author:
             logger.debug(f"[ユーザー名取得] 静画API から取得: {seiga_author}")
             self._user_name_cache = seiga_author
+            # 設定ファイルが未設定なら書き込む
+            self._save_user_name_to_config(seiga_author)
             return self._user_name_cache
 
-        # 優先度3: 環境変数が設定されていれば使用
+        # 優先度3: ニコニコ公式ページから取得
+        page_author = self._get_user_name_from_user_page()
+        if page_author:
+            logger.debug(f"[ユーザー名取得] ユーザーページから取得: {page_author}")
+            self._user_name_cache = page_author
+            # 設定ファイルが未設定なら書き込む
+            self._save_user_name_to_config(page_author)
+            return self._user_name_cache
+
+        # 優先度4: 環境変数が設定されていれば使用
         if self._user_name_env:
             logger.debug(f"[ユーザー名取得] 環境変数から取得: {self._user_name_env}")
             self._user_name_cache = self._user_name_env
             return self._user_name_cache
 
-        # 優先度4: ユーザーIDをそのまま使用
+        # 優先度5: ユーザーIDをそのまま使用
         logger.debug(f"[ユーザー名取得] デフォルト（ユーザーID）を使用: {self.user_id}")
         self._user_name_cache = self.user_id
         return self._user_name_cache
@@ -192,6 +208,9 @@ class NiconicoPlugin(NotificationPlugin):
             logger.debug("[静画API] <nickname> 要素なし")
             return None
 
+        except requests.exceptions.HTTPError as e:
+            logger.debug(f"[静画APIエラー] HTTP {e.response.status_code}: {e}")
+            return None
         except requests.exceptions.RequestException as e:
             logger.warning(f"[静画APIリクエストエラー] {type(e).__name__}: {e}")
             return None
@@ -201,6 +220,106 @@ class NiconicoPlugin(NotificationPlugin):
         except Exception as e:
             logger.warning(f"[静画API取得エラー] {type(e).__name__}: {e}")
             return None
+
+    def _get_user_name_from_user_page(self) -> Optional[str]:
+        """
+        ニコニコ公式ユーザーページ からユーザー名を取得
+
+        ページ: https://www.nicovideo.jp/user/ユーザーID
+        og:title メタタグから抽出
+
+        Returns:
+            str または None: ユーザー名（取得できない場合は None）
+        """
+        try:
+            url = f"https://www.nicovideo.jp/user/{self.user_id}"
+            logger.debug(f"[ユーザーページ] {url}")
+
+            response = requests.get(url, timeout=NICONICO_USER_PAGE_TIMEOUT)
+            response.raise_for_status()
+            response.encoding = 'utf-8'
+
+            # BeautifulSoupでHTML解析
+            soup = BeautifulSoup(response.text, 'html.parser')
+
+            # og:title メタタグからユーザー名を抽出
+            og_title = soup.find('meta', property='og:title')
+            if og_title:
+                title = og_title.get('content', '')
+                # "ユーザー名 - ニコニコ" のような形式から名前を抽出
+                match = re.search(r'^([^ ]+)\s*[-|]', title)
+                if match:
+                    user_name = match.group(1).strip()
+                    logger.info(f"[ユーザーページ取得成功] {user_name}")
+                    return user_name
+
+            logger.debug("[ユーザーページ] og:title から名前を抽出できない")
+            return None
+
+        except requests.exceptions.HTTPError as e:
+            logger.debug(f"[ユーザーページエラー] HTTP {e.response.status_code}: {e}")
+            return None
+        except requests.exceptions.RequestException as e:
+            logger.warning(f"[ユーザーページリクエストエラー] {type(e).__name__}: {e}")
+            return None
+        except Exception as e:
+            logger.warning(f"[ユーザーページ取得エラー] {type(e).__name__}: {e}")
+            return None
+
+    def _save_user_name_to_config(self, user_name: str) -> None:
+        """
+        取得したユーザー名を設定ファイルに保存
+
+        NICONICO_USER_NAME が未設定の場合のみ書き込む
+
+        Args:
+            user_name: 保存するユーザー名
+        """
+        try:
+            # 既に環境変数が設定されている場合はスキップ
+            if self._user_name_env:
+                logger.debug(f"[設定保存] NICONICO_USER_NAME は既に設定済み、スキップ")
+                return
+
+            # 設定ファイルが存在しない場合はスキップ
+            if not SETTINGS_ENV_PATH.exists():
+                logger.warning(f"[設定保存] 設定ファイルが見つかりません: {SETTINGS_ENV_PATH}")
+                return
+
+            # 既存の設定ファイルを読み込む
+            with open(SETTINGS_ENV_PATH, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+
+            # NICONICO_USER_NAME が既に存在するかチェック
+            user_name_found = False
+            for i, line in enumerate(lines):
+                if line.startswith('NICONICO_USER_NAME='):
+                    user_name_found = True
+                    current_value = line.split('=', 1)[1].strip()
+                    # 既に値が設定されていれば何もしない
+                    if current_value:
+                        logger.debug(f"[設定保存] NICONICO_USER_NAME は既に設定済み: {current_value}")
+                        return
+                    # 空の場合は上書き
+                    lines[i] = f'NICONICO_USER_NAME={user_name}\n'
+                    logger.info(f"[設定保存] NICONICO_USER_NAME を更新: {user_name}")
+                    break
+
+            # NICONICO_USER_NAME が存在しない場合は追加
+            if not user_name_found:
+                # NICONICO_USER_ID の後に追加
+                for i, line in enumerate(lines):
+                    if line.startswith('NICONICO_USER_ID='):
+                        lines.insert(i + 1, f'NICONICO_USER_NAME={user_name}\n')
+                        logger.info(f"[設定保存] NICONICO_USER_NAME を新規追加: {user_name}")
+                        break
+
+            # 設定ファイルに書き込む
+            with open(SETTINGS_ENV_PATH, 'w', encoding='utf-8') as f:
+                f.writelines(lines)
+
+        except Exception as e:
+            logger.warning(f"[設定保存エラー] {type(e).__name__}: {e}")
 
     def is_available(self) -> bool:
         """プラグインが利用可能か判定"""
