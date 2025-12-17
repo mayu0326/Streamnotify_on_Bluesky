@@ -202,7 +202,8 @@ def main():
             niconico_plugin = NiconicoPlugin(
                 user_id=config.niconico_user_id,
                 poll_interval=config.niconico_poll_interval_minutes,
-                db=db
+                db=db,
+                user_name=os.getenv("NICONICO_USER_NAME")
             )
             plugin_manager.loaded_plugins["niconico_plugin"] = niconico_plugin
 
