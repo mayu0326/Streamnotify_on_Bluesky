@@ -1,3 +1,7 @@
+# テスト用スクリプト（一時的な検証・デバッグ用）
+test_scripts/
+**/test_settings/*
+
 **/.venv/*
 **/.vscode/*
 .env
@@ -18,3 +22,5 @@ Streamnotify_on_Bluesky.code-workspace
 .gitattributes
 **/YouTube_ALL_DATA/*
 **/YouTube_ALL_DATA/yt/*
+**/data/*
+**/v2/docs/Local/*

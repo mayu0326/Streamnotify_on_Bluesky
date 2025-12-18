@@ -78,7 +78,7 @@ class BlueskyMinimalPoster:
 
     def _build_facets_for_url(self, text: str) -> list:
         """
-        テキストから URL を検出して Facet を構築
+        テキストから URL とハッシュタグを検出して Facet を構築
 
         Bluesky Rich Text Facet: https://docs.bsky.app/docs/advanced-guides/post-richtext
 
@@ -86,12 +86,13 @@ class BlueskyMinimalPoster:
             text: ポスト本文
 
         Returns:
-            Facet リスト、URL がない場合は None
+            Facet リスト、URL/ハッシュタグがない場合は None
         """
-        pattern = r'https?://[^\s]+'
         facets = []
 
-        for match in re.finditer(pattern, text):
+        # ============ URL facet の検出 ============
+        url_pattern = r'https?://[^\s]+'
+        for match in re.finditer(url_pattern, text):
             url = match.group(0)
 
             # UTF-8 バイト位置を計算
@@ -114,6 +115,41 @@ class BlueskyMinimalPoster:
             post_logger.info(f"  🔗 URL 検出: {url}")
             post_logger.info(f"     バイト位置: {byte_start} - {byte_end}")
 
+        # ============ ハッシュタグ facet の検出 ============
+        # パターン: 単語境界または行頭または空白 + # + 連続する非空白文字（空白と#以外）
+        # マルチバイト文字も対応
+        hashtag_pattern = r'(?:^|\s)(#[^\s#]+)'
+
+        for match in re.finditer(hashtag_pattern, text):
+            full_match = match.group(0)  # 前の空白or行頭を含む
+            tag_with_hash = match.group(1)  # #タグ部分のみ
+
+            # タグ名（#を除く）
+            tag_name = tag_with_hash[1:]  # # を削除
+
+            # バイト位置計算：フルマッチの中で#の開始位置を見つける
+            # フルマッチが空白で始まる場合、その空白分をオフセット
+            offset_in_match = len(full_match) - len(tag_with_hash)
+
+            byte_start = len(text[:match.start() + offset_in_match].encode('utf-8'))
+            byte_end = len(text[:match.start() + offset_in_match + len(tag_with_hash)].encode('utf-8'))
+
+            facet = {
+                "index": {
+                    "byteStart": byte_start,
+                    "byteEnd": byte_end
+                },
+                "features": [
+                    {
+                        "$type": "app.bsky.richtext.facet#tag",
+                        "tag": tag_name
+                    }
+                ]
+            }
+            facets.append(facet)
+            post_logger.info(f"  #️⃣  ハッシュタグ検出: {tag_with_hash} (タグ: {tag_name})")
+            post_logger.info(f"     バイト位置: {byte_start} - {byte_end}")
+
         return facets if facets else None
 
     def post_video_minimal(self, video: dict) -> bool:
@@ -125,6 +161,10 @@ class BlueskyMinimalPoster:
             post_logger.debug(f"   image_mode: {video.get('image_mode')}")
             post_logger.debug(f"   image_filename: {video.get('image_filename')}")
             post_logger.debug(f"   embed: {bool(video.get('embed'))}")
+            post_logger.debug(f"   text_override: {bool(video.get('text_override'))}")
+
+            # text_override がある場合は優先（テンプレートレンダリング済み）
+            text_override = video.get("text_override")
 
             title = video.get("title", "【新着動画】")
             video_url = video.get("video_url", "")
@@ -137,7 +177,11 @@ class BlueskyMinimalPoster:
                 return False
 
             # source に応じたテンプレートを生成
-            if source == "niconico":
+            if text_override:
+                # プラグイン側でテンプレートから生成した本文を優先
+                post_text = text_override
+                post_logger.info(f"📝 テンプレート生成済みの本文を使用します")
+            elif source == "niconico":
                 post_text = f"{title}\n\n📅 {published_at[:10]}\n\n{video_url}"
             else:
                 # YouTube（デフォルト）
@@ -151,7 +195,9 @@ class BlueskyMinimalPoster:
             facets = None
             # video辞書から embed を取得（プラグインが設定した場合）
             embed = video.get("embed", None)
-            # use_link_card フラグを取得（デフォルト: True - プラグインなしの場合）
+            # ★ プラグイン経由フラグを取得（デフォルト: True）
+            via_plugin = video.get("via_plugin", True)
+            # use_link_card フラグを取得（デフォルト: True - プラグイン有効時のみ使用）
             use_link_card = video.get("use_link_card", True)
             created_at = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
 
@@ -165,8 +211,8 @@ class BlueskyMinimalPoster:
                 # パターン2: プラグイン有効 + 画像ありの場合
                 post_logger.info("🖼️ 画像 embed を使用します（リンクカード無効化）")
                 use_link_card = False  # リンクカードは使用しない
-            elif use_link_card and video_url:
-                # パターン1,3: リンクカード機能を有効化
+            elif use_link_card and video_url and via_plugin:
+                # ★ リンクカードはプラグイン機能 - プラグイン経由のときのみ構築
                 post_logger.info("🔗 リンクカード embed を構築しています...")
                 embed = self._build_external_embed(video_url)
                 if embed:

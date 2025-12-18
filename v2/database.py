@@ -324,7 +324,8 @@ class Database:
             cursor.execute("""
                 SELECT id, video_id, published_at, title, posted_to_bluesky,
                        selected_for_post, scheduled_at, posted_at, video_url, channel_name, thumbnail_url,
-                       content_type, live_status, is_premiere, source, image_mode, image_filename
+                       content_type, live_status, is_premiere, source, image_mode, image_filename,
+                       classification_type, broadcast_status
                 FROM videos
                 ORDER BY published_at DESC
             """)
@@ -335,6 +336,34 @@ class Database:
 
         except Exception as e:
             logger.error(f"全動画の取得に失敗しました: {e}")
+            return []
+
+    def get_videos_by_live_status(self, live_status: str):
+        """
+        指定された live_status の動画を取得
+
+        Args:
+            live_status: "upcoming" / "live" / "completed"
+
+        Returns:
+            List[Dict]: 該当する動画情報リスト
+        """
+        try:
+            conn = self._get_connection()
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT * FROM videos WHERE live_status = ?
+                ORDER BY published_at DESC
+                """,
+                (live_status,)
+            )
+            videos = [dict(row) for row in cursor.fetchall()]
+            conn.close()
+            return videos
+        except Exception as e:
+            logger.error(f"live_status={live_status} の動画取得に失敗: {e}")
             return []
 
     def mark_as_posted(self, video_id):
@@ -506,17 +535,34 @@ class Database:
             return False
 
     def delete_video(self, video_id: str) -> bool:
-        """動画をDBから削除"""
+        """動画をDBから削除（ブラックリスト連携付き）"""
         for attempt in range(DB_RETRY_MAX):
             try:
                 conn = sqlite3.connect(self.db_path, timeout=DB_TIMEOUT)
                 conn.row_factory = sqlite3.Row
                 cursor = conn.cursor()
 
+                # 削除前に source を取得
+                cursor.execute("SELECT source FROM videos WHERE video_id = ?", (video_id,))
+                row = cursor.fetchone()
+                source = row["source"] if row else "youtube"
+
+                # DB から削除
                 cursor.execute("DELETE FROM videos WHERE video_id = ?", (video_id,))
                 conn.commit()
                 conn.close()
 
+                # ★ 新: ブラックリストに追加
+                try:
+                    from deleted_video_cache import get_deleted_video_cache
+                    cache = get_deleted_video_cache()
+                    cache.add_deleted_video(video_id, source=source)
+                except ImportError:
+                    logger.warning("deleted_video_cache モジュールが見つかりません")
+                except Exception as e:
+                    logger.error(f"ブラックリスト登録エラー: {video_id} - {e}")
+
+                logger.info(f"✅ 動画を削除しました: {video_id}")
                 return True
 
             except sqlite3.OperationalError as e:

@@ -192,8 +192,51 @@ class BlueskyImagePlugin(NotificationPlugin):
             video["use_link_card"] = True  # リンクカード機能を有効化
             post_logger.info(f"🔗 リンクカード機能を有効化します（画像なし）")
 
+        # ============ テンプレートレンダリング（新着動画投稿用） ============
+        # YouTube / ニコニコの新着動画投稿時にテンプレートを使用
+        source = video.get("source", "youtube").lower()
+        live_status = video.get("live_status")
+        rendered = ""
+
+        # live_status ベースのテンプレート選択（優先度高）
+        if source == "youtube" and live_status:
+            if live_status == "live":
+                # ライブ開始テンプレート
+                rendered = self.render_template_with_utils("youtube_online", video)
+                if rendered:
+                    video["text_override"] = rendered
+                    post_logger.info(f"✅ テンプレートを使用して本文を生成しました: youtube_online")
+                else:
+                    post_logger.debug(f"ℹ️ youtube_online テンプレート未使用またはレンダリング失敗（従来フォーマットを使用）")
+            elif live_status == "completed":
+                # ライブ終了テンプレート
+                rendered = self.render_template_with_utils("youtube_offline", video)
+                if rendered:
+                    video["text_override"] = rendered
+                    post_logger.info(f"✅ テンプレートを使用して本文を生成しました: youtube_offline")
+                else:
+                    post_logger.debug(f"ℹ️ youtube_offline テンプレート未使用またはレンダリング失敗（従来フォーマットを使用）")
+        elif not rendered:
+            # live_status がない場合は従来ロジック
+            if source == "youtube":
+                # YouTube 新着動画用テンプレート
+                rendered = self.render_template_with_utils("youtube_new_video", video)
+                if rendered:
+                    video["text_override"] = rendered
+                    post_logger.info(f"✅ テンプレートを使用して本文を生成しました: youtube_new_video")
+                else:
+                    post_logger.debug(f"ℹ️ youtube_new_video テンプレート未使用またはレンダリング失敗（従来フォーマットを使用）")
+            elif source in ("niconico", "nico"):
+                # ニコニコ新着動画用テンプレート
+                rendered = self.render_template_with_utils("nico_new_video", video)
+                if rendered:
+                    video["text_override"] = rendered
+                    post_logger.info(f"✅ テンプレートを使用して本文を生成しました: nico_new_video")
+                else:
+                    post_logger.debug(f"ℹ️ nico_new_video テンプレート未使用またはレンダリング失敗（従来フォーマットを使用）")
+
         # 最終的に minimal_poster で投稿
-        post_logger.info(f"📊 最終投稿設定: use_link_card={video.get('use_link_card')}, embed={bool(embed)}")
+        post_logger.info(f"📊 最終投稿設定: use_link_card={video.get('use_link_card')}, embed={bool(embed)}, text_override={bool(video.get('text_override'))}")
         return self.minimal_poster.post_video_minimal(video)
 
     def is_available(self) -> bool:
@@ -575,16 +618,19 @@ class BlueskyImagePlugin(NotificationPlugin):
                 template_type,
                 default_fallback=str(DEFAULT_TEMPLATE_PATH)
             )
+            post_logger.debug(f"🔍 テンプレートパス取得: {template_type} → {template_path}")
 
             # 2. テンプレートをロード（失敗時はフォールバック）
+            post_logger.debug(f"🔍 load_template_with_fallback 呼び出し: path={template_path}, default_path={DEFAULT_TEMPLATE_PATH}")
             template_obj = load_template_with_fallback(
                 path=template_path,
                 default_path=str(DEFAULT_TEMPLATE_PATH),
                 template_type=template_type
             )
+            post_logger.debug(f"🔍 load_template_with_fallback 結果: {template_obj is not None}")
 
             if not template_obj:
-                post_logger.error(f"❌ テンプレート読み込み失敗: {template_type}")
+                post_logger.error(f"❌ テンプレート読み込み失敗: {template_type} (path={template_path})")
                 return ""
 
             # 3. 必須キーをチェック

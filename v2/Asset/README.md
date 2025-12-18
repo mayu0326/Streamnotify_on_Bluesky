@@ -8,19 +8,19 @@
 
 **プラグイン導入時に必要なファイルは自動でコピーされます。**
 
-- `main_v2.py` 起動時に `asset_manager.py` が実行
-- プラグインが読み込まれるたびに、該当するテンプレート・画像が自動コピー
+- プラグインが読み込まれて有効化された時点で、`asset_manager.deploy_plugin_assets(plugin_name)` が呼び出される
+- 該当するテンプレート・画像が Asset/ から自動コピーされる
 - 既に存在するファイルは上書きされない（ユーザーの手動編集を保護）
 - ファイルコピー状況は `logs/app.log` に記録される
 
-**手動コピーは不要です。**
+**手動コピーは不要です。** AssetManager が自動的に処理します。
 
 ## ディレクトリ構成
 
 ```
 Asset/
 ├── templates/              # テンプレート保管所
-│   ├── default/           # デフォルト用テンプレート
+│   ├── default/           # デフォルト用テンプレート（→ .templates/ へコピー）
 │   ├── youtube/           # YouTube 関連（YouTube API/Live プラグイン用）
 │   ├── niconico/          # ニコニコ関連（ニコニコプラグイン用）
 │   └── twitch/            # Twitch 関連（将来予定）
@@ -37,7 +37,7 @@ Asset/
 Asset から本番ディレクトリへ配置される際、以下のルールに従います：
 
 **テンプレート:** 小文字で統一
-- `Asset/templates/default/` → `templates/default/`
+- `Asset/templates/default/` → `templates/.templates/` (デフォルト/フォールバック用)
 - `Asset/templates/youtube/` → `templates/youtube/`
 - `Asset/templates/niconico/` → `templates/niconico/`
 - `Asset/templates/twitch/` → `templates/twitch/`
@@ -52,27 +52,54 @@ Asset から本番ディレクトリへ配置される際、以下のルール�
 
 ## 対応プラグイン別の配置
 
-| プラグイン | テンプレート | 画像 |
-|-----------|-----------|------|
-| `youtube_api_plugin` | `templates/youtube/` | `images/YouTube/` |
-| `youtube_live_plugin` | `templates/youtube/` | `images/YouTube/` |
-| `niconico_plugin` | `templates/niconico/` | `images/Niconico/` |
+| プラグイン | テンプレート | 画像 | 配置タイミング |
+|-----------|-----------|------|-----------|
+| `youtube_api_plugin` | `templates/youtube/` | `images/YouTube/` | プラグイン有効化時 |
+| `youtube_live_plugin` | `templates/youtube/` | `images/YouTube/` | プラグイン有効化時 |
+| `niconico_plugin` | `templates/niconico/` | `images/Niconico/` | プラグイン有効化時 |
+| `bluesky_plugin` | `templates/.templates/` | `images/default/` | プラグイン有効化時 ← **デフォルトテンプレート** |
+
+> ℹ️ **重要**: デフォルトテンプレートは Bluesky プラグイン有効化時に `Asset/templates/default/default_template.txt` から `templates/.templates/default_template.txt` へコピーされます（フォールバック用）
 
 ## 手動で追加・カスタマイズする場合
 
+### Asset に新しいテンプレート・画像を追加する場合
 1. Asset ディレクトリに新しいテンプレート・画像を追加
-2. アプリケーションを再起動（または プラグインを再ロード）
+2. アプリケーションを再起動（または 対応するプラグインを再ロード）
 3. 自動コピーされる
+   - ディレクトリ名規則に従う（小文字テンプレート、大文字画像）
+   - `logs/app.log` でコピー状況を確認
 
-カスタマイズしたテンプレートは `templates/` または `images/` ディレクトリに直接編集してください。
+### テンプレート・画像をカスタマイズする場合
+- `templates/` または `images/` ディレクトリ内のファイルを直接編集
+- **Asset 側への変更は自動反映されません** - Asset に記録する場合は手動で同期
+- 既存ファイルは上書き保護されているため、削除後に再コピーする場合は：
+  1. `templates/` または `images/` 内のファイルを削除
+  2. アプリケーション再起動
+  3. Asset から自動コピーされる
 
 ## トラブルシューティング
 
 ### ファイルがコピーされない場合
 - `logs/app.log` を確認してエラーメッセージを確認
 - Asset ディレクトリが正しい場所にあるか確認
-- プラグインが正しくロードされているか確認
+- 対応するプラグインが正しくロードされているか確認（`gui_v2.py` または `logs/app.log` で確認）
+- デバッグモードで詳細ログを確認：`settings.env` で `DEBUG_MODE=true` に設定
 
 ### 古いファイルが残っている場合
-- Asset から再コピーしたい場合は、既存ファイルを削除してから再起動
+- 上書き保護機能により、既存ファイルは削除されません
+- 最新版をコピーしたい場合：
+  1. `templates/` または `images/` 内の古いファイルを削除
+  2. アプリケーション再起動
+  3. Asset から自動コピーされる
+
+### Asset 側で変更したが反映されない場合
+- Asset の変更は自動監視されません - アプリケーション再起動が必要
+- 対応するプラグインが再度ロードされるまで反映されない
 - または手動で `templates/` または `images/` から該当ファイルを削除
+
+## ライセンス
+
+**このリポジトリ全体は GPLv2 です。詳細はルートの LICENSE を参照してください。**
+
+このディレクトリ内のすべてのアセット（テンプレート、画像、ドキュメント）は、親リポジトリの GPLv2 ライセンスの対象です。

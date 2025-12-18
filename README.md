@@ -5,8 +5,8 @@ YouTube チャンネルの新着動画を Bluesky に自動投稿するアプリ
 
 ## 概要
 
-このプロジェクトは、特定の YouTube チャンネルの新着動画を RSS で監視し、Bluesky に自動投稿する常駐ボットです。
-設定ファイルで簡単にカスタマイズでき、将来的にはプラグインで複数の配信プラットフォームに対応予定です。
+- このプロジェクトは、特定の YouTube チャンネルの新着動画を RSS で監視し、Bluesky に自動投稿する常駐ボットです。
+- 設定ファイルで簡単にカスタマイズでき、将来的にはプラグインで複数の配信プラットフォームに対応予定です。
 
 ## 主な機能
 
@@ -21,22 +21,68 @@ YouTube チャンネルの新着動画を Bluesky に自動投稿するアプリ
 
 ```
 .
-├── v2/                    # v2（推奨、現在のメインアプリケーション）
-│   ├── main_v2.py
-│   ├── config.py
-│   ├── database.py
-│   ├── youtube_rss.py
-│   ├── bluesky_core.py
-│   ├── gui_v2.py
-│   ├── requirements.txt
-│   ├── settings.env.example
-│   ├── plugins/           # プラグインディレクトリ
-│   ├── docs/              # 設計ドキュメント
-│   └── ...
+├── README.md                    # このファイル
+├── LICENSE                      # ライセンス
 │
-├── v1/                    # v1（レガシー、参考用）
+├── v2/                          # v2（推奨、現在のメインアプリケーション）
+│   ├── main_v2.py               # エントリーポイント
+│   ├── config.py                # 設定管理
+│   ├── database.py              # SQLite データベース管理
+│   ├── youtube_rss.py           # YouTube RSS フィード取得
+│   ├── bluesky_core.py          # Bluesky API クライアント
+│   ├── gui_v2.py                # Tkinter GUI インターフェース
+│   ├── plugin_manager.py        # プラグイン管理
+│   ├── plugin_interface.py      # プラグイン基本インターフェース
+│   ├── requirements.txt         # 依存パッケージ
+│   ├── settings.env.example     # 設定ファイル例
+│   │
+│   ├── plugins/                 # プラグインディレクトリ
+│   │   ├── bluesky_plugin.py    # Bluesky 投稿プラグイン
+│   │   ├── youtube_api_plugin.py
+│   │   └── ...
+│   │
+│   ├── docs/                    # 設計ドキュメント（4カテゴリに整理）
+│   │   ├── README_GITHUB_v2.md  # ドキュメント入口
+│   │   ├── Technical/           # 技術資料（アーキテクチャ・仕様）
+│   │   │   ├── ARCHITECTURE_AND_DESIGN.md
+│   │   │   ├── PLUGIN_SYSTEM.md
+│   │   │   ├── TEMPLATE_SYSTEM.md
+│   │   │   ├── YOUTUBE_API_CACHING_IMPLEMENTATION.md
+│   │   │   └── ...
+│   │   ├── Guides/              # ユーザーガイド（使い方・操作方法）
+│   │   │   ├── DEBUG_DRY_RUN_GUIDE.md
+│   │   │   ├── IMAGE_RESIZE_GUIDE.md
+│   │   │   ├── SESSION_REPORTS.md
+│   │   │   └── ...
+│   │   ├── References/          # 参考資料（ロードマップ・構想）
+│   │   │   ├── FUTURE_ROADMAP_v2.md
+│   │   │   └── ...
+│   │   ├── ARCHIVE/             # 実装計画・記録（完了後）
+│   │   │   ├── TEMPLATE_IMPLEMENTATION_CHECKLIST.md
+│   │   │   ├── youtube_live_classification_plan.md
+│   │   │   └── ...
+│   │   └── Local/               # AI生成レポート・一時ファイル（非公開推奨）
+│   │
+│   ├── data/                    # ローカルデータ
+│   │   └── video_list.db        # SQLite データベース
+│   │
+│   ├── logs/                    # ログファイル出力先
+│   │
+│   ├── templates/               # 投稿テンプレート
+│   │   └── .templates/
+│   │
+│   ├── images/                  # スクリーンショット・参考画像
+│   │
+│   ├── thumbnails/              # キャッシュ済み動画サムネイル
+│   │
+│   ├── Asset/                   # プラグイン用テンプレート・画像
+│   │   └── README.md
+│   │
+│   └── __pycache__/             # Python キャッシュ（Git 管理外）
 │
-└── README.md              # このファイル
+├── v1/                          # v1（レガシー版、参考用）
+│
+└── OLD_App/                     # 旧アプリケーション（参考用）
 ```
 
 ## 必要な環境
@@ -88,7 +134,7 @@ cp settings.env.example settings.env
 | `BLUESKY_PASSWORD` | Bluesky のアプリパスワード | `xxxx-xxxx-xxxx-xxxx` |
 | `POLL_INTERVAL_MINUTES` | ポーリング間隔（分、最小値 5） | `10` |
 
-その他のオプション設定については、`settings.env` 内のコメント、または [docs/SETTINGS_OVERVIEW.md](docs/SETTINGS_OVERVIEW.md) を参照してください。
+その他のオプション設定については、`settings.env` 内のコメント、または [Streamnotify v2 設定項目一覧](v2/docs/Technical/SETTINGS_OVERVIEW.md) を参照してください。
 
 ## 使用方法
 
@@ -120,13 +166,43 @@ python main_v2.py
 
 詳細な情報は以下をご覧ください：
 
-- [アーキテクチャ](docs/ARCHITECTURE_v2.md) - システム構成とデータベース設計の詳細
-- [モジュール一覧](docs/ModuleList_v2.md) - 全コンポーネントの説明
-- [設定概要](docs/SETTINGS_OVERVIEW.md) - 環境変数・設定項目の詳細
-- [プラグイン開発ガイド](docs/BLUESKY_PLUGIN_GUIDE.md) - プラグイン開発方法
-- [設計方針メモ](docs/v2_DESIGN_POLICY.md) - v2 の仕様と今後の拡張方針
-- [デバッグ・ドライラン](docs/DEBUG_DRY_RUN_GUIDE.md) - トラブルシューティング
-- [将来ロードマップ](docs/FUTURE_ROADMAP_v2.md) - v3+ の計画概要
+### 📚 コア設計・アーキテクチャ
+
+- [アーキテクチャと設計方針](v2/docs/Technical/ARCHITECTURE_AND_DESIGN.md) - システム構成とデータベース設計の詳細
+- [モジュール一覧](v2/docs/Technical/ModuleList_v2.md) - 全コンポーネントの説明
+- [設定概要](v2/docs/Technical/SETTINGS_OVERVIEW.md) - 環境変数・設定項目の詳細
+- [プラグインシステム](v2/docs/Technical/PLUGIN_SYSTEM.md) - プラグイン開発方法、Rich Text Facet、画像処理
+- [YouTube API キャッシング](v2/docs/Technical/YOUTUBE_API_CACHING_IMPLEMENTATION.md) - キャッシング機能の技術仕様
+
+### 🎨 テンプレート・キャッシュ・セッション
+
+- [テンプレートシステム](v2/docs/Technical/TEMPLATE_SYSTEM.md) - テンプレートファイルの仕様・使用方法
+- [削除済み動画ブラックリスト](v2/docs/Technical/DELETED_VIDEO_CACHE.md) - ブラックリスト機能、API リファレンス
+- [セッション実装レポート](v2/docs/Guides/SESSION_REPORTS.md) - 2025-12-17～18 実装内容・テスト結果
+
+### 📋 ユーザーガイド・トラブルシューティング
+
+- [デバッグ・ドライラン](v2/docs/Guides/DEBUG_DRY_RUN_GUIDE.md) - トラブルシューティング・操作方法
+- [画像リサイズガイド](v2/docs/Guides/IMAGE_RESIZE_GUIDE.md) - 画像処理の使い方
+- [セッション実装レポート](v2/docs/Guides/SESSION_REPORTS.md) - 2025-12-17～18 実装内容・テスト結果
+
+### 🚀 その他・参考資料
+
+- [将来ロードマップ](v2/docs/References/FUTURE_ROADMAP_v2.md) - v3+ の計画概要
+- [Rich Text Facet 仕様](v2/docs/Technical/RICHTEXT_FACET_SPECIFICATION.md) - URL・ハッシュタグリンク化の技術仕様
+- [AssetManager 統合ガイド](v2/docs/Technical/ASSET_MANAGER_INTEGRATION_v2.md) - Asset 自動配置・プラグイン連携の詳細
+- [Asset ディレクトリ README](v2/Asset/README.md) - ユーザー向けの Asset 管理方法
+
+### 📂 全ドキュメント構成
+
+ドキュメントは以下のカテゴリに整理されています：
+
+- **Technical/** - 技術資料（アーキテクチャ・仕様・設計）
+- **Guides/** - ユーザーガイド（実装手順・操作方法）
+- **References/** - 参考資料（ロードマップ・構想案）
+- **Local/** - ローカル作業用（内部用・非公開推奨）
+
+詳細は [v2/docs/README_GITHUB_v2.md](v2/docs/README_GITHUB_v2.md) を参照してください。
 
 ## 設定ファイルについて
 
@@ -156,11 +232,20 @@ python main_v2.py
 - **error.log**: エラーのみを記録
 - その他のログファイル：プラグイン導入時に自動生成
 
-詳細は [DEBUG_DRY_RUN_GUIDE.md](docs/DEBUG_DRY_RUN_GUIDE.md) を参照してください。
+詳細は [DEBUG ログとドライラン機能 ガイド](v2/docs/Guides/DEBUG_DRY_RUN_GUIDE.md) を参照してください。
 
 ## ライセンス
 
-このプロジェクトは **GPL License v2** で提供されます。詳細は [LICENSE](LICENSE) を参照してください。
+**このリポジトリ全体は GPLv2 です。詳細はルートの [LICENSE](LICENSE) を参照してください。**
+
+このプロジェクトは **GPL License v2** で提供されます。
+
+- **v2/**: アプリケーション本体（GPLv2）
+- **v1/**: レガシー版アプリケーション（GPLv2）
+- **OLD_App/**: 旧バージョン（GPLv2）
+- **その他ファイル・ドキュメント**: すべて GPLv2 の対象
+
+詳細は [LICENSE](LICENSE) を参照してください。
 
 ## 開発・貢献
 
@@ -169,7 +254,7 @@ python main_v2.py
 - **Issue 報告**: 不具合や機能リクエストは Issue セクションでお願いします
 - **Pull Request**: 改善提案や機能追加は PR でお願いします
 
-詳細な開発ガイドは [CONTRIBUTING.md](CONTRIBUTING.md)（準備中）を参照してください。
+詳細な開発ガイドは [CONTRIBUTING.md](v2/CONTRIBUTING.md)を参照してください。
 
 ## サポート
 
@@ -177,4 +262,16 @@ python main_v2.py
 
 ---
 
-**最終更新**: 2025-12-17
+**最終更新**: 2025-12-18
+
+## 🎉 v2.3.0 完了状況
+
+YouTubeLiveプラグインの実装が完全に完了しました。以下の機能がv2で確立されました：
+
+- ✅ YouTube Live/Archive/Normal判定ロジック
+- ✅ Live開始/終了の自動ポーリング・自動投稿
+- ✅ テンプレート選択・投稿（yt_online_template.txt / yt_offline_template.txt）
+- ✅ DB拡張（live_status, content_type）
+- ✅ 全テスト完了（単体 12、統合 10）
+
+詳細は [v2/docs/References/V2_COMPLETION_PLAN.md](v2/docs/References/V2_COMPLETION_PLAN.md) を参照してください。
