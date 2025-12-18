@@ -446,6 +446,32 @@ YOUTUBE_LIVE_AUTO_POST_START=true
 YOUTUBE_LIVE_AUTO_POST_END=true
 ```
 
+### YouTube Live/アーカイブ/通常動画 判定仕様
+
+YouTube Data API v3（videos.list）レスポンスの主要フィールドを用いた判定基準：
+
+- **ライブ配信中**
+  - `liveStreamingDetails` が存在
+  - `actualStartTime` が存在
+  - `actualEndTime` が無い
+
+- **ライブ配信のアーカイブ**
+  - `liveStreamingDetails.actualEndTime` が存在
+
+- **予約ライブ**
+  - `scheduledStartTime` が存在
+  - `actualStartTime` が無い
+
+- **通常動画**
+  - `liveStreamingDetails` が存在しない
+  - または上記どれにも当てはまらない
+
+- **補助情報**
+  - `snippet.liveBroadcastContent` で "live"/"upcoming"/"none" を補助的に利用
+  - `status.uploadStatus` でプレミア/ライブの区別を補助的に利用（完全保証ではない）
+
+この仕様は content_type / live_status / is_premiere ロジックにそのまま適用可能。
+
 ---
 
 ## テスト計画

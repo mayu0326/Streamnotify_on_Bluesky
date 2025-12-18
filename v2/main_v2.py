@@ -224,6 +224,42 @@ def main():
     gui_thread.start()
     logger.info("✅ アプリケーションの起動が完了しました。 管理画面を開きます。")
 
+    # ===== YouTube Live 終了検知用の定期ポーリングスレッド =====
+    def start_youtube_live_polling():
+        """YouTubeLive ライブ終了検知の定期ポーリングを開始"""
+        import time
+
+        # ポーリング間隔（分）
+        poll_interval_minutes = int(os.getenv("YOUTUBE_LIVE_POLL_INTERVAL", "5"))
+        auto_post_end = os.getenv("YOUTUBE_LIVE_AUTO_POST_END", "true").lower() == "true"
+
+        if not auto_post_end:
+            logger.info("ℹ️ YOUTUBE_LIVE_AUTO_POST_END=false のためライブ終了検知は無効です")
+            return
+
+        logger.info(f"📡 YouTubeLive ライブ終了検知ポーリングを開始します（間隔: {poll_interval_minutes} 分）")
+
+        while not stop_event.is_set():
+            try:
+                live_plugin = plugin_manager.get_plugin("youtube_live_plugin")
+                if live_plugin and live_plugin.is_available():
+                    logger.debug("🔄 YouTubeLive ライブ終了チェック実行...")
+                    live_plugin.poll_live_status()
+                else:
+                    logger.debug("ℹ️ YouTubeLive プラグインが利用不可")
+            except Exception as e:
+                logger.error(f"❌ ライブ終了チェックエラー: {e}")
+
+            # 待機
+            for _ in range(poll_interval_minutes * 60):
+                if stop_event.is_set():
+                    break
+                time.sleep(1)
+
+    # ライブ終了検知スレッド開始
+    live_polling_thread = threading.Thread(target=start_youtube_live_polling, daemon=True)
+    live_polling_thread.start()
+
     polling_count = 0
     last_post_time = None
     POST_INTERVAL_MINUTES = 5

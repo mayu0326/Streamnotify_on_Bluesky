@@ -171,6 +171,118 @@ class YouTubeLivePlugin(NotificationPlugin):
         """
         return self.api_plugin._classify_video_core(details)
 
+    # --- ライブ自動投稿ロジック ---
+    def auto_post_live_start(self, video: Dict[str, Any]) -> bool:
+        """
+        ライブ開始時の自動投稿
+
+        Args:
+            video: 動画情報（live_status="live"）
+
+        Returns:
+            投稿成功フラグ
+        """
+        try:
+            # Bluesky プラグインを取得
+            from plugin_manager import PluginManager
+            pm = PluginManager()
+            bluesky_plugin = pm.get_plugin("bluesky_plugin")
+
+            if not bluesky_plugin or not bluesky_plugin.is_available():
+                logger.warning("⚠️ Bluesky プラグインが利用不可です")
+                return False
+
+            # ライブ開始テンプレート指定
+            video_copy = dict(video)
+            video_copy["event_type"] = "live_start"
+            video_copy["live_status"] = "live"
+
+            logger.info(f"📡 ライブ開始自動投稿を実行します: {video.get('title')}")
+            return bluesky_plugin.post_video(video_copy)
+
+        except Exception as e:
+            logger.error(f"❌ ライブ開始投稿エラー: {e}")
+            return False
+
+    def auto_post_live_end(self, video: Dict[str, Any]) -> bool:
+        """
+        ライブ終了時の自動投稿
+
+        Args:
+            video: 動画情報（live_status="completed"）
+
+        Returns:
+            投稿成功フラグ
+        """
+        try:
+            # Bluesky プラグインを取得
+            from plugin_manager import PluginManager
+            pm = PluginManager()
+            bluesky_plugin = pm.get_plugin("bluesky_plugin")
+
+            if not bluesky_plugin or not bluesky_plugin.is_available():
+                logger.warning("⚠️ Bluesky プラグインが利用不可です")
+                return False
+
+            # ライブ終了テンプレート指定
+            video_copy = dict(video)
+            video_copy["event_type"] = "live_end"
+            video_copy["live_status"] = "completed"
+
+            logger.info(f"📡 ライブ終了自動投稿を実行します: {video.get('title')}")
+            return bluesky_plugin.post_video(video_copy)
+
+        except Exception as e:
+            logger.error(f"❌ ライブ終了投稿エラー: {e}")
+            return False
+
+    def poll_live_status(self) -> None:
+        """
+        ライブ中の動画を定期チェックし、終了を検知
+
+        - DB から live_status='live' の動画を取得
+        - API で現在の状態を確認
+        - 終了していれば DB 更新 + 自動投稿
+        """
+        try:
+            live_videos = self.db.get_videos_by_live_status("live")
+
+            if not live_videos:
+                logger.debug("ℹ️ ライブ中の動画がありません")
+                return
+
+            logger.info(f"🔄 {len(live_videos)} 件のライブ中動画をチェック中...")
+
+            for video in live_videos:
+                video_id = video.get("video_id")
+                if not video_id:
+                    continue
+
+                # API で現在の状態を確認
+                details = self.api_plugin._fetch_video_detail(video_id)
+                if not details:
+                    logger.warning(f"⚠️ 動画詳細取得に失敗: {video_id}")
+                    continue
+
+                content_type, live_status, is_premiere = self._classify_live(details)
+
+                # ライブ終了検知
+                if live_status == "completed" or content_type == "archive":
+                    logger.info(f"✅ ライブ終了を検知: {video_id} (live_status={live_status}, content_type={content_type})")
+
+                    # DB 更新
+                    self.db.update_video_status(video_id, content_type, live_status)
+
+                    # 自動投稿（設定確認）
+                    auto_post_end = os.getenv("YOUTUBE_LIVE_AUTO_POST_END", "true").lower() == "true"
+                    if auto_post_end:
+                        self.auto_post_live_end(video)
+                    else:
+                        logger.info("ℹ️ YOUTUBE_LIVE_AUTO_POST_END=false のため投稿をスキップ")
+
+        except Exception as e:
+            logger.error(f"❌ ライブ終了チェックエラー: {e}")
+
 
 def get_plugin():
     """PluginManager から取得するためのヘルパー"""

@@ -338,6 +338,34 @@ class Database:
             logger.error(f"全動画の取得に失敗しました: {e}")
             return []
 
+    def get_videos_by_live_status(self, live_status: str):
+        """
+        指定された live_status の動画を取得
+
+        Args:
+            live_status: "upcoming" / "live" / "completed"
+
+        Returns:
+            List[Dict]: 該当する動画情報リスト
+        """
+        try:
+            conn = self._get_connection()
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT * FROM videos WHERE live_status = ?
+                ORDER BY published_at DESC
+                """,
+                (live_status,)
+            )
+            videos = [dict(row) for row in cursor.fetchall()]
+            conn.close()
+            return videos
+        except Exception as e:
+            logger.error(f"live_status={live_status} の動画取得に失敗: {e}")
+            return []
+
     def mark_as_posted(self, video_id):
         """動画を投稿済みにマーク"""
         try:
