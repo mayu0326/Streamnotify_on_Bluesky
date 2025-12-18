@@ -60,6 +60,7 @@ class StreamNotifyGUI:
         toolbar.pack(side=tk.TOP, fill=tk.X, padx=5, pady=5)
 
         ttk.Button(toolbar, text="🔄 再読込", command=self.refresh_data).pack(side=tk.LEFT, padx=2)
+        ttk.Button(toolbar, text="🌐 RSS更新", command=self.fetch_rss_manually).pack(side=tk.LEFT, padx=2)
         ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=2)
         ttk.Button(toolbar, text="☑️ すべて選択", command=self.select_all).pack(side=tk.LEFT, padx=2)
         ttk.Button(toolbar, text="☐ すべて解除", command=self.deselect_all).pack(side=tk.LEFT, padx=2)
@@ -181,6 +182,66 @@ class StreamNotifyGUI:
 
         # フィルタを適用して表示
         self.apply_filters()
+
+    def fetch_rss_manually(self):
+        """RSS フィードを手動で今すぐ取得・更新"""
+        try:
+            from youtube_rss import YouTubeRSSFetcher
+            from config import get_config
+
+            config = get_config("settings.env")
+            channel_id = config.YOUTUBE_CHANNEL_ID
+
+            if not channel_id:
+                messagebox.showerror("エラー", "YouTube チャンネル ID が設定されていません。")
+                return
+
+            # RSS 取得開始を通知
+            messagebox.showinfo("RSS更新", "YouTube RSS フィードを取得中...\n（ウィンドウを閉じないでください）")
+
+            # RSS 取得実行
+            fetcher = YouTubeRSSFetcher(channel_id)
+            new_videos = fetcher.fetch_feed()
+
+            if not new_videos:
+                messagebox.showinfo("RSS更新完了", "新着動画は検出されませんでした。")
+                return
+
+            # 新着動画を DB に追加
+            added_count = 0
+            for video in new_videos:
+                if self.db.insert_video(
+                    video_id=video["video_id"],
+                    title=video["title"],
+                    video_url=video["link"],
+                    published_at=video["published"],
+                    channel_name=video.get("author", ""),
+                    source="youtube"
+                ):
+                    added_count += 1
+
+            # 結果をメッセージボックスで表示
+            result_msg = f"""
+✅ RSS更新完了
+
+取得件数: {len(new_videos)}
+新規追加: {added_count}
+
+DB を再読込みします。
+            """
+            messagebox.showinfo("RSS更新完了", result_msg)
+
+            # DB を再読込して表示更新
+            self.refresh_data()
+            logger.info(f"✅ RSS手動更新完了: {added_count} 件追加")
+
+        except ImportError as e:
+            logger.error(f"❌ インポートエラー: {e}")
+            messagebox.showerror("エラー", f"必要なモジュールが見つかりません:\n{e}")
+
+        except Exception as e:
+            logger.error(f"❌ RSS更新中にエラー: {e}")
+            messagebox.showerror("エラー", f"RSS更新中にエラーが発生しました:\n{e}")
 
     def apply_filters(self):
         """現在のフィルタ条件をツリーに適用"""
@@ -939,7 +1000,7 @@ class StreamNotifyGUI:
             self.root.wait_window(post_window.window)
 
     def show_stats(self):
-        """統計情報を表示"""
+        """統計情報を表示（拡張版：日別・配信元別統計）"""
         videos = self.db.get_all_videos()
 
         total = len(videos)
@@ -947,16 +1008,59 @@ class StreamNotifyGUI:
         selected = sum(1 for v in videos if v["selected_for_post"])
         unposted = total - posted
 
+        # v3.2.0: 配信元別集計
+        youtube_count = sum(1 for v in videos if v.get("source", "youtube") == "youtube")
+        niconico_count = sum(1 for v in videos if v.get("source") == "niconico")
+
+        # v3.2.0: 配信元別投稿状況
+        youtube_posted = sum(1 for v in videos if v.get("source", "youtube") == "youtube" and v["posted_to_bluesky"])
+        niconico_posted = sum(1 for v in videos if v.get("source") == "niconico" and v["posted_to_bluesky"])
+
+        # v3.2.0: 日別集計（過去7日間）
+        from datetime import timedelta, datetime as dt
+        today = dt.now().date()
+        daily_stats = {}
+
+        for i in range(7):
+            date = today - timedelta(days=i)
+            daily_stats[date] = {"total": 0, "posted": 0}
+
+        for video in videos:
+            try:
+                if video.get("published_at"):
+                    pub_date = dt.fromisoformat(video["published_at"]).date()
+                    if pub_date in daily_stats:
+                        daily_stats[pub_date]["total"] += 1
+                        if video["posted_to_bluesky"]:
+                            daily_stats[pub_date]["posted"] += 1
+            except:
+                pass
+
         stats = f"""
-📊 統計情報
-━━━━━━━━━━━━━━━━━
+📊 統計情報（v3.2.0拡張版）
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+【 全体統計 】
 総動画数:     {total}
-投稿済み:     {posted}
+投稿済み:     {posted} ({int(posted*100/total) if total > 0 else 0}%)
 投稿予定:     {selected}
 未処理:       {unposted}
 
+【 配信元別統計 】
+YouTube:      {youtube_count} 件 (投稿済み: {youtube_posted})
+ニコニコ:     {niconico_count} 件 (投稿済み: {niconico_posted})
+
+【 過去7日間の投稿状況 】
+"""
+        for i in range(7):
+            date = today - timedelta(days=i)
+            day_stats = daily_stats.get(date, {"total": 0, "posted": 0})
+            date_str = date.strftime("%m/%d（%a）").replace("Mon", "月").replace("Tue", "火").replace("Wed", "水").replace("Thu", "木").replace("Fri", "金").replace("Sat", "土").replace("Sun", "日")
+            stats += f"  {date_str}: 全 {day_stats['total']} 件 | 投稿済み {day_stats['posted']} 件\n"
+
+        stats += """
 📌 操作方法
-━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 1. 「☑️」をクリック → 投稿対象を選択
 2. 「投稿予定/投稿日時」をダブルクリック → 投稿日時を設定
 3. 「💾 選択を保存」 → DB に反映
@@ -964,7 +1068,7 @@ class StreamNotifyGUI:
 5. 「📤 投稿設定」 → 投稿設定
 
 ⚠️ 注意
-━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 投稿済みフラグに関わらず投稿できます。
 重複投稿にご注意ください。
         """
