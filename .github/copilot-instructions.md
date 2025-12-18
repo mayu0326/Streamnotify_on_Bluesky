@@ -26,9 +26,14 @@ The system is built around a **plugin system** for notifications and extensions:
 - **Built-in Plugins** (v2/plugins/):
   - `bluesky_plugin.py` - Core Bluesky posting with Rich Text support
   - `youtube_api_plugin.py` - YouTube Data API integration (optional, requires API key)
-  - `youtube_live_plugin.py` - YouTube live stream monitoring
+  - `youtube_live_plugin.py` - YouTube live stream monitoring & classification
   - `niconico_plugin.py` - Niconico platform support
   - `logging_plugin.py` - Enhanced logging infrastructure
+
+- **Asset Management System** (Asset/ directory):
+  - `asset_manager.py` - Automatically deploys templates and images for loaded plugins
+  - Auto-copies plugin-specific templates from Asset/ to working directories
+  - Preserves user modifications (no overwrite of existing files)
 
 **Key Pattern**: Always verify plugin availability with `is_available()` before using. Plugins are loaded lazily and may be disabled based on configuration.
 
@@ -178,6 +183,8 @@ python main_v2.py
 
 ## Files Structure Reference
 
+### Core Module Files
+
 | File | Purpose | Key Classes/Functions |
 |------|---------|----------------------|
 | main_v2.py | Entry point | `main()`, `run_gui()`, signal handlers |
@@ -190,6 +197,45 @@ python main_v2.py
 | logging_config.py | Log setup | `setup_logging()`, logger factory |
 | youtube_rss.py | RSS fetching | YouTube RSS parsing |
 | image_manager.py | Image handling | Thumbnail/image caching |
+| asset_manager.py | Asset deployment | `AssetManager`, plugin asset management |
+| template_utils.py | Template handling | Template rendering utilities |
+| template_editor_dialog.py | Template editing | tkinter-based template editor |
+| image_processor.py | Image processing | Image optimization/conversion |
+| deleted_video_cache.py | Cache management | Deleted video tracking |
+
+### Directory Structure
+
+```
+v2/
+├── plugins/                      # Plugin implementations
+│   ├── bluesky_plugin.py        # Bluesky notification
+│   ├── youtube_api_plugin.py    # YouTube Data API (optional)
+│   ├── youtube_live_plugin.py   # YouTube live monitoring
+│   ├── niconico_plugin.py       # Niconico support
+│   └── logging_plugin.py        # Enhanced logging
+├── Asset/                        # Shared templates & images
+│   ├── templates/               # Template files (auto-deployed)
+│   ├── images/                  # Image assets
+│   └── README.md                # Asset deployment guide
+├── templates/                    # Active templates (working copies)
+│   ├── default/
+│   ├── youtube/
+│   ├── niconico/
+│   └── .templates/              # Template backups
+├── docs/                         # Documentation
+│   ├── README_GITHUB_v2.md      # GitHub README (v2 version)
+│   ├── Guides/                  # User guides
+│   ├── Technical/               # Technical documentation
+│   ├── Local/                   # Local deployment info
+│   ├── References/              # Reference materials
+│   └── ARCHIVE/                 # Archived documentation
+├── data/                         # Runtime data
+│   └── video_list.db            # SQLite database
+├── logs/                         # Application logs
+├── thumbnails/                   # Cached video thumbnails
+├── images/                       # Image storage
+└── [Core files listed above]
+```
 
 ---
 
@@ -228,7 +274,23 @@ python main_v2.py
 ---
 
 ## Questions? Reference These First
-- **Architecture**: See OLD_App/document/ARCHITECTURE.ja.md
-- **How plugins work**: See v2/plugin_interface.py
-- **Config example**: See v2/settings.env.example
-- **Database schema**: See v2/database.py `_init_db()` method
+
+### Project Overview & Setup
+- **Main README**: See [README.md](../README.md) for project overview and quick start
+- **v2 Main Documentation**: See [v2/docs/README_GITHUB_v2.md](../v2/docs/README_GITHUB_v2.md) for comprehensive v2 documentation
+- **VS Code Workspace**: See [Streamnotify_on_Bluesky.code-workspace](../Streamnotify_on_Bluesky.code-workspace) for workspace settings
+
+### Architecture & Design
+- **Architecture**: See [OLD_App/document/ARCHITECTURE.ja.md](../OLD_App/document/ARCHITECTURE.ja.md)
+- **Plugin System**: See [v2/plugin_interface.py](../v2/plugin_interface.py) and [v2/docs/Technical/PLUGIN_SYSTEM.md](../v2/docs/Technical/PLUGIN_SYSTEM.md)
+- **Template System**: See [v2/docs/Technical/TEMPLATE_SYSTEM.md](../v2/docs/Technical/TEMPLATE_SYSTEM.md)
+
+### Configuration & Assets
+- **Config example**: See [v2/settings.env.example](../v2/settings.env.example)
+- **Asset deployment**: See [v2/Asset/README.md](../v2/Asset/README.md) and [v2/docs/Technical/ASSET_MANAGER_INTEGRATION_v2.md](../v2/docs/Technical/ASSET_MANAGER_INTEGRATION_v2.md)
+- **Database schema**: See [v2/database.py](../v2/database.py) `_init_db()` method
+
+### Implementation Guides
+- **Technical guides**: See [v2/docs/Technical/](../v2/docs/Technical/) for detailed implementation guides
+- **User guides**: See [v2/docs/Guides/](../v2/docs/Guides/) for setup and usage instructions
+- **Development guidelines**: See [v2/docs/Technical/DEVELOPMENT_GUIDELINES.md](../v2/docs/Technical/DEVELOPMENT_GUIDELINES.md)
