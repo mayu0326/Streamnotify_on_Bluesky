@@ -121,7 +121,7 @@
 ### 1. リポジトリをクローン
 
 ```bash
-git clone https://github.com/yourusername/Streamnotify_on_Bluesky.git
+git clone https://git.neco-server.net/mayuneco/Streamnotify_on_Bluesky.git
 cd Streamnotify_on_Bluesky/v3    # v3（推奨）または v2（安定版）
 ```
 

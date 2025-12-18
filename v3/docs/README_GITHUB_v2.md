@@ -470,7 +470,7 @@ Asset/
 
 ## ライセンス
 
-このプロジェクトは **GPL License v3** で提供されます。詳細は [LICENSE](LICENSE) を参照してください。
+このプロジェクトは **GPL License v2** で提供されます。詳細は [LICENSE](LICENSE) を参照してください。
 
 ---
 

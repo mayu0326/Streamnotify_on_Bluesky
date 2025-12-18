@@ -1,6 +1,6 @@
 ﻿# StreamNotify on Bluesky への貢献ガイド
 
-まずはじめに、貢献をご検討いただきありがとうございます！このプロジェクトを改善するためのどんな助けも歓迎します。  
+まずはじめに、貢献をご検討いただきありがとうございます！このプロジェクトを改善するためのどんな助けも歓迎します。
 バグの報告、新機能の提案、コードの記述など、あなたの貢献は価値があります。
 
 ## 📋 クイックリンク
@@ -26,7 +26,7 @@
 1. **リポジトリをクローン**
 
 ```bash
-git clone https://github.com/yourusername/Streamnotify_on_Bluesky.git
+git clone https://git.neco-server.net/mayuneco/Streamnotify_on_Bluesky.git
 cd Streamnotify_on_Bluesky/v3
 ```
 
@@ -81,8 +81,8 @@ python main_v3.py --version
 
 ### バグ報告
 
-1. [GitHub Issues](https://github.com/yourusername/Streamnotify_on_Bluesky/issues) で、同じバグが既に報告されていないか確認します。
-2. 報告されていない場合は、[新しいIssueを開き](https://github.com/yourusername/Streamnotify_on_Bluesky/issues/new)、以下を含めます：
+1. [Issues](https://git.neco-server.net/mayuneco/Streamnotify_on_Bluesky/issues) で、同じバグが既に報告されていないか確認します。
+2. 報告されていない場合は、[新しいIssueを開き](https://git.neco-server.net/mayuneco/Streamnotify_on_Bluesky/issues/new)、以下を含めます：
    - **タイトル**: 明確で簡潔な説明
    - **説明**: 何が起きたか、期待される動作、実際の動作
    - **再現手順**: バグを再現するための具体的なステップ
@@ -91,8 +91,8 @@ python main_v3.py --version
 
 ### 機能提案
 
-1. [GitHub Issues](https://github.com/yourusername/Streamnotify_on_Bluesky/issues) で、類似の提案が既にないか確認します。
-2. 提案がない場合は、[新しいIssueを開き](https://github.com/yourusername/Streamnotify_on_Bluesky/issues/new)、以下を含めます：
+1. [Issues](https://git.neco-server.net/mayuneco/Streamnotify_on_Bluesky/issues) で、類似の提案が既にないか確認します。
+2. 提案がない場合は、[新しいIssueを開き](https://git.neco-server.net/mayuneco/Streamnotify_on_Bluesky/issues/new)、以下を含めます：
    - **機能の概要**: 何ができるようになるか
    - **ユースケース**: なぜ必要か、使用シーン
    - **提案される実装**: 実装方法の案（任意）
@@ -102,7 +102,7 @@ python main_v3.py --version
 1. **フォークして、ローカルにクローン**
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/Streamnotify_on_Bluesky.git
+git clone https://git.neco-server.net/mayuneco/Streamnotify_on_Bluesky.git
 cd Streamnotify_on_Bluesky/v3
 ```
 
@@ -151,7 +151,7 @@ git push origin feature/your-feature-name
 
 7. **プルリクエストを作成**
 
-GitHubでPRを開き、以下を記載します：
+GitリポジトリでPRを開き、以下を記載します：
 - 変更内容の明確な説明
 - 関連するIssue（`Fixes #123` など）
 - テストの実施状況
@@ -159,7 +159,7 @@ GitHubでPRを開き、以下を記載します：
 
 8. **レビューに対応**
 
-メンテナーがレビューし、修正を依頼することがあります。  
+メンテナーがレビューし、修正を依頼することがあります。
 コメントに対応し、変更をコミット・プッシュしてください。
 
 ---
@@ -365,7 +365,7 @@ class MyPlugin(NotificationPlugin):
 
 ## 質問・相談がある場合
 
-- GitHub の Issue で質問を開く
+- Gitリポジトリ の Issue で質問を開く
 - 既存の Issue やディスカッションで情報を探す
 - README や Documentation を確認
 
@@ -373,11 +373,10 @@ class MyPlugin(NotificationPlugin):
 
 ## ライセンス
 
-本プロジェクトは **GPL License v3** の下で公開されています。  
+本プロジェクトは **GPL License v2** の下で公開されています。
 貢献することで、あなたのコードも同じライセンスの下で公開されることに同意したものとします。
 
 ---
 
-**最終更新**: 2025-12-18  
+**最終更新**: 2025-12-18
 **対応バージョン**: v3.1.0 以上
-
