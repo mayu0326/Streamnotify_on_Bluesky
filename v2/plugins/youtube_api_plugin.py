@@ -91,6 +91,11 @@ class YouTubeAPIPlugin(NotificationPlugin):
             logger.error("❌ YouTube API: video_id が指定されていません")
             return False
 
+        # YouTube ID 形式の検証（Niconico など他形式のスキップ）
+        if not self._is_valid_youtube_video_id(video_id):
+            logger.debug(f"⏭️ YouTube API: YouTube 形式ではない video_id をスキップ: {video_id}")
+            return True  # エラーではなく「対応不可」として True を返す
+
         details = self._fetch_video_detail(video_id)
         if not details:
             logger.error(f"❌ YouTube API: 動画詳細取得に失敗しました: {video_id}")
@@ -103,7 +108,7 @@ class YouTubeAPIPlugin(NotificationPlugin):
         channel_name = video.get("channel_name") or snippet.get("channelTitle", "")
         published_at = video.get("published_at") or snippet.get("publishedAt", "")
         video_url = video.get("video_url") or f"https://www.youtube.com/watch?v={video_id}"
-        
+
         # サムネイル URL を取得（複数品質から最適なものを選択）
         thumbnail_url = get_youtube_thumbnail_url(video_id)
         if not thumbnail_url:
@@ -142,18 +147,18 @@ class YouTubeAPIPlugin(NotificationPlugin):
         try:
             cache_path = Path(CHANNEL_ID_CACHE_FILE)
             cache_path.parent.mkdir(exist_ok=True)
-            
+
             cache = {}
             if cache_path.exists():
                 with open(cache_path, "r", encoding="utf-8") as f:
                     cache = json.load(f)
-            
+
             identifier_key = f"channel_identifier:{self.channel_identifier}"
             cache[identifier_key] = self.channel_id
-            
+
             with open(cache_path, "w", encoding="utf-8") as f:
                 json.dump(cache, f, ensure_ascii=False, indent=2)
-            
+
             logger.info(f"💾 チャンネルIDをキャッシュに保存しました")
         except Exception as e:
             logger.error(f"❌ チャンネルキャッシュ保存エラー: {e}")
@@ -181,7 +186,7 @@ class YouTubeAPIPlugin(NotificationPlugin):
         """APIコストを記録・ログ出力"""
         self.daily_cost += cost
         logger.info(f"💰 API コスト: {operation} = {cost}ユニット (累計: {self.daily_cost}/{self.daily_quota})")
-        
+
         if self.daily_cost >= self.daily_quota * 0.8:
             logger.warning(f"⚠️ 日次クォータが 80% に到達しました。使用済み: {self.daily_cost}/{self.daily_quota}")
 
@@ -189,47 +194,47 @@ class YouTubeAPIPlugin(NotificationPlugin):
     def _get(self, path: str, params: Dict[str, Any], expected_cost: int, operation: str, max_retries: int = 3) -> Optional[Dict[str, Any]]:
         """
         API呼び出し（エクスポーネンシャルバックオフ対応）
-        
+
         Args:
             path: エンドポイント
             params: クエリパラメータ
             expected_cost: 予想コスト（ユニット）
             operation: 操作名（ログ出力用）
             max_retries: リトライ上限
-            
+
         Returns:
             JSONレスポンス、失敗時は None
         """
         if not self._check_quota(expected_cost):
             return None
-        
+
         params_with_key = {**params, "key": self.api_key}
         url = f"{API_BASE}/{path}"
-        
+
         for attempt in range(max_retries):
             try:
                 self._throttle_request()
-                
+
                 logger.debug(f"🔌 API リクエスト開始: {operation} (試行 {attempt + 1}/{max_retries})")
                 resp = self.session.get(url, params=params_with_key, timeout=15)
-                
+
                 # 429: Over Quota または Rate Limit
                 if resp.status_code == 429:
                     retry_after = int(resp.headers.get("Retry-After", 60))
                     logger.warning(f"⏸️ 429 Rate Limit 受信: {retry_after}秒待機後リトライ")
-                    
+
                     if attempt < max_retries - 1:
                         time.sleep(retry_after)
                         continue
                     else:
                         logger.error(f"❌ {operation}: リトライ上限に達しました")
                         return None
-                
+
                 resp.raise_for_status()
                 self._record_cost(expected_cost, operation)
                 logger.debug(f"✅ API リクエスト成功: {operation}")
                 return resp.json()
-                
+
             except requests.exceptions.Timeout:
                 logger.warning(f"⏱️ タイムアウト: {operation} (試行 {attempt + 1}/{max_retries})")
                 if attempt < max_retries - 1:
@@ -239,7 +244,7 @@ class YouTubeAPIPlugin(NotificationPlugin):
                 else:
                     logger.error(f"❌ {operation}: タイムアウトで最終失敗")
                     return None
-                    
+
             except requests.exceptions.RequestException as e:
                 logger.error(f"❌ API エラー ({operation}): {e}")
                 if attempt < max_retries - 1:
@@ -248,26 +253,26 @@ class YouTubeAPIPlugin(NotificationPlugin):
                     time.sleep(backoff)
                 else:
                     return None
-        
+
         return None
 
     # --- チャンネルID解決 ---
     def _resolve_channel_id(self, identifier: str) -> Optional[str]:
         """
         UC以外のユーザー名/ハンドルを API で UCxx... に解決
-        
+
         キャッシュ先読み後、forUsername APIで解決・キャッシュ保存
         （search.list は高コストのため未使用）
         """
         if identifier.startswith("UC"):
             return identifier
-        
+
         # キャッシュから確認
         if self.channel_id:
             return self.channel_id
-        
+
         logger.info(f"🔍 チャンネルID解決開始: {identifier}")
-        
+
         # forUsername で解決（1ユニット）
         data = self._get(
             "channels",
@@ -283,7 +288,7 @@ class YouTubeAPIPlugin(NotificationPlugin):
                     self.channel_id = channel_id
                     self._save_channel_cache()
                     return channel_id
-        
+
         # forUsername で見つからない場合はエラー（search.list は使用しない）
         logger.error(f"❌ チャンネルID解決失敗: {identifier}（チャンネルIDが正しくありません）")
         return None
@@ -307,22 +312,22 @@ class YouTubeAPIPlugin(NotificationPlugin):
     def fetch_video_details_batch(self, video_ids: List[str]) -> Dict[str, Dict[str, Any]]:
         """
         最大50件の動画詳細をバッチ取得（1ユニット）
-        
+
         Args:
             video_ids: 動画IDのリスト（最大50件）
-        
+
         Returns:
             {video_id: details} の辞書
         """
         if not video_ids:
             return {}
-        
+
         # 50件ずつ分割
         results = {}
         for i in range(0, len(video_ids), 50):
             batch = video_ids[i:i+50]
             batch_str = ",".join(batch)
-            
+
             data = self._get(
                 "videos",
                 {
@@ -333,19 +338,41 @@ class YouTubeAPIPlugin(NotificationPlugin):
                 expected_cost=1,
                 operation=f"batch video details: {len(batch)} 件"
             )
-            
+
             if data:
                 for item in data.get("items", []):
                     video_id = item.get("id")
                     results[video_id] = item
-        
+
         return results
+
+    # --- ID 検証 ---
+    def _is_valid_youtube_video_id(self, video_id: str) -> bool:
+        """
+        YouTube 動画ID 形式の検証
+
+        YouTube 動画ID は 11 文字の英数字（A-Z, a-z, 0-9, -, _）
+        例: dQw4w9WgXcQ
+
+        Niconico ID（sm45414087）など他形式は False を返す
+
+        Args:
+            video_id: 検証対象の ID
+
+        Returns:
+            True: YouTube 形式, False: 他の形式（Niconico など）
+        """
+        import re
+        # YouTube 動画ID: 11 文字、A-Za-z0-9-_
+        if re.match(r'^[A-Za-z0-9_-]{11}$', video_id):
+            return True
+        return False
 
     # --- 分類ロジック ---
     def _classify_video(self, details: Dict[str, Any]) -> Tuple[str, Optional[str], bool]:
         """
         動画の種別と状態を判別（content_type, live_status, is_premiere）
-        
+
         Returns:
             (content_type, live_status, is_premiere)
             - content_type: "video", "live", "archive"
@@ -355,22 +382,22 @@ class YouTubeAPIPlugin(NotificationPlugin):
         snippet = details.get("snippet", {})
         status = details.get("status", {})
         live = details.get("liveStreamingDetails", {})
-        
+
         # 1. snippet.liveBroadcastContent で第一判定
         broadcast_type = snippet.get("liveBroadcastContent", "none")
-        
+
         if broadcast_type == "none":
             # 通常動画
             return "video", None, False
-        
+
         # 2. ライブ/プレミア判定
         is_premiere = False
-        
+
         if live:
             # プレミア公開判定
             if status.get("uploadStatus") == "processed" and broadcast_type in ("live", "upcoming"):
                 is_premiere = True
-            
+
             # ライブの時間的状態判定
             if live.get("actualEndTime"):
                 return "archive", "completed", is_premiere
@@ -378,13 +405,13 @@ class YouTubeAPIPlugin(NotificationPlugin):
                 return "live", "live", is_premiere
             elif live.get("scheduledStartTime"):
                 return "live", "upcoming", is_premiere
-        
+
         # liveStreamingDetails がない場合は broadcast_type で判定
         if broadcast_type == "live":
             return "live", "live", is_premiere
         elif broadcast_type == "upcoming":
             return "live", "upcoming", is_premiere
-        
+
         return "video", None, False
 
     def on_enable(self) -> None:

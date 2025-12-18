@@ -47,15 +47,20 @@ class YouTubeLivePlugin(NotificationPlugin):
     def post_video(self, video: Dict[str, Any]) -> bool:
         """
         ライブ/アーカイブ判定を行い DB に保存
-        
+
         video: {video_id, title?, channel_name?, published_at?}
-        
+
         注：API プラグインを共有利用するため、クォータ管理は api_plugin に委譲
         """
         video_id = video.get("video_id") or video.get("id")
         if not video_id:
             logger.error("❌ YouTube Live: video_id が指定されていません")
             return False
+
+        # YouTube ID 形式の検証（Niconico など他形式のスキップ）
+        if not self._is_valid_youtube_video_id(video_id):
+            logger.debug(f"⏭️ YouTube Live: YouTube 形式ではない video_id をスキップ: {video_id}")
+            return True  # エラーではなく「対応不可」として True を返す
 
         # API プラグインの _fetch_video_detail() を使用
         # キャッシュ・クォータ管理は api_plugin が担当
@@ -84,11 +89,33 @@ class YouTubeLivePlugin(NotificationPlugin):
             is_premiere=is_premiere,
         )
 
+    # --- ID 検証 ---
+    def _is_valid_youtube_video_id(self, video_id: str) -> bool:
+        """
+        YouTube 動画ID 形式の検証
+
+        YouTube 動画ID は 11 文字の英数字（A-Z, a-z, 0-9, -, _）
+        例: dQw4w9WgXcQ
+
+        Niconico ID（sm45414087）など他形式は False を返す
+
+        Args:
+            video_id: 検証対象の ID
+
+        Returns:
+            True: YouTube 形式, False: 他の形式（Niconico など）
+        """
+        import re
+        # YouTube 動画ID: 11 文字、A-Za-z0-9-_
+        if re.match(r'^[A-Za-z0-9_-]{11}$', video_id):
+            return True
+        return False
+
     # --- ライブ検出ユーティリティ ---
     def sync_live_events(self) -> None:
         """
         ライブ/アーカイブ一覧を取得しDBへ反映（search.list = 100ユニット）
-        
+
         注意：search.list は非常に高コスト（100ユニット/回）
         本番運用ではキャッシュやスケジューリングの検討が必要
         """
@@ -103,7 +130,7 @@ class YouTubeLivePlugin(NotificationPlugin):
     def _fetch_live_video_ids(self, event_type: str) -> List[str]:
         """
         ライブイベント一覧を検索（search.list = 100ユニット）
-        
+
         注：api_plugin のクォータ管理を迂回するため、ここで直接呼び出し
         本来は api_plugin._get() を使用して管理下に置くべき
         """
@@ -135,26 +162,26 @@ class YouTubeLivePlugin(NotificationPlugin):
     def _classify_live(self, details: Dict[str, Any]) -> Tuple[str, Optional[str], bool]:
         """
         ライブ/アーカイブを判別（YouTubeAPIプラグインの詳細版と同じロジック）
-        
+
         Returns:
             (content_type, live_status, is_premiere)
         """
         snippet = details.get("snippet", {})
         status = details.get("status", {})
         live = details.get("liveStreamingDetails", {})
-        
+
         broadcast_type = snippet.get("liveBroadcastContent", "none")
-        
+
         if broadcast_type == "none":
             return "video", None, False
-        
+
         is_premiere = False
-        
+
         if live:
             # プレミア公開判定
             if status.get("uploadStatus") == "processed" and broadcast_type in ("live", "upcoming"):
                 is_premiere = True
-            
+
             # ライブの時間的状態
             if live.get("actualEndTime"):
                 return "archive", "completed", is_premiere
@@ -162,12 +189,12 @@ class YouTubeLivePlugin(NotificationPlugin):
                 return "live", "live", is_premiere
             elif live.get("scheduledStartTime"):
                 return "live", "upcoming", is_premiere
-        
+
         if broadcast_type == "live":
             return "live", "live", is_premiere
         elif broadcast_type == "upcoming":
             return "live", "upcoming", is_premiere
-        
+
         return "video", None, False
 
 
