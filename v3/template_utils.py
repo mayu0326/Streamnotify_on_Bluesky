@@ -109,6 +109,7 @@ TEMPLATE_REQUIRED_KEYS = {
     "youtube_new_video": ["title", "video_id", "video_url", "channel_name"],
     "youtube_online": ["title", "video_url", "channel_name", "live_status"],
     "youtube_offline": ["title", "channel_name", "live_status"],
+    "youtube_archive": ["title", "video_url", "channel_name"],  # ★ アーカイブテンプレート追加
 
     # ニコニコ
     "nico_new_video": ["title", "video_id", "video_url", "channel_name"],
@@ -146,6 +147,14 @@ TEMPLATE_ARGS = {
         ("チャンネル名", "channel_name"),
         ("配信タイトル", "title"),
         ("配信ステータス", "live_status"),
+    ],
+
+    # YouTube アーカイブ（★ 新規追加）
+    "youtube_archive": [
+        ("アーカイブタイトル", "title"),
+        ("アーカイブ URL", "video_url"),
+        ("チャンネル名", "channel_name"),
+        ("配信日時", "published_at"),
     ],
 
     # ニコニコ 新着動画
@@ -217,6 +226,17 @@ TEMPLATE_VAR_BLACKLIST = {
         "use_link_card",
         "embed",
         "image_source",
+    },
+
+    "youtube_archive": {  # ★ アーカイブテンプレート追加
+        "image_mode",
+        "image_filename",
+        "posted_at",
+        "selected_for_post",
+        "use_link_card",
+        "embed",
+        "image_source",
+        "live_status",  # アーカイブには不要
     },
 
     "nico_new_video": {
