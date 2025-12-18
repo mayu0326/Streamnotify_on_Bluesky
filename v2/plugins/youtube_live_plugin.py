@@ -161,41 +161,15 @@ class YouTubeLivePlugin(NotificationPlugin):
 
     def _classify_live(self, details: Dict[str, Any]) -> Tuple[str, Optional[str], bool]:
         """
-        ライブ/アーカイブを判別（YouTubeAPIプラグインの詳細版と同じロジック）
+        ライブ/アーカイブを判別
+
+        ⚠️ このメソッドは api_plugin の _classify_video_core() へ委譲
+        （コード重複を排除し、分類仕様は youtube_api_plugin に一元化）
 
         Returns:
             (content_type, live_status, is_premiere)
         """
-        snippet = details.get("snippet", {})
-        status = details.get("status", {})
-        live = details.get("liveStreamingDetails", {})
-
-        broadcast_type = snippet.get("liveBroadcastContent", "none")
-
-        if broadcast_type == "none":
-            return "video", None, False
-
-        is_premiere = False
-
-        if live:
-            # プレミア公開判定
-            if status.get("uploadStatus") == "processed" and broadcast_type in ("live", "upcoming"):
-                is_premiere = True
-
-            # ライブの時間的状態
-            if live.get("actualEndTime"):
-                return "archive", "completed", is_premiere
-            elif live.get("actualStartTime"):
-                return "live", "live", is_premiere
-            elif live.get("scheduledStartTime"):
-                return "live", "upcoming", is_premiere
-
-        if broadcast_type == "live":
-            return "live", "live", is_premiere
-        elif broadcast_type == "upcoming":
-            return "live", "upcoming", is_premiere
-
-        return "video", None, False
+        return self.api_plugin._classify_video_core(details)
 
 
 def get_plugin():
