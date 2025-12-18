@@ -324,7 +324,8 @@ class Database:
             cursor.execute("""
                 SELECT id, video_id, published_at, title, posted_to_bluesky,
                        selected_for_post, scheduled_at, posted_at, video_url, channel_name, thumbnail_url,
-                       content_type, live_status, is_premiere, source, image_mode, image_filename
+                       content_type, live_status, is_premiere, source, image_mode, image_filename,
+                       classification_type, broadcast_status
                 FROM videos
                 ORDER BY published_at DESC
             """)
