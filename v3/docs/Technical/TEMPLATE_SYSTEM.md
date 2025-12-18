@@ -35,12 +35,13 @@
 | プラットフォーム | イベント | テンプレート名 | 対応状況 | ファイル |
 |:--|:--|:--|:--:|:--|
 | YouTube | 新着動画投稿 | YouTube 新着動画 | ✅ v3.1.0 | `yt_new_video_template.txt` |
-| YouTube | 配信開始（※） | YouTube Live 開始 | 🔜 将来実装 | `yt_online_template.txt` |
-| YouTube | 配信終了（※） | YouTube Live 終了 | 🔜 将来実装 | `yt_offline_template.txt` |
+| YouTube | 配信開始 | YouTube Live 開始 | ✅ v3.1.0 | `yt_online_template.txt` |
+| YouTube | 配信終了 | YouTube Live 終了 | 🔜 将来実装 | `yt_offline_template.txt` |
+| YouTube | アーカイブ | YouTube アーカイブ | ✅ v3.1.0 | `yt_archive_template.txt` |
 | ニコニコ | 新着動画投稿 | ニコニコ 新着動画 | ✅ v3.1.0 | `nico_new_video_template.txt` |
-| Twitch | 配信開始（※） | Twitch 配信開始 | 🔜 将来実装 | `twitch_online_template.txt` |
+| Twitch | 配信開始 | Twitch 配信開始 | 🔜 将来実装 | `twitch_online_template.txt` |
 
-**✅** = 現在利用可能 | **🔜** = 今後実装予定 | **※** = 対応機能そのものが開発中
+**✅** = 現在利用可能 | **🔜** = 今後実装予定
 
 ---
 
@@ -55,8 +56,9 @@ Streamnotify_on_Bluesky/v3/
 ├── templates/
 │   ├── youtube/                          # YouTube 用テンプレート
 │   │   ├── yt_new_video_template.txt     ← 新着動画投稿用
-│   │   ├── yt_online_template.txt        ← 配信開始用（将来）
-│   │   └── yt_offline_template.txt       ← 配信終了用（将来）
+│   │   ├── yt_online_template.txt        ← 配信開始用
+│   │   ├── yt_offline_template.txt       ← 配信終了用（将来）
+│   │   └── yt_archive_template.txt       ← アーカイブ投稿用（新規）
 │   │
 │   ├── niconico/                         # ニコニコ用テンプレート
 │   │   └── nico_new_video_template.txt   ← 新着動画投稿用
