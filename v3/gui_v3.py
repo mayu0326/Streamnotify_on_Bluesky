@@ -44,6 +44,10 @@ class StreamNotifyGUI:
         self.bluesky_core = bluesky_core  # コア機能へのアクセス
         self.image_manager = get_image_manager()  # 画像管理クラスを初期化
         self.selected_rows = set()
+        
+        # フィルタ用の変数
+        self.all_videos = []  # フィルタ前のすべての動画
+        self.filtered_videos = []  # フィルタ後の動画
 
         self.setup_ui()
         self.refresh_data()
@@ -68,6 +72,45 @@ class StreamNotifyGUI:
         ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=2)
         ttk.Button(toolbar, text="ℹ️ 統計", command=self.show_stats).pack(side=tk.LEFT, padx=2)
         ttk.Button(toolbar, text="🔧 プラグイン", command=self.show_plugins).pack(side=tk.LEFT, padx=2)
+
+        # === フィルタパネル ===
+        filter_frame = ttk.LabelFrame(self.root, text="🔍 フィルタ設定")
+        filter_frame.pack(side=tk.TOP, fill=tk.X, padx=5, pady=5)
+
+        # 第1行: タイトル検索
+        ttk.Label(filter_frame, text="タイトル検索:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
+        self.filter_title_entry = ttk.Entry(filter_frame, width=30)
+        self.filter_title_entry.grid(row=0, column=1, sticky=tk.W, padx=5, pady=5)
+        self.filter_title_entry.bind("<KeyRelease>", lambda e: self.apply_filters())
+
+        # 投稿状態フィルタ
+        ttk.Label(filter_frame, text="投稿状態:").grid(row=0, column=2, sticky=tk.W, padx=5, pady=5)
+        self.filter_status_var = tk.StringVar(value="全て")
+        status_combo = ttk.Combobox(
+            filter_frame,
+            textvariable=self.filter_status_var,
+            values=["全て", "投稿済み", "未投稿"],
+            state="readonly",
+            width=12
+        )
+        status_combo.grid(row=0, column=3, sticky=tk.W, padx=5, pady=5)
+        status_combo.bind("<<ComboboxSelected>>", lambda e: self.apply_filters())
+
+        # 配信元フィルタ
+        ttk.Label(filter_frame, text="配信元:").grid(row=0, column=4, sticky=tk.W, padx=5, pady=5)
+        self.filter_source_var = tk.StringVar(value="全て")
+        source_combo = ttk.Combobox(
+            filter_frame,
+            textvariable=self.filter_source_var,
+            values=["全て", "YouTube", "Niconico"],
+            state="readonly",
+            width=12
+        )
+        source_combo.grid(row=0, column=5, sticky=tk.W, padx=5, pady=5)
+        source_combo.bind("<<ComboboxSelected>>", lambda e: self.apply_filters())
+
+        # ボタン
+        ttk.Button(filter_frame, text="🔄 リセット", command=self.reset_filters).grid(row=0, column=6, padx=5, pady=5)
 
         table_frame = ttk.Frame(self.root)
         table_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
@@ -124,30 +167,69 @@ class StreamNotifyGUI:
 
     def refresh_data(self):
         """DB から最新データを取得して表示"""
+        # すべての動画をキャッシュ
+        self.all_videos = self.db.get_all_videos()
+        self.selected_rows.clear()
+        
+        # フィルタをリセット
+        if hasattr(self, 'filter_title_entry'):
+            self.filter_title_entry.delete(0, tk.END)
+        if hasattr(self, 'filter_status_var'):
+            self.filter_status_var.set("全て")
+        if hasattr(self, 'filter_source_var'):
+            self.filter_source_var.set("全て")
+        
+        # フィルタを適用して表示
+        self.apply_filters()
+
+    def apply_filters(self):
+        """現在のフィルタ条件をツリーに適用"""
+        # フィルタ条件を取得
+        title_filter = self.filter_title_entry.get().lower()
+        status_filter = self.filter_status_var.get()
+        source_filter = self.filter_source_var.get()
+        
+        # Treeview をクリア
         for item in self.tree.get_children():
             self.tree.delete(item)
-
-        videos = self.db.get_all_videos()
-        self.selected_rows.clear()
-
-        for video in videos:
+        
+        # フィルタを適用
+        self.filtered_videos = []
+        for video in self.all_videos:
+            # タイトル検索
+            if title_filter and title_filter not in video.get("title", "").lower():
+                continue
+            
+            # 投稿状態フィルタ
+            is_posted = video.get("posted_to_bluesky", 0)
+            if status_filter == "投稿済み" and not is_posted:
+                continue
+            elif status_filter == "未投稿" and is_posted:
+                continue
+            
+            # 配信元フィルタ
+            source = video.get("source", "")
+            if source_filter != "全て" and source != source_filter:
+                continue
+            
+            # フィルタを通った動画を表示
+            self.filtered_videos.append(video)
             checked = "☑️" if video.get("selected_for_post") else "☐"
+            
             # 投稿済みの場合は投稿日時を表示、未投稿の場合は予約日時を表示
             if video.get("posted_to_bluesky"):
-                # 新しい方式: posted_at がある場合はそれを表示
                 if video.get("posted_at"):
                     date_info = video.get("posted_at")
                 else:
-                    # 古いデータベース: posted_at がない場合は "不明" と表示
                     date_info = "不明"
             else:
-                # 未投稿の場合は予約日時を表示
                 date_info = video.get("scheduled_at") or "（未設定）"
+            
             source = video.get("source") or ""
             image_mode = video.get("image_mode") or ""
             image_filename = video.get("image_filename") or ""
 
-            # 分類情報を取得（YouTube は分類結果、ニコニコは常に「動画」）
+            # 分類情報を取得
             classification_type = video.get("classification_type", "video")
             if source == "Niconico":
                 display_type = "🎬 動画"
@@ -165,7 +247,7 @@ class StreamNotifyGUI:
                 source,                          # Source
                 display_type,                    # Type (video/live/archive)
                 video["title"][:100],           # Title
-                date_info[:16] if date_info != "（未設定）" else date_info, # Date (Posted or Scheduled)
+                date_info[:16] if date_info != "（未設定）" else date_info, # Date
                 "✓" if video.get("posted_to_bluesky") else "–",  # Posted
                 image_mode,                      # Image Mode
                 image_filename                   # Image File
@@ -177,7 +259,23 @@ class StreamNotifyGUI:
         self.tree.tag_configure("even", background="#f0f0f0")
         self.tree.tag_configure("odd", background="white")
 
-        self.status_label.config(text=f"読み込み完了: {len(videos)} 件の動画（選択: {len(self.selected_rows)} 件）")
+        # ステータスを更新
+        total = len(self.all_videos)
+        filtered = len(self.filtered_videos)
+        selected = len(self.selected_rows)
+        if filtered < total:
+            status_text = f"読み込み完了: {total} 件中 {filtered} 件を表示（選択: {selected} 件）"
+        else:
+            status_text = f"読み込み完了: {total} 件の動画（選択: {selected} 件）"
+        self.status_label.config(text=status_text)
+
+    def reset_filters(self):
+        """フィルタをリセット"""
+        self.filter_title_entry.delete(0, tk.END)
+        self.filter_status_var.set("全て")
+        self.filter_source_var.set("全て")
+        self.apply_filters()
+        logger.info("✅ フィルタをリセットしました")
 
     def on_tree_click(self, event):
         """Treeview の「選択」列をクリックしてチェック状態をトグル"""
