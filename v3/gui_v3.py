@@ -44,7 +44,7 @@ class StreamNotifyGUI:
         self.bluesky_core = bluesky_core  # コア機能へのアクセス
         self.image_manager = get_image_manager()  # 画像管理クラスを初期化
         self.selected_rows = set()
-        
+
         # フィルタ用の変数
         self.all_videos = []  # フィルタ前のすべての動画
         self.filtered_videos = []  # フィルタ後の動画
@@ -170,7 +170,7 @@ class StreamNotifyGUI:
         # すべての動画をキャッシュ
         self.all_videos = self.db.get_all_videos()
         self.selected_rows.clear()
-        
+
         # フィルタをリセット
         if hasattr(self, 'filter_title_entry'):
             self.filter_title_entry.delete(0, tk.END)
@@ -178,7 +178,7 @@ class StreamNotifyGUI:
             self.filter_status_var.set("全て")
         if hasattr(self, 'filter_source_var'):
             self.filter_source_var.set("全て")
-        
+
         # フィルタを適用して表示
         self.apply_filters()
 
@@ -188,34 +188,34 @@ class StreamNotifyGUI:
         title_filter = self.filter_title_entry.get().lower()
         status_filter = self.filter_status_var.get()
         source_filter = self.filter_source_var.get()
-        
+
         # Treeview をクリア
         for item in self.tree.get_children():
             self.tree.delete(item)
-        
+
         # フィルタを適用
         self.filtered_videos = []
         for video in self.all_videos:
             # タイトル検索
             if title_filter and title_filter not in video.get("title", "").lower():
                 continue
-            
+
             # 投稿状態フィルタ
             is_posted = video.get("posted_to_bluesky", 0)
             if status_filter == "投稿済み" and not is_posted:
                 continue
             elif status_filter == "未投稿" and is_posted:
                 continue
-            
+
             # 配信元フィルタ
             source = video.get("source", "")
             if source_filter != "全て" and source != source_filter:
                 continue
-            
+
             # フィルタを通った動画を表示
             self.filtered_videos.append(video)
             checked = "☑️" if video.get("selected_for_post") else "☐"
-            
+
             # 投稿済みの場合は投稿日時を表示、未投稿の場合は予約日時を表示
             if video.get("posted_to_bluesky"):
                 if video.get("posted_at"):
@@ -224,7 +224,7 @@ class StreamNotifyGUI:
                     date_info = "不明"
             else:
                 date_info = video.get("scheduled_at") or "（未設定）"
-            
+
             source = video.get("source") or ""
             image_mode = video.get("image_mode") or ""
             image_filename = video.get("image_filename") or ""
@@ -1458,4 +1458,3 @@ class PostSettingsWindow:
         except Exception as e:
             logger.error(f"投稿エラー: {e}", exc_info=True)
             messagebox.showerror("エラー", f"投稿に失敗しました:\n{str(e)}")
-
