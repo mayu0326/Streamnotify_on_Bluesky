@@ -210,13 +210,20 @@ class BlueskyImagePlugin(NotificationPlugin):
                 else:
                     post_logger.debug(f"ℹ️ youtube_online テンプレート未使用またはレンダリング失敗（従来フォーマットを使用）")
             elif classification_type == "archive":
-                # ライブ終了テンプレート
-                rendered = self.render_template_with_utils("youtube_offline", video)
+                # アーカイブテンプレート（フォールバック機能付き）
+                rendered = self.render_template_with_utils("youtube_archive", video)
                 if rendered:
                     video["text_override"] = rendered
-                    post_logger.info(f"✅ テンプレートを使用して本文を生成しました: youtube_offline (classification_type='archive')")
+                    post_logger.info(f"✅ テンプレートを使用して本文を生成しました: youtube_archive (classification_type='archive')")
                 else:
-                    post_logger.debug(f"ℹ️ youtube_offline テンプレート未使用またはレンダリング失敗（従来フォーマットを使用）")
+                    # アーカイブテンプレート未設定時は新着動画テンプレートにフォールバック
+                    post_logger.debug(f"ℹ️ youtube_archive テンプレート未使用。youtube_new_video にフォールバック")
+                    rendered = self.render_template_with_utils("youtube_new_video", video)
+                    if rendered:
+                        video["text_override"] = rendered
+                        post_logger.info(f"✅ テンプレートを使用して本文を生成しました: youtube_new_video (フォールバック)")
+                    else:
+                        post_logger.debug(f"ℹ️ youtube_new_video テンプレート未使用またはレンダリング失敗（従来フォーマットを使用）")
             else:
                 # 通常動画用テンプレート（デフォルト）
                 rendered = self.render_template_with_utils("youtube_new_video", video)
