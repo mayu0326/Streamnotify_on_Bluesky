@@ -6,25 +6,27 @@ v3 では、デバッグ・検証・分析用のスクリプトを `v3/utils/` �
 
 ```
 v3/utils/
-├── database/                       # DB操作・検証用スクリプト
-│   ├── reset_post_flag.py         # 投稿フラグリセット
-│   ├── restore_db_from_backup.py  # DB復元
-│   ├── check_db.py
-│   ├── verify_db_schema.py
-│   └── check_db_state.py
-├── cache/                          # キャッシュ管理用スクリプト
-│   ├── build_video_cache.py       # キャッシュ構築
-│   └── check_cache_file.py
-├── classification/                 # 分類・検証用スクリプト
-│   ├── check_archive_classification.py
-│   ├── apply_classifications.py
-│   ├── apply_classification_to_production_db.py
-│   └── check_classification_detailed.py
-└── analysis/                       # API・環境検証スクリプト
-    ├── calculate_api_quota.py
-    ├── inspect_broadcast_type.py
-    ├── inspect_video_api_response.py
-    └── check_env_and_cache.py
+├── database/                               # DB操作・検証用スクリプト
+│   ├── reset_post_flag.py                 # 投稿フラグリセット
+│   ├── restore_db_from_backup.py          # DB復元
+│   ├── check_db.py                        # DB内容確認
+│   ├── verify_db_schema.py                # スキーマ検証
+│   ├── check_db_state.py                  # DB全体の状態確認
+│   ├── youtube_duplicate_manager.py       # YouTube重複クリーンアップ（ユーティリティ）
+│   └── youtube_dedup_priority.py          # YouTube優先度ロジック（内部モジュール）
+├── cache/                                  # キャッシュ管理用スクリプト
+│   ├── build_video_cache.py               # キャッシュ構築
+│   └── check_cache_file.py                # キャッシュ確認
+├── classification/                         # 分類・検証用スクリプト
+│   ├── check_archive_classification.py    # アーカイブ分類統計
+│   ├── apply_classifications.py           # 分類結果を DB に適用
+│   ├── apply_classification_to_production_db.py  # 本番 DB に分類適用
+│   └── check_classification_detailed.py   # 分類結果の詳細確認
+└── analysis/                               # API・環境検証スクリプト
+    ├── calculate_api_quota.py             # API クォータ計算
+    ├── inspect_broadcast_type.py          # ブロードキャストタイプ検査
+    ├── inspect_video_api_response.py      # YouTube API レスポンス検査
+    └── check_env_and_cache.py             # 環境・キャッシュ整合性チェック
 ```
 
 ---
@@ -32,7 +34,8 @@ v3/utils/
 # デバッグ用ユーティリティ: reset_post_flag.py
 
 ## 概要
-`reset_post_flag.py` は、データベース内の投稿済みフラグ (`posted_to_bluesky`) と投稿日時 (`posted_at`) をリセットするためのデバッグ用スクリプトです。
+`reset_post_flag.py` は、データベース内の投稿済みフラグ (`posted_to_bluesky`) と投稿日時 (`posted_at`) を  \
+リセットするためのデバッグ用スクリプトです。
 
 ## 使用方法
 
@@ -85,7 +88,8 @@ python restore_db_from_backup.py
 ## デバッグ用ユーティリティ: build_video_cache.py
 
 ### 概要
-`build_video_cache.py` は、本番データベース内の全YouTube動画をYouTube APIを利用してキャッシュに保存するスクリプトです。API クォータの節約と初期キャッシュの構築に使用されます。
+- `build_video_cache.py` は、本番データベース内の全YouTube動画をYouTube APIを利用してキャッシュに保存するスクリプトです。
+- API クォータの節約と初期キャッシュの構築に使用されます。
 
 ### 使用方法
 
@@ -215,7 +219,8 @@ python v3/utils/database/restore_db_from_backup.py
 ## 1. build_video_cache.py
 
 ### 概要
-本番データベース内の全YouTube動画をYouTube APIを利用してキャッシュに保存するスクリプト。API クォータの節約と初期キャッシュの構築に使用されます。
+- 本番データベース内の全YouTube動画をYouTube APIを利用してキャッシュに保存するスクリプト。
+- API クォータの節約と初期キャッシュの構築に使用されます。
 
 ### 使用方法
 
@@ -309,6 +314,161 @@ python v3/utils/database/verify_db_schema.py
 
 ---
 
+## 3. youtube_duplicate_manager.py
+
+### 概要
+- YouTube重複登録動画の管理・整理ユーティリティモジュール。
+- 同じタイトル+チャンネル名で複数登録されている動画を検出し、優先度ロジックに基づいて保持する動画を決定します。
+
+**機能：**
+- `check_duplicate_videos()` - 重複登録動画をチェック・表示
+- `cleanup_youtube_duplicates_with_priority()` - 重複動画をクリーンアップ（優先度ロジック適用）
+
+### 使用方法
+
+#### 重複動画をチェック（表示のみ）
+```bash
+python v3/utils/database/youtube_duplicate_manager.py check
+```
+
+#### 重複動画をクリーンアップ
+```bash
+python v3/utils/database/youtube_duplicate_manager.py cleanup
+```
+
+#### 両方を実行
+```bash
+python v3/utils/database/youtube_duplicate_manager.py
+```
+
+### 優先度ロジック
+
+動画の優先度は以下の順序で決定されます（高い順）：
+
+1. **アーカイブ**（`content_type='archive'` または `live_status='completed'`）- 最も優先度が高い
+2. **ライブ**（`content_type='live'` または `live_status='live'/'upcoming'`）
+3. **プレミア公開**（`is_premiere=1` かつ開始予定時刻から10分以内）
+4. **通常動画**（`content_type='video'`）- 最も優先度が低い
+
+### 出力例
+
+**チェック結果：**
+```
+=== YouTubeの重複登録されている動画 ===
+
+タイトル: 新作動画を作成しました！
+  登録数: 3
+  video_ids: dQw4w9WgXcQ,abc123def456,xyz789
+  content_types: video,live,archive
+  live_statuses: none,live,completed
+  premieres: 0,0,0
+```
+
+**クリーンアップ結果：**
+```
+【重複グループ】
+  タイトル: 新作動画を作成しました！
+  チャンネル: My Channel
+  登録数: 3
+
+  動画の優先度:
+    ID=  1, video_id=dQw4w9WgXcQ, type=video    , live_status=none      , premiere=0, priority=1
+    ID=  2, video_id=abc123def456, type=live     , live_status=live      , premiere=0, priority=3
+    ID=  3, video_id=xyz789, type=archive  , live_status=completed , premiere=0, priority=4
+
+  ✅ 保持: ID=  3, video_id=xyz789 (priority=4)
+  ❌ 削除: ID=  1, video_id=dQw4w9WgXcQ (priority=1)
+     📌 deleted_videos.json に登録
+  ❌ 削除: ID=  2, video_id=abc123def456 (priority=3)
+     📌 deleted_videos.json に登録
+
+=== 結果 ===
+削除した動画: 2件
+deleted_videos.json に登録: 2件
+クリーンアップ対象グループ: 1グループ
+```
+
+### 特徴
+
+- ✅ **削除時に `deleted_videos.json` に自動登録** - 除外動画リストに自動追加される
+- ✅ **優先度に基づいた自動選択** - 最も価値のある動画を保持
+- ✅ **Pythonモジュール化** - 他のコードから `from youtube_duplicate_manager import ...` で利用可能
+- ✅ **任意のディレクトリから実行可能** - パスを自動解決
+
+### 注意事項
+
+- **アプリケーション非起動時に実行**: DB ロックを回避するため、アプリケーション起動中には実行しないでください。
+- **バックアップ推奨**: 削除操作を伴うため、実行前にデータベースのバックアップを作成してください。
+- **デバッグ用途**: 過去に登録された重複を整理するためのメンテナンスツールです。RSS取得時の新規重複チェックは `database.py` の `insert_video()` で自動的に行われます。
+
+### ファイルの場所
+- スクリプト: `v3/utils/database/youtube_duplicate_manager.py`
+- 内部依存: `v3/utils/database/youtube_dedup_priority.py`
+
+---
+
+## 4. youtube_dedup_priority.py
+
+### 概要
+- YouTube動画の優先度ロジックを計算する内部モジュール。
+- `database.py` の RSS新規登録時チェック と `youtube_duplicate_manager.py` の重複クリーンアップで使用されます。
+
+**提供関数：**
+- `get_video_priority(video)` - 動画の優先度を計算（タプル形式）
+- `should_keep_video(video, existing_videos)` - 新規動画を登録すべきか判定
+- `select_best_video(videos)` - 複数動画から最優先を選択
+
+### 役割
+
+| 処理 | 用途 | タイミング |
+|:--|:--|:--|
+| **新規登録時チェック（`database.insert_video`）** | RSS取得時に重複を防止 | リアルタイム |
+| **重複クリーンアップ（`youtube_duplicate_manager`）** | 過去の重複を整理 | 定期メンテナンス |
+
+### 優先度計算ロジック
+
+```python
+# 優先度が大きいほど、より重要な動画
+優先度 4: アーカイブ（content_type='archive' または live_status='completed'）
+優先度 3: ライブ（content_type='live' または live_status='live'/'upcoming'）
+優先度 3: プレミア公開（is_premiere=1 かつ開始予定時刻から10分以内）
+優先度 1: 通常動画（content_type='video'）
+```
+
+### 使用例（Pythonコード）
+
+```python
+from utils.database.youtube_dedup_priority import get_video_priority, should_keep_video
+
+# 新しい動画の優先度を計算
+new_video = {
+    "video_id": "abc123",
+    "content_type": "archive",
+    "live_status": "completed",
+    "is_premiere": 0,
+    "published_at": "2025-12-18T10:00:00"
+}
+priority = get_video_priority(new_video)
+print(priority)  # (4, 'archive', 'abc123')
+
+# 既存の動画と比較
+existing_videos = [
+    {"video_id": "xyz789", "content_type": "video", "live_status": None, ...}
+]
+should_keep = should_keep_video(new_video, existing_videos)
+print(should_keep)  # True（新動画の優先度が高い）
+```
+
+### ファイルの場所
+- モジュール: `v3/utils/database/youtube_dedup_priority.py`
+- 依存される場所:
+  - `v3/database.py`（RSS新規登録時）
+  - `v3/utils/database/youtube_duplicate_manager.py`（重複クリーンアップ時）
+
+---
+
+## 5. check_db_state.py
+
 ## 3. check_db_state.py
 
 ### 概要
@@ -342,7 +502,8 @@ Videos with NULL source:
 ## 1. check_cache_file.py
 
 ### 概要
-YouTube API キャッシュファイルの状態を確認するスクリプト。ファイルサイズ、キャッシュ件数、サンプルデータを表示。
+- YouTube API キャッシュファイルの状態を確認するスクリプト。
+- ファイルサイズ、キャッシュ件数、サンプルデータを表示。
 
 ### 使用方法
 ```bash
@@ -379,7 +540,8 @@ python v3/utils/cache/check_cache_file.py
 ## 1. check_archive_classification.py
 
 ### 概要
-本番DB内の動画分類結果をサマリー表示するスクリプト。コンテンツタイプ、ライブステータス、プレミア公開フラグ別に統計を表示。
+- 本番DB内の動画分類結果をサマリー表示するスクリプト。
+- コンテンツタイプ、ライブステータス、プレミア公開フラグ別に統計を表示。
 
 ### 使用方法
 ```bash
@@ -499,7 +661,8 @@ channels.list（チャンネルID解決）:
 ## 2. inspect_broadcast_type.py
 
 ### 概要
-YouTube APIレスポンスの `liveBroadcastContent` と `liveStreamingDetails` を確認し、分類ロジックの入力値を検証するスクリプト。
+- YouTube APIレスポンスの `liveBroadcastContent` と `liveStreamingDetails` を確認し、  \
+分類ロジックの入力値を検証するスクリプト。
 
 ### 使用方法
 ```bash
@@ -542,6 +705,8 @@ abcdefghijk:
 | | `database/check_db.py` | Niconico 動画確認 |
 | | `database/verify_db_schema.py` | スキーマ検証 |
 | | `database/check_db_state.py` | DB全体の状態確認 |
+| | `database/youtube_duplicate_manager.py` | YouTube重複クリーンアップ（ユーティリティ） |
+| | `database/youtube_dedup_priority.py` | YouTube優先度ロジック（内部モジュール） |
 | **キャッシュ** | `cache/build_video_cache.py` | キャッシュの初期化・再構築 |
 | | `cache/check_cache_file.py` | キャッシュファイル確認 |
 | **分類・検証** | `classification/check_archive_classification.py` | アーカイブ分類統計表示 |

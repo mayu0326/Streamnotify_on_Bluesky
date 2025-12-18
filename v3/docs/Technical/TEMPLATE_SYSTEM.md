@@ -35,12 +35,13 @@
 | プラットフォーム | イベント | テンプレート名 | 対応状況 | ファイル |
 |:--|:--|:--|:--:|:--|
 | YouTube | 新着動画投稿 | YouTube 新着動画 | ✅ v3.1.0 | `yt_new_video_template.txt` |
-| YouTube | 配信開始（※） | YouTube Live 開始 | 🔜 将来実装 | `yt_online_template.txt` |
-| YouTube | 配信終了（※） | YouTube Live 終了 | 🔜 将来実装 | `yt_offline_template.txt` |
+| YouTube | 配信開始 | YouTube Live 開始 | ✅ v3.1.0 | `yt_online_template.txt` |
+| YouTube | 配信終了 | YouTube Live 終了 | 🔜 将来実装 | `yt_offline_template.txt` |
+| YouTube | アーカイブ | YouTube アーカイブ | ✅ v3.1.0 | `yt_archive_template.txt` |
 | ニコニコ | 新着動画投稿 | ニコニコ 新着動画 | ✅ v3.1.0 | `nico_new_video_template.txt` |
-| Twitch | 配信開始（※） | Twitch 配信開始 | 🔜 将来実装 | `twitch_online_template.txt` |
+| Twitch | 配信開始 | Twitch 配信開始 | 🔜 将来実装 | `twitch_online_template.txt` |
 
-**✅** = 現在利用可能 | **🔜** = 今後実装予定 | **※** = 対応機能そのものが開発中
+**✅** = 現在利用可能 | **🔜** = 今後実装予定
 
 ---
 
@@ -55,8 +56,9 @@ Streamnotify_on_Bluesky/v3/
 ├── templates/
 │   ├── youtube/                          # YouTube 用テンプレート
 │   │   ├── yt_new_video_template.txt     ← 新着動画投稿用
-│   │   ├── yt_online_template.txt        ← 配信開始用（将来）
-│   │   └── yt_offline_template.txt       ← 配信終了用（将来）
+│   │   ├── yt_online_template.txt        ← 配信開始用
+│   │   ├── yt_offline_template.txt       ← 配信終了用（将来）
+│   │   └── yt_archive_template.txt       ← アーカイブ投稿用（新規）
 │   │
 │   ├── niconico/                         # ニコニコ用テンプレート
 │   │   └── nico_new_video_template.txt   ← 新着動画投稿用
@@ -161,7 +163,7 @@ Streamnotify_on_Bluesky/v3/
 #### 2. フィルター（変数を加工）
 
 ```jinja2
-# 日付をフォーマット
+# 日付をフォーマット（従来のフィルター）
 {{ published_at | datetimeformat('%Y年%m月%d日') }}
 # 結果: 2025年12月18日
 
@@ -172,6 +174,26 @@ Streamnotify_on_Bluesky/v3/
 # 文字列を小文字に
 {{ title | lower }}
 # 結果: new video title
+```
+
+#### 2-2. v3.2.0 新規追加フィルター（新機能）
+
+```jinja2
+# 現在日付をフォーマット（v3.2.0+）
+{{ current_date | format_date('%Y年%m月%d日') }}
+# 結果: 2025年12月19日
+
+# 現在日時をフォーマット（v3.2.0+）
+{{ current_datetime | format_datetime('%Y年%m月%d日 %H:%M') }}
+# 結果: 2025年12月19日 14:30
+
+# 曜日を日本語で表示（v3.2.0+）
+{{ published_at | weekday }}
+# 結果: 金曜日
+
+# ランダム絵文字を挿入（v3.2.0+）
+{{ | random_emoji }}
+# 結果: 🎉 または 🚀 など（毎回異なる）
 ```
 
 #### 3. 条件分岐
@@ -244,6 +266,31 @@ https://www.youtube.com/watch?v=dQw4w9WgXcQ
 【 {{ title }} 】
 📺 {{ video_url }}
 {% endif %}
+```
+
+#### 例 4: v3.2.0 新フィルターを使ったテンプレート
+
+```jinja2
+🎬 新作動画投稿！
+タイトル: {{ title }}
+投稿日: {{ published_at | format_date('%Y年%m月%d日') }} ({{ published_at | weekday }})
+投稿時刻: {{ current_datetime | format_datetime('%H:%M') }}
+{{ | random_emoji }} 是非ご覧ください！
+{{ video_url }}
+
+#新作動画
+```
+
+出力例:
+```
+🎬 新作動画投稿！
+タイトル: 新しい企画に挑戦してみた！
+投稿日: 2025年12月19日 (金曜日)
+投稿時刻: 14:30
+🚀 是非ご覧ください！
+https://www.youtube.com/watch?v=xxxxxx
+
+#新作動画
 ```
 
 ### よくある質問（FAQ）
@@ -558,4 +605,3 @@ def _get_env_var_from_file(file_path: str, env_var_name: str) -> Optional[str]:
 **作成日**: 2025-12-18
 **最後の修正**: 2025-12-18
 **ステータス**: ✅ 完成・検証済み
-

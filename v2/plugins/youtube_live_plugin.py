@@ -15,6 +15,7 @@ import requests
 from plugin_interface import NotificationPlugin
 from database import Database
 from plugins.youtube_api_plugin import YouTubeAPIPlugin
+from youtube_live_cache import get_youtube_live_cache
 
 logger = logging.getLogger("AppLogger")
 
@@ -240,11 +241,16 @@ class YouTubeLivePlugin(NotificationPlugin):
         """
         ライブ中の動画を定期チェックし、終了を検知
 
-        - DB から live_status='live' の動画を取得
-        - API で現在の状態を確認
-        - 終了していれば DB 更新 + 自動投稿
+        新フロー：
+        ① DB から live_status='live' の動画を取得
+        ② 各動画の現在状態を API で確認
+        ③ DB データと API データを組み合わせてキャッシュに保存
+        ④ ポーリング（動画IDについて）を行い、キャッシュを更新
+        ⑤ LIVE終了の API データが取れたら終了と判定 → キャッシュデータで本番DB更新
+        ⑥ 設定に基づき自動投稿（オプション）
         """
         try:
+            # ① DB から live_status='live' の動画を取得
             live_videos = self.db.get_videos_by_live_status("live")
 
             if not live_videos:
@@ -253,32 +259,60 @@ class YouTubeLivePlugin(NotificationPlugin):
 
             logger.info(f"🔄 {len(live_videos)} 件のライブ中動画をチェック中...")
 
+            # キャッシュ取得
+            cache = get_youtube_live_cache()
+
             for video in live_videos:
                 video_id = video.get("video_id")
                 if not video_id:
                     continue
 
-                # API で現在の状態を確認
+                # ② API で現在の状態を確認
                 details = self.api_plugin._fetch_video_detail(video_id)
                 if not details:
                     logger.warning(f"⚠️ 動画詳細取得に失敗: {video_id}")
                     continue
 
+                # ③ DB データと API データを組み合わせてキャッシュに保存
+                cache_entry = cache.get_live_video(video_id)
+                if not cache_entry:
+                    # 初回追加
+                    db_data = {
+                        "title": video.get("title"),
+                        "channel_name": video.get("channel_name"),
+                        "video_url": video.get("video_url"),
+                        "published_at": video.get("published_at"),
+                        "thumbnail_url": video.get("thumbnail_url"),
+                    }
+                    cache.add_live_video(video_id, db_data, details)
+                    logger.debug(f"📌 キャッシュに追加: {video_id}")
+                else:
+                    # ④ ポーリング結果に基づきキャッシュを更新
+                    cache.update_live_video(video_id, details)
+                    logger.debug(f"🔄 キャッシュを更新: {video_id}")
+
+                # 分類ロジックで現在の状態を判定
                 content_type, live_status, is_premiere = self._classify_live(details)
 
-                # ライブ終了検知
+                # ⑤ LIVE終了の API データが取れたら終了と判定 → キャッシュデータで本番DB更新
                 if live_status == "completed" or content_type == "archive":
                     logger.info(f"✅ ライブ終了を検知: {video_id} (live_status={live_status}, content_type={content_type})")
 
-                    # DB 更新
+                    # キャッシュを終了状態に更新
+                    cache.mark_as_ended(video_id)
+
+                    # DB 更新（キャッシュデータを反映）
                     self.db.update_video_status(video_id, content_type, live_status)
 
-                    # 自動投稿（設定確認）
+                    # ⑥ 設定に基づき自動投稿（オプション）
                     auto_post_end = os.getenv("YOUTUBE_LIVE_AUTO_POST_END", "true").lower() == "true"
                     if auto_post_end:
                         self.auto_post_live_end(video)
                     else:
                         logger.info("ℹ️ YOUTUBE_LIVE_AUTO_POST_END=false のため投稿をスキップ")
+
+                    # 終了済み動画をキャッシュから削除
+                    cache.remove_live_video(video_id)
 
         except Exception as e:
             logger.error(f"❌ ライブ終了チェックエラー: {e}")

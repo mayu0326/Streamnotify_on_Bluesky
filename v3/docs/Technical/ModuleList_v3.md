@@ -5,13 +5,13 @@
 | ファイル名 | 種類 | 主な用途・役割 | インポート先 |
 |-----------|------|-----------------|---------|
 | `main_v3.py` | コア | アプリ起動・メインループ・GUI統合・プラグイン管理 | 単体実行（エントリーポイント） |
-| `config.py` | コア | 設定読み込み・バリデーション（拡張設定項目対応） | main_v3.py |
-| `database.py` | コア | SQLite 操作・動画管理（拡張カラム対応、**content_type/live_status 値正規化**） | main_v3.py、youtube_rss.py、bluesky_plugin.py |
+| `config.py` | コア | 設定読み込み・バリデーション（**重複投稿防止設定対応**） | main_v3.py |
+| `database.py` | コア | SQLite 操作・動画管理（**重複投稿検知機能**対応） | main_v3.py、youtube_rss.py、bluesky_plugin.py |
 | `youtube_rss.py` | コア | RSS 取得・パース | main_v3.py |
 | `plugin_interface.py` | コア | NotificationPlugin 抽象基底クラス（プラグイン定義） | すべてのプラグイン |
 | `plugin_manager.py` | コア | プラグイン自動検出・読み込み・管理 | main_v3.py |
 | `bluesky_core.py` | ユーティリティ | Bluesky 投稿機能の本体（ログイン・投稿・Facet構築） | bluesky_plugin.py |
-| `gui_v3.py` | コア | GUI フレーム統合・動画選択・投稿実行・統計表示 | main_v3.py |
+| `gui_v3.py` | コア | GUI フレーム統合・動画選択・投稿実行・統計表示・**動画フィルタリング・重複投稿防止** | main_v3.py |
 | `image_manager.py` | ユーティリティ | 画像ダウンロード・保存・フォーマット変換・リトライ対応 | bluesky_core.py、niconico_plugin.py |
 | `logging_config.py` | ユーティリティ | ロギング統合設定（ロギングプラグイン対応） | main_v3.py |
 | `utils_v3.py` | ユーティリティ | 共通関数（日時フォーマット・リトライ・URLバリデーション） | bluesky_core.py、config.py ほか |
@@ -90,4 +90,3 @@
 - プラグイン導入時に必要なファイルを Asset から本番ディレクトリに自動コピー（実装完了: 2025-12）
 - main_v3.py で自動コピー処理を実行
 - 追加済みファイルはプラグイン削除後も残る（手動削除推奨）
-

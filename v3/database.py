@@ -184,6 +184,9 @@ class Database:
         # YouTube動画の重複チェック（優先度ロジック適用）
         if source == "youtube" and title and channel_name:
             try:
+                import sys
+                from pathlib import Path
+                sys.path.insert(0, str(Path(__file__).parent / 'utils' / 'database'))
                 from youtube_dedup_priority import get_video_priority, should_keep_video
 
                 conn = self._get_connection()
@@ -410,6 +413,40 @@ class Database:
 
         except Exception as e:
             logger.error(f"投稿済みフラグの更新に失敗しました: {e}")
+            return False
+
+    def is_duplicate_post(self, video_id: str) -> bool:
+        """
+        重複投稿かどうかをチェック
+
+        同じ動画がすでに投稿されている場合は True を返す
+
+        Args:
+            video_id: 動画ID
+
+        Returns:
+            bool: 重複投稿の場合 True、初回投稿の場合 False
+        """
+        try:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+
+            cursor.execute("""
+                SELECT COUNT(*) FROM videos
+                WHERE video_id = ? AND posted_to_bluesky = 1
+            """, (video_id,))
+
+            count = cursor.fetchone()[0]
+            conn.close()
+
+            is_duplicate = count > 0
+            if is_duplicate:
+                logger.warning(f"⚠️ 重複投稿検知: この動画は既に投稿済みです（{video_id}）")
+
+            return is_duplicate
+
+        except Exception as e:
+            logger.error(f"重複チェック中にエラーが発生: {e}")
             return False
 
     def update_selection(self, video_id, selected: bool, scheduled_at: str = None, image_mode: str = None, image_filename: str = None):

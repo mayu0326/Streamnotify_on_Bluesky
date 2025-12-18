@@ -56,7 +56,7 @@ class Config:
 
         self.youtube_api_key = os.getenv("YOUTUBE_API_KEY", "").strip()
         self.youtube_api_plugin_exists = plugin_exists
-        
+
         if plugin_exists:
             if self.youtube_api_key:
                 logger.info("有効なAPIキーが設定されています。")
@@ -106,6 +106,10 @@ class Config:
         # Bluesky 投稿フラグ（デフォルト: False = ドライラン）
         post_enabled_str = os.getenv("BLUESKY_POST_ENABLED", "false").strip().lower()
         self.bluesky_post_enabled = post_enabled_str in ("true", "1", "yes", "on")
+
+        # 重複投稿防止オプション（デフォルト: False）
+        duplicate_prevention_str = os.getenv("PREVENT_DUPLICATE_POSTS", "false").strip().lower()
+        self.prevent_duplicate_posts = duplicate_prevention_str in ("true", "1", "yes", "on")
 
         # デバッグモード（デフォルト: False）
         debug_mode_str = os.getenv("DEBUG_MODE", "false").strip().lower()
@@ -191,6 +195,7 @@ class Config:
         logger.info("=" * 60)
         logger.info(f"動作モード: {mode_descriptions.get(self.operation_mode, self.operation_mode)}")
         logger.info(f"Bluesky投稿機能: {post_status}")
+        logger.info(f"重複投稿防止: {'有効' if self.prevent_duplicate_posts else '無効'}")
         logger.info(f"デバッグモード: {debug_status}")
         logger.info("=" * 60)
 
@@ -208,4 +213,3 @@ class Config:
 def get_config(env_path="settings.env") -> Config:
     """設定オブジェクトを取得"""
     return Config(env_path)
-

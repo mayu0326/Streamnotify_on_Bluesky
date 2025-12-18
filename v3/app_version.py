@@ -9,7 +9,7 @@ StreamNotify on Bluesky v3 - バージョン情報
 - patch: バグ修正
 """
 
-__version__ = "3.0.0"
+__version__ = "3.1.0"
 __release_date__ = "2025-12-18"
 __status__ = "development"  # development / alpha / beta / stable
 __author__ = "mayuneco(mayunya)"

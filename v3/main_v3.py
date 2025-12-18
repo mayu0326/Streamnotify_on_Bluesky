@@ -229,8 +229,17 @@ def main():
         """YouTubeLive ライブ終了検知の定期ポーリングを開始"""
         import time
 
-        # ポーリング間隔（分）
-        poll_interval_minutes = int(os.getenv("YOUTUBE_LIVE_POLL_INTERVAL", "5"))
+        # ポーリング間隔（分） - 最短15分、最長1時間に制限
+        poll_interval_minutes = int(os.getenv("YOUTUBE_LIVE_POLL_INTERVAL", "15"))
+
+        # バリデーション：最短15分、最長60分
+        if poll_interval_minutes < 15:
+            logger.warning(f"⚠️ YOUTUBE_LIVE_POLL_INTERVAL={poll_interval_minutes} は短すぎます（最短15分）")
+            poll_interval_minutes = 15
+        elif poll_interval_minutes > 60:
+            logger.warning(f"⚠️ YOUTUBE_LIVE_POLL_INTERVAL={poll_interval_minutes} は長すぎます（最長60分）")
+            poll_interval_minutes = 60
+
         auto_post_end = os.getenv("YOUTUBE_LIVE_AUTO_POST_END", "true").lower() == "true"
 
         if not auto_post_end:

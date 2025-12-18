@@ -12,6 +12,8 @@ Vanilla 環境では、テンプレート仕様とファイル構成が整備さ
 
 import os
 import logging
+import random
+from datetime import datetime
 from pathlib import Path
 from typing import Optional, Tuple, List, Dict, Any
 from jinja2 import Environment, TemplateNotFound, TemplateSyntaxError
@@ -22,6 +24,84 @@ __author__ = "mayuneco(mayunya)"
 __copyright__ = "Copyright (C) 2025 mayuneco(mayunya)"
 __license__ = "GPLv3"
 
+# ============ v3.2.0: Jinja2 動的変数フィルター ============
+
+def _format_date_filter(value=None, format_str="%Y年%m月%d日") -> str:
+    """
+    現在日時を指定形式でフォーマット
+
+    使用例: {{ current_date | format_date }}
+           {{ current_date | format_date('%Y-%m-%d') }}
+    """
+    if value is None:
+        value = datetime.now()
+    elif isinstance(value, str):
+        try:
+            value = datetime.fromisoformat(value)
+        except:
+            return str(value)
+
+    if isinstance(value, datetime):
+        return value.strftime(format_str)
+    return str(value)
+
+
+def _format_datetime_filter(value=None, format_str="%Y年%m月%d日 %H:%M") -> str:
+    """
+    現在日時を指定形式でフォーマット（時刻含む）
+
+    使用例: {{ current_datetime | format_datetime }}
+           {{ current_datetime | format_datetime('%Y-%m-%d %H:%M:%S') }}
+    """
+    if value is None:
+        value = datetime.now()
+    elif isinstance(value, str):
+        try:
+            value = datetime.fromisoformat(value)
+        except:
+            return str(value)
+
+    if isinstance(value, datetime):
+        return value.strftime(format_str)
+    return str(value)
+
+
+def _random_emoji_filter(emoji_list=None) -> str:
+    """
+    ランダムに絵文字を選択
+
+    使用例: {{ | random_emoji }}                              （デフォルト絵文字から選択）
+           {{ | random_emoji('🎬,🎥,📹') }}  （カスタム絵文字リストから選択）
+    """
+    if emoji_list is None:
+        # デフォルト絵文字リスト
+        emoji_list = ['🎬', '🎥', '📹', '✨', '🌟', '⭐', '🎯', '🎪', '🎨', '🎭']
+    elif isinstance(emoji_list, str):
+        emoji_list = emoji_list.split(',')
+
+    return random.choice(emoji_list)
+
+
+def _weekday_filter(value=None) -> str:
+    """
+    曜日を日本語で返す
+
+    使用例: {{ published_at | weekday }}
+    """
+    if value is None:
+        value = datetime.now()
+    elif isinstance(value, str):
+        try:
+            value = datetime.fromisoformat(value)
+        except:
+            return str(value)
+
+    if isinstance(value, datetime):
+        weekdays = ['月', '火', '水', '木', '金', '土', '日']
+        return weekdays[value.weekday()]
+    return str(value)
+
+
 # ============ テンプレート種別ごとの required_keys 定義 ============
 
 TEMPLATE_REQUIRED_KEYS = {
@@ -29,6 +109,7 @@ TEMPLATE_REQUIRED_KEYS = {
     "youtube_new_video": ["title", "video_id", "video_url", "channel_name"],
     "youtube_online": ["title", "video_url", "channel_name", "live_status"],
     "youtube_offline": ["title", "channel_name", "live_status"],
+    "youtube_archive": ["title", "video_url", "channel_name"],  # ★ アーカイブテンプレート追加
 
     # ニコニコ
     "nico_new_video": ["title", "video_id", "video_url", "channel_name"],
@@ -66,6 +147,14 @@ TEMPLATE_ARGS = {
         ("チャンネル名", "channel_name"),
         ("配信タイトル", "title"),
         ("配信ステータス", "live_status"),
+    ],
+
+    # YouTube アーカイブ（★ 新規追加）
+    "youtube_archive": [
+        ("アーカイブタイトル", "title"),
+        ("アーカイブ URL", "video_url"),
+        ("チャンネル名", "channel_name"),
+        ("配信日時", "published_at"),
     ],
 
     # ニコニコ 新着動画
@@ -137,6 +226,17 @@ TEMPLATE_VAR_BLACKLIST = {
         "use_link_card",
         "embed",
         "image_source",
+    },
+
+    "youtube_archive": {  # ★ アーカイブテンプレート追加
+        "image_mode",
+        "image_filename",
+        "posted_at",
+        "selected_for_post",
+        "use_link_card",
+        "embed",
+        "image_source",
+        "live_status",  # アーカイブには不要
     },
 
     "nico_new_video": {
@@ -399,6 +499,12 @@ def load_template_with_fallback(
         # フィルターを登録（format_datetime_filter は別途提供）
         from utils_v3 import format_datetime_filter
         env.filters["datetimeformat"] = format_datetime_filter
+
+        # v3.2.0: 動的変数フィルターを登録
+        env.filters["format_date"] = _format_date_filter
+        env.filters["format_datetime"] = _format_datetime_filter
+        env.filters["random_emoji"] = _random_emoji_filter
+        env.filters["weekday"] = _weekday_filter
 
         template_obj = env.from_string(template_str)
 

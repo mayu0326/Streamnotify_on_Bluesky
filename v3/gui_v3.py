@@ -45,6 +45,10 @@ class StreamNotifyGUI:
         self.image_manager = get_image_manager()  # 画像管理クラスを初期化
         self.selected_rows = set()
 
+        # フィルタ用の変数
+        self.all_videos = []  # フィルタ前のすべての動画
+        self.filtered_videos = []  # フィルタ後の動画
+
         self.setup_ui()
         self.refresh_data()
 
@@ -56,6 +60,7 @@ class StreamNotifyGUI:
         toolbar.pack(side=tk.TOP, fill=tk.X, padx=5, pady=5)
 
         ttk.Button(toolbar, text="🔄 再読込", command=self.refresh_data).pack(side=tk.LEFT, padx=2)
+        ttk.Button(toolbar, text="🌐 RSS更新", command=self.fetch_rss_manually).pack(side=tk.LEFT, padx=2)
         ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=2)
         ttk.Button(toolbar, text="☑️ すべて選択", command=self.select_all).pack(side=tk.LEFT, padx=2)
         ttk.Button(toolbar, text="☐ すべて解除", command=self.deselect_all).pack(side=tk.LEFT, padx=2)
@@ -68,6 +73,61 @@ class StreamNotifyGUI:
         ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=2)
         ttk.Button(toolbar, text="ℹ️ 統計", command=self.show_stats).pack(side=tk.LEFT, padx=2)
         ttk.Button(toolbar, text="🔧 プラグイン", command=self.show_plugins).pack(side=tk.LEFT, padx=2)
+        ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=2)
+        ttk.Button(toolbar, text="💾 バックアップ", command=self.backup_data).pack(side=tk.LEFT, padx=2)
+        ttk.Button(toolbar, text="📂 復元", command=self.restore_data).pack(side=tk.LEFT, padx=2)
+
+        # === フィルタパネル ===
+        filter_frame = ttk.LabelFrame(self.root, text="🔍 フィルタ設定")
+        filter_frame.pack(side=tk.TOP, fill=tk.X, padx=5, pady=5)
+
+        # 第1行: タイトル検索
+        ttk.Label(filter_frame, text="タイトル検索:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
+        self.filter_title_entry = ttk.Entry(filter_frame, width=30)
+        self.filter_title_entry.grid(row=0, column=1, sticky=tk.W, padx=5, pady=5)
+        self.filter_title_entry.bind("<KeyRelease>", lambda e: self.apply_filters())
+
+        # 投稿状態フィルタ
+        ttk.Label(filter_frame, text="投稿状態:").grid(row=0, column=2, sticky=tk.W, padx=5, pady=5)
+        self.filter_status_var = tk.StringVar(value="全て")
+        status_combo = ttk.Combobox(
+            filter_frame,
+            textvariable=self.filter_status_var,
+            values=["全て", "投稿済み", "未投稿"],
+            state="readonly",
+            width=12
+        )
+        status_combo.grid(row=0, column=3, sticky=tk.W, padx=5, pady=5)
+        status_combo.bind("<<ComboboxSelected>>", lambda e: self.apply_filters())
+
+        # 配信元フィルタ
+        ttk.Label(filter_frame, text="配信元:").grid(row=0, column=4, sticky=tk.W, padx=5, pady=5)
+        self.filter_source_var = tk.StringVar(value="全て")
+        source_combo = ttk.Combobox(
+            filter_frame,
+            textvariable=self.filter_source_var,
+            values=["全て", "YouTube", "Niconico"],
+            state="readonly",
+            width=12
+        )
+        source_combo.grid(row=0, column=5, sticky=tk.W, padx=5, pady=5)
+        source_combo.bind("<<ComboboxSelected>>", lambda e: self.apply_filters())
+
+        # タイプフィルタ（YouTube: 動画/アーカイブ/Live）
+        ttk.Label(filter_frame, text="タイプ:").grid(row=0, column=6, sticky=tk.W, padx=5, pady=5)
+        self.filter_type_var = tk.StringVar(value="全て")
+        type_combo = ttk.Combobox(
+            filter_frame,
+            textvariable=self.filter_type_var,
+            values=["全て", "🎬 動画", "📹 アーカイブ", "🔴 配信"],
+            state="readonly",
+            width=15
+        )
+        type_combo.grid(row=0, column=7, sticky=tk.W, padx=5, pady=5)
+        type_combo.bind("<<ComboboxSelected>>", lambda e: self.apply_filters())
+
+        # ボタン
+        ttk.Button(filter_frame, text="🔄 リセット", command=self.reset_filters).grid(row=0, column=8, padx=5, pady=5)
 
         table_frame = ttk.Frame(self.root)
         table_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
@@ -124,30 +184,150 @@ class StreamNotifyGUI:
 
     def refresh_data(self):
         """DB から最新データを取得して表示"""
+        # すべての動画をキャッシュ
+        self.all_videos = self.db.get_all_videos()
+        self.selected_rows.clear()
+
+        # フィルタをリセット
+        if hasattr(self, 'filter_title_entry'):
+            self.filter_title_entry.delete(0, tk.END)
+        if hasattr(self, 'filter_status_var'):
+            self.filter_status_var.set("全て")
+        if hasattr(self, 'filter_source_var'):
+            self.filter_source_var.set("全て")
+
+        # フィルタを適用して表示
+        self.apply_filters()
+
+    def fetch_rss_manually(self):
+        """RSS フィードを手動で今すぐ取得・更新"""
+        try:
+            from youtube_rss import YouTubeRSS
+            from config import Config
+
+            config = Config("settings.env")
+            channel_id = config.youtube_channel_id
+
+            if not channel_id:
+                messagebox.showerror("エラー", "YouTube チャンネル ID が設定されていません。")
+                return
+
+            # RSS 取得開始を通知
+            messagebox.showinfo("RSS更新", "YouTube RSS フィードを取得中...\n（ウィンドウを閉じないでください）")
+
+            # RSS 取得実行
+            fetcher = YouTubeRSS(channel_id)
+            new_videos = fetcher.fetch_feed()
+
+            if not new_videos:
+                messagebox.showinfo("RSS更新完了", "新着動画は検出されませんでした。")
+                return
+
+            # 新着動画を DB に追加
+            added_count = 0
+            for video in new_videos:
+                if self.db.insert_video(
+                    video_id=video["video_id"],
+                    title=video["title"],
+                    video_url=video["video_url"],
+                    published_at=video["published_at"],
+                    channel_name=video.get("channel_name", ""),
+                    source="youtube"
+                ):
+                    added_count += 1
+
+            # 結果をメッセージボックスで表示
+            result_msg = f"""
+✅ RSS更新完了
+
+取得件数: {len(new_videos)}
+新規追加: {added_count}
+
+DB を再読込みします。
+            """
+            messagebox.showinfo("RSS更新完了", result_msg)
+
+            # DB を再読込して表示更新
+            self.refresh_data()
+            logger.info(f"✅ RSS手動更新完了: {added_count} 件追加")
+
+        except ImportError as e:
+            logger.error(f"❌ インポートエラー: {e}")
+            messagebox.showerror("エラー", f"必要なモジュールが見つかりません:\n{e}")
+
+        except Exception as e:
+            logger.error(f"❌ RSS更新中にエラー: {e}")
+            messagebox.showerror("エラー", f"RSS更新中にエラーが発生しました:\n{e}")
+
+    def apply_filters(self):
+        """現在のフィルタ条件をツリーに適用"""
+        # フィルタ条件を取得
+        title_filter = self.filter_title_entry.get().lower()
+        status_filter = self.filter_status_var.get()
+        source_filter = self.filter_source_var.get()
+        type_filter = self.filter_type_var.get()
+
+        # Treeview をクリア
         for item in self.tree.get_children():
             self.tree.delete(item)
 
-        videos = self.db.get_all_videos()
-        self.selected_rows.clear()
+        # フィルタを適用
+        self.filtered_videos = []
+        for video in self.all_videos:
+            # タイトル検索
+            if title_filter and title_filter not in video.get("title", "").lower():
+                continue
 
-        for video in videos:
+            # 投稿状態フィルタ
+            is_posted = video.get("posted_to_bluesky", 0)
+            if status_filter == "投稿済み" and not is_posted:
+                continue
+            elif status_filter == "未投稿" and is_posted:
+                continue
+
+            # 配信元フィルタ
+            # DBには小文字で保存されているため、フィルタ値を小文字に変換して比較
+            source = video.get("source", "").lower()
+            source_filter_lower = source_filter.lower()
+            if source_filter_lower != "全て" and source != source_filter_lower:
+                continue
+
+            # タイプフィルタ（動画/アーカイブ/Live）
+            if type_filter != "全て":
+                # 表示用のタイプを計算
+                classification_type = video.get("classification_type", "video")
+                source_for_display = video.get("source", "").lower()
+                if source_for_display == "niconico":
+                    display_type = "🎬 動画"
+                elif classification_type == "archive":
+                    display_type = "📹 アーカイブ"
+                elif classification_type == "live":
+                    display_type = "🔴 配信"
+                else:
+                    display_type = "🎬 動画"
+
+                # フィルタと比較
+                if display_type != type_filter:
+                    continue
+
+            # フィルタを通った動画を表示
+            self.filtered_videos.append(video)
             checked = "☑️" if video.get("selected_for_post") else "☐"
+
             # 投稿済みの場合は投稿日時を表示、未投稿の場合は予約日時を表示
             if video.get("posted_to_bluesky"):
-                # 新しい方式: posted_at がある場合はそれを表示
                 if video.get("posted_at"):
                     date_info = video.get("posted_at")
                 else:
-                    # 古いデータベース: posted_at がない場合は "不明" と表示
                     date_info = "不明"
             else:
-                # 未投稿の場合は予約日時を表示
                 date_info = video.get("scheduled_at") or "（未設定）"
+
             source = video.get("source") or ""
             image_mode = video.get("image_mode") or ""
             image_filename = video.get("image_filename") or ""
 
-            # 分類情報を取得（YouTube は分類結果、ニコニコは常に「動画」）
+            # 分類情報を取得
             classification_type = video.get("classification_type", "video")
             if source == "Niconico":
                 display_type = "🎬 動画"
@@ -165,7 +345,7 @@ class StreamNotifyGUI:
                 source,                          # Source
                 display_type,                    # Type (video/live/archive)
                 video["title"][:100],           # Title
-                date_info[:16] if date_info != "（未設定）" else date_info, # Date (Posted or Scheduled)
+                date_info[:16] if date_info != "（未設定）" else date_info, # Date
                 "✓" if video.get("posted_to_bluesky") else "–",  # Posted
                 image_mode,                      # Image Mode
                 image_filename                   # Image File
@@ -177,7 +357,24 @@ class StreamNotifyGUI:
         self.tree.tag_configure("even", background="#f0f0f0")
         self.tree.tag_configure("odd", background="white")
 
-        self.status_label.config(text=f"読み込み完了: {len(videos)} 件の動画（選択: {len(self.selected_rows)} 件）")
+        # ステータスを更新
+        total = len(self.all_videos)
+        filtered = len(self.filtered_videos)
+        selected = len(self.selected_rows)
+        if filtered < total:
+            status_text = f"読み込み完了: {total} 件中 {filtered} 件を表示（選択: {selected} 件）"
+        else:
+            status_text = f"読み込み完了: {total} 件の動画（選択: {selected} 件）"
+        self.status_label.config(text=status_text)
+
+    def reset_filters(self):
+        """フィルタをリセット"""
+        self.filter_title_entry.delete(0, tk.END)
+        self.filter_status_var.set("全て")
+        self.filter_source_var.set("全て")
+        self.filter_type_var.set("全て")
+        self.apply_filters()
+        logger.info("✅ フィルタをリセットしました")
 
     def on_tree_click(self, event):
         """Treeview の「選択」列をクリックしてチェック状態をトグル"""
@@ -841,7 +1038,7 @@ class StreamNotifyGUI:
             self.root.wait_window(post_window.window)
 
     def show_stats(self):
-        """統計情報を表示"""
+        """統計情報を表示（拡張版：日別・配信元別統計）"""
         videos = self.db.get_all_videos()
 
         total = len(videos)
@@ -849,16 +1046,59 @@ class StreamNotifyGUI:
         selected = sum(1 for v in videos if v["selected_for_post"])
         unposted = total - posted
 
+        # v3.2.0: 配信元別集計
+        youtube_count = sum(1 for v in videos if v.get("source", "youtube") == "youtube")
+        niconico_count = sum(1 for v in videos if v.get("source") == "niconico")
+
+        # v3.2.0: 配信元別投稿状況
+        youtube_posted = sum(1 for v in videos if v.get("source", "youtube") == "youtube" and v["posted_to_bluesky"])
+        niconico_posted = sum(1 for v in videos if v.get("source") == "niconico" and v["posted_to_bluesky"])
+
+        # v3.2.0: 日別集計（過去7日間）
+        from datetime import timedelta, datetime as dt
+        today = dt.now().date()
+        daily_stats = {}
+
+        for i in range(7):
+            date = today - timedelta(days=i)
+            daily_stats[date] = {"total": 0, "posted": 0}
+
+        for video in videos:
+            try:
+                if video.get("published_at"):
+                    pub_date = dt.fromisoformat(video["published_at"]).date()
+                    if pub_date in daily_stats:
+                        daily_stats[pub_date]["total"] += 1
+                        if video["posted_to_bluesky"]:
+                            daily_stats[pub_date]["posted"] += 1
+            except:
+                pass
+
         stats = f"""
-📊 統計情報
-━━━━━━━━━━━━━━━━━
+📊 統計情報（v3.2.0拡張版）
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+【 全体統計 】
 総動画数:     {total}
-投稿済み:     {posted}
+投稿済み:     {posted} ({int(posted*100/total) if total > 0 else 0}%)
 投稿予定:     {selected}
 未処理:       {unposted}
 
+【 配信元別統計 】
+YouTube:      {youtube_count} 件 (投稿済み: {youtube_posted})
+ニコニコ:     {niconico_count} 件 (投稿済み: {niconico_posted})
+
+【 過去7日間の投稿状況 】
+"""
+        for i in range(7):
+            date = today - timedelta(days=i)
+            day_stats = daily_stats.get(date, {"total": 0, "posted": 0})
+            date_str = date.strftime("%m/%d（%a）").replace("Mon", "月").replace("Tue", "火").replace("Wed", "水").replace("Thu", "木").replace("Fri", "金").replace("Sat", "土").replace("Sun", "日")
+            stats += f"  {date_str}: 全 {day_stats['total']} 件 | 投稿済み {day_stats['posted']} 件\n"
+
+        stats += """
 📌 操作方法
-━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 1. 「☑️」をクリック → 投稿対象を選択
 2. 「投稿予定/投稿日時」をダブルクリック → 投稿日時を設定
 3. 「💾 選択を保存」 → DB に反映
@@ -866,7 +1106,7 @@ class StreamNotifyGUI:
 5. 「📤 投稿設定」 → 投稿設定
 
 ⚠️ 注意
-━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 投稿済みフラグに関わらず投稿できます。
 重複投稿にご注意ください。
         """
@@ -945,6 +1185,133 @@ class StreamNotifyGUI:
         button_frame = ttk.Frame(info_window)
         button_frame.pack(fill=tk.X, padx=10, pady=5)
         ttk.Button(button_frame, text="閉じる", command=info_window.destroy).pack(side=tk.RIGHT)
+
+    def backup_data(self):
+        """データベース・テンプレート・設定をバックアップ"""
+        try:
+            from backup_manager import get_backup_manager
+
+            # 保存先を選択
+            backup_file = filedialog.asksaveasfilename(
+                title="バックアップファイルを保存",
+                defaultextension=".zip",
+                filetypes=[("ZIP ファイル", "*.zip"), ("すべてのファイル", "*.*")],
+                initialfile=f"streamnotify_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+            )
+
+            if not backup_file:
+                return
+
+            # バックアップ作成ダイアログ
+            dialog = tk.Toplevel(self.root)
+            dialog.title("バックアップオプション")
+            dialog.geometry("400x300")
+            dialog.resizable(False, False)
+
+            ttk.Label(dialog, text="バックアップオプション", font=("Arial", 12, "bold")).pack(pady=10)
+
+            # API キー・パスワード包含オプション
+            include_api_keys_var = tk.BooleanVar(value=False)
+            include_passwords_var = tk.BooleanVar(value=False)
+            include_images_var = tk.BooleanVar(value=False)
+
+            ttk.Checkbutton(
+                dialog,
+                text="🔐 API キーを含める（セキュリティリスク）",
+                variable=include_api_keys_var
+            ).pack(anchor=tk.W, padx=20, pady=5)
+
+            ttk.Checkbutton(
+                dialog,
+                text="🔒 パスワードを含める（セキュリティリスク）",
+                variable=include_passwords_var
+            ).pack(anchor=tk.W, padx=20, pady=5)
+
+            ttk.Checkbutton(
+                dialog,
+                text="🖼️ 画像フォルダを含める",
+                variable=include_images_var
+            ).pack(anchor=tk.W, padx=20, pady=5)
+
+            ttk.Label(
+                dialog,
+                text="⚠️ 機密情報を含めることはお勧めしません。\n\n推奨: 公開環境でのバックアップ共有時は\nAPI キー・パスワード除外オプションを推奨します。",
+                justify=tk.LEFT,
+                foreground="red"
+            ).pack(padx=20, pady=10)
+
+            def do_backup():
+                backup_manager = get_backup_manager()
+                success, msg = backup_manager.create_backup(
+                    backup_file,
+                    include_api_keys=include_api_keys_var.get(),
+                    include_passwords=include_passwords_var.get(),
+                    include_images=include_images_var.get()
+                )
+
+                if success:
+                    logger.info(f"✅ バックアップ作成完了: {backup_file}")
+                    messagebox.showinfo("バックアップ完了", msg)
+                else:
+                    logger.error(f"❌ バックアップ作成失敗: {msg}")
+                    messagebox.showerror("バックアップ失敗", msg)
+
+            # ボタン
+            button_frame = ttk.Frame(dialog)
+            button_frame.pack(fill=tk.X, padx=20, pady=10)
+
+            ttk.Button(button_frame, text="✅ バックアップ作成", command=do_backup).pack(side=tk.LEFT, padx=5)
+            ttk.Button(button_frame, text="キャンセル", command=dialog.destroy).pack(side=tk.LEFT, padx=5)
+
+        except ImportError:
+            logger.error("❌ backup_manager モジュールが見つかりません")
+            messagebox.showerror("エラー", "バックアップマネージャーが見つかりません")
+        except Exception as e:
+            logger.error(f"❌ バックアップ処理エラー: {e}")
+            messagebox.showerror("エラー", f"バックアップ処理に失敗しました:\n{e}")
+
+    def restore_data(self):
+        """バックアップから復元"""
+        try:
+            from backup_manager import get_backup_manager
+
+            # 復元ファイルを選択
+            backup_file = filedialog.askopenfilename(
+                title="バックアップファイルを選択",
+                filetypes=[("ZIP ファイル", "*.zip"), ("すべてのファイル", "*.*")]
+            )
+
+            if not backup_file:
+                return
+
+            # 確認ダイアログ
+            result = messagebox.askyesno(
+                "復元確認",
+                f"このバックアップから復元しますか？\n\n{backup_file}\n\n⚠️ 現在のデータは上書きされます。\n既存データは自動的にバックアップされます。"
+            )
+
+            if not result:
+                return
+
+            # 復元実行
+            backup_manager = get_backup_manager()
+            success, msg = backup_manager.restore_backup(backup_file)
+
+            if success:
+                logger.info(f"✅ 復元完了: {backup_file}")
+                messagebox.showinfo("復元完了", msg)
+                # 復元後はアプリケーション再起動が必要なため、GUI を再読込
+                self.refresh_data()
+            else:
+                logger.error(f"❌ 復元失敗: {msg}")
+                messagebox.showerror("復元失敗", msg)
+
+        except ImportError:
+            logger.error("❌ backup_manager モジュールが見つかりません")
+            messagebox.showerror("エラー", "バックアップマネージャーが見つかりません")
+        except Exception as e:
+            logger.error(f"❌ 復元処理エラー: {e}")
+            messagebox.showerror("エラー", f"復元処理に失敗しました:\n{e}")
 
     def validate_datetime(self, date_string):
         """日時形式をバリデーション"""
@@ -1296,6 +1663,21 @@ class PostSettingsWindow:
 
             logger.info(f"📋 _execute_post 開始: use_image={use_image} (type={type(use_image).__name__}), resize_small={resize_small}")
 
+            # ⭐ 重複投稿チェック（設定値で有効化）
+            try:
+                from config import get_config
+                config = get_config("settings.env")
+                if config.prevent_duplicate_posts and not dry_run:
+                    if self.db.is_duplicate_post(video["video_id"]):
+                        messagebox.showwarning(
+                            "警告: 重複投稿防止",
+                            f"この動画は既に投稿済みです。\n\n{video['title'][:60]}...\n\n重複投稿を防止しました。"
+                        )
+                        logger.warning(f"🛑 重複投稿を防止しました: {video['video_id']}")
+                        return
+            except Exception as e:
+                logger.warning(f"重複チェック機能の読み込みエラー: {e}")
+
             mode_str = "画像" if use_image else "URLリンクカード"
             dry_str = "【投稿テスト】" if dry_run else ""
 
@@ -1360,4 +1742,3 @@ class PostSettingsWindow:
         except Exception as e:
             logger.error(f"投稿エラー: {e}", exc_info=True)
             messagebox.showerror("エラー", f"投稿に失敗しました:\n{str(e)}")
-

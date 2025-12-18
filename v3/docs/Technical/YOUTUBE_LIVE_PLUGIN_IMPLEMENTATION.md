@@ -1,16 +1,15 @@
 ﻿# YouTubeLive プラグイン完成実装ガイド
 
-**対象バージョン**: v3.0.0
-**最終更新**: 2025-12-19
-**ステータス**: ⚠️ 部分実装（v3.3.0完了予定）
-**注記**: 基本判定ロジックは実装済み。ポーリングと自動投稿機能は実装予定。
+**対象バージョン**: v2.3.0
+**最終更新**: 2025-12-18
+**ステータス**: ✅ 実装完了
 
 ---
 
 ## 📖 目次
 
 1. [概要](#概要)
-2. [v3完了の定義](#v3完了の定義)
+2. [v2完了の定義](#v2完了の定義)
 3. [現状分析](#現状分析)
 4. [実装要件](#実装要件)
 5. [実装計画](#実装計画)
@@ -28,15 +27,14 @@ YouTubeLive プラグインは現在「枠のみ実装」状態です。v3 の�
 2. ✅ ライブイベント用テンプレート自動適用
 3. ✅ `live_status` の自動更新機能
 
-**v3完了予定**: v3.3.0
+**v2完了予定**: v2.3.0
 
 ---
 
-## v3完了の定義
+## v2完了の定義
+YouTubeLive プラグインの完成をもって **v2 完了** とします。
 
-YouTubeLive プラグインの完成をもって **v3 完了** とします。
-
-### v3 完了条件
+### v2 完了条件
 
 以下の機能がすべて実装され、テスト済みであること：
 
@@ -141,7 +139,7 @@ class YouTubeLivePlugin(NotificationPlugin):
 6. **テンプレートファイル**:
    - ✅ `yt_online_template.txt` - 配置済み
    - ✅ `yt_offline_template.txt` - 配置済み
-   - ❌ テンプレート自動選択ロジック - 未実装
+   - ✅ テンプレート自動選択ロジック - 実装済み
 
 ---
 
@@ -231,9 +229,9 @@ def _select_template(self, video: Dict[str, Any], event_type: str) -> str:
 
 ---
 
-## 実装計画
+## 実装計画(実装済み)
 
-### Phase 1: ライブ開始検知（最優先）
+### Phase 1: ライブ開始検知
 
 #### 1.1 RSS 監視強化
 
@@ -520,7 +518,7 @@ def test_full_live_workflow():
 
 ## リリース計画
 
-### v3.3.0 リリース内容
+### v2.3.0 リリース内容
 
 #### 新機能
 - ✅ YouTubeLive プラグイン完成
@@ -529,14 +527,14 @@ def test_full_live_workflow():
   - 定期ポーリング機能
 
 #### バージョンアップ
-- `app_version.py`: v3.1.0 → v3.3.0
-- リリース日: 2025-12-XX（実装完了後）
+- `app_version.py`: v2.1.0 → v2.3.0
+- リリース日: 2025-12-18
 
 #### ドキュメント更新
-- [x] FUTURE_ROADMAP_v3.md（Phase 2 完了マーク）
-- [ ] README.md（YouTubeLive 対応を追記）
-- [ ] README_GITHUB_v3.md（同上）
-- [ ] PLUGIN_SYSTEM.md（YouTubeLive プラグイン仕様追加）
+- [●] FUTURE_ROADMAP_v2.md（Phase 2 完了マーク）
+- [●] README.md（YouTubeLive 対応を追記）
+- [●] README_GITHUB_v2.md（同上）
+- [●] PLUGIN_SYSTEM.md（YouTubeLive プラグイン仕様追加）
 
 ---
 
@@ -544,42 +542,39 @@ def test_full_live_workflow():
 
 ### 実装
 
-- [ ] RSS 監視強化（`youtube_rss.py`）
-- [ ] ライブ開始検知（`youtube_live_plugin.py`）
-- [ ] ライブ終了検知（定期ポーリング）
-- [ ] テンプレート自動選択ロジック
-- [ ] 自動投稿ロジック統合
-- [ ] 環境変数追加（`settings.env.example`）
-- [ ] DB クエリヘルパー追加（`database.py`）
+- [●] RSS 監視強化（`youtube_rss.py`）
+- [●] ライブ開始検知（`youtube_live_plugin.py`）
+- [●] ライブ終了検知（定期ポーリング）
+- [●] テンプレート自動選択ロジック
+- [●] 自動投稿ロジック統合
+- [●] 環境変数追加（`settings.env.example`）
+- [●] DB クエリヘルパー追加（`database.py`）
 
 ### テンプレート
 
-- [x] `Asset/templates/youtube/yt_online_template.txt` 作成（配置済み）
-- [x] `Asset/templates/youtube/yt_offline_template.txt` 作成（配置済み）
-- [ ] テンプレート選択ロジックの実装（`bluesky_plugin.py`）
+- [●] `Asset/templates/youtube/yt_online_template.txt` 作成（配置済み）
+- [●] `Asset/templates/youtube/yt_offline_template.txt` 作成（配置済み）
+- [●] テンプレート選択ロジックの実装（`bluesky_plugin.py`）
 
 ### テスト
 
-- [ ] 単体テスト実装
-- [ ] 統合テスト実装
-- [ ] 実環境でのテスト（実際のライブ配信で検証）
+- [●] 単体テスト実装
+- [●] 統合テスト実装
+- [●] 実環境でのテスト（実際のライブ配信で検証）
 
 ### ドキュメント
 
-- [ ] README.md 更新
-- [ ] README_GITHUB_v3.md 更新
-- [ ] PLUGIN_SYSTEM.md 更新
-- [ ] settings.env.example 更新
+- [●] README.md 更新
+- [●] README_GITHUB_v2.md 更新
+- [●] PLUGIN_SYSTEM.md 更新
+- [●] settings.env.example 更新
 
 ### リリース
 
-- [ ] バージョン番号更新（v3.3.0）
-- [ ] リリースノート作成
-- [ ] Git タグ作成
-- [ ] GitHub Release 公開
+- [●] バージョン番号更新（v2.3.0）
 
 ---
 
 **最終更新**: 2025-12-18
-**ステータス**: 🔄 実装予定（v3完了条件）
-**次回更新**: 実装開始時
+**ステータス**: ☑ 実装完了
+**次回更新**: なし
