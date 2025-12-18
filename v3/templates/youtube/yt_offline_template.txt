@@ -1,9 +1,0 @@
-🛑 YouTube Live 配信終了
-
-チャンネル: {{ channel_name }}
-タイトル: {{ title }}
-配信 URL: {{ video_url }}
-
-またの配信をお楽しみに！
-
-#YouTubeLive
