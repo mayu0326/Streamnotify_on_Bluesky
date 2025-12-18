@@ -66,10 +66,14 @@ class BackupManager:
 
             logger.info(f"🔄 バックアップを作成しています: {backup_file}")
 
+            # タイムスタンプを一度だけ生成（全ファイルで統一）
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            backup_prefix = f"backup_{timestamp}"
+
             with zipfile.ZipFile(backup_path, "w", zipfile.ZIP_DEFLATED) as zf:
                 # DB をバックアップ
                 if self.db_path.exists():
-                    arcname = f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}/data/video_list.db"
+                    arcname = f"{backup_prefix}/data/video_list.db"
                     zf.write(self.db_path, arcname=arcname)
                     logger.debug(f"✅ DB をバックアップ: {self.db_path}")
                 else:
@@ -77,7 +81,7 @@ class BackupManager:
 
                 # YouTube キャッシュをバックアップ
                 if self.youtube_cache_file.exists():
-                    arcname = f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}/data/youtube_video_detail_cache.json"
+                    arcname = f"{backup_prefix}/data/youtube_video_detail_cache.json"
                     zf.write(self.youtube_cache_file, arcname=arcname)
                     logger.debug(f"✅ YouTube キャッシュをバックアップ: {self.youtube_cache_file}")
                 else:
@@ -85,7 +89,7 @@ class BackupManager:
 
                 # 削除済み動画リストをバックアップ
                 if self.deleted_videos_file.exists():
-                    arcname = f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}/data/deleted_videos.json"
+                    arcname = f"{backup_prefix}/data/deleted_videos.json"
                     zf.write(self.deleted_videos_file, arcname=arcname)
                     logger.debug(f"✅ 削除済み動画リストをバックアップ: {self.deleted_videos_file}")
                 else:
@@ -96,7 +100,7 @@ class BackupManager:
                     for template_file in self.templates_dir.rglob("*"):
                         if template_file.is_file():
                             rel_path = template_file.relative_to(self.base_dir)
-                            arcname = f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}/{rel_path}"
+                            arcname = f"{backup_prefix}/{rel_path}"
                             zf.write(template_file, arcname=arcname)
                     logger.debug(f"✅ テンプレートをバックアップ: {self.templates_dir}")
                 else:
@@ -108,7 +112,7 @@ class BackupManager:
                         include_api_keys=include_api_keys,
                         include_passwords=include_passwords
                     )
-                    arcname = f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}/settings.env"
+                    arcname = f"{backup_prefix}/settings.env"
                     zf.writestr(arcname, settings_content)
                     logger.debug(f"✅ 設定ファイルをバックアップ: {self.settings_file}")
                 else:
@@ -119,7 +123,7 @@ class BackupManager:
                     for image_file in self.images_dir.rglob("*"):
                         if image_file.is_file():
                             rel_path = image_file.relative_to(self.base_dir)
-                            arcname = f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}/{rel_path}"
+                            arcname = f"{backup_prefix}/{rel_path}"
                             zf.write(image_file, arcname=arcname)
                     logger.debug(f"✅ 画像フォルダをバックアップ: {self.images_dir}")
                 elif include_images:
@@ -306,21 +310,36 @@ class BackupManager:
                     lines.append(line)
                     continue
 
-                # 機密情報をチェック
-                if not include_api_keys:
-                    if any(key in line.upper() for key in ["API_KEY", "CLIENT_ID", "CLIENT_SECRET"]):
-                        # コメントアウト + 説明を追加
-                        lines.append(f"# 【バックアップ時に除外】{line}")
-                        continue
+                # 機密情報をチェック＆除外
+                if "=" in line:
+                    key, value = line.split("=", 1)
+                    key_upper = key.strip().upper()
 
-                if not include_passwords:
-                    if any(key in line.upper() for key in ["PASSWORD", "APP_PASSWORD", "SECRET"]):
-                        lines.append(f"# 【バックアップ時に除外】{line}")
-                        continue
+                    # API キーを除外（YouTubeチャンネルID・ニコニコユーザーID・Twitchキー含む）
+                    if not include_api_keys:
+                        if any(k in key_upper for k in ["API_KEY", "CLIENT_ID", "CLIENT_SECRET", "YOUTUBE_API_KEY", "YOUTUBE_CHANNEL_ID", "NICONICO_USER_ID", "TWITCH_CLIENT_ID", "TWITCH_CLIENT_SECRET", "TWITCH_BROADCASTER"]):
+                            lines.append(f"# 【バックアップ時に除外】{key}=")
+                            logger.debug(f"  🔐 除外: {key.strip()}")
+                            continue
+
+                    # パスワードを除外
+                    if not include_passwords:
+                        if any(k in key_upper for k in ["PASSWORD", "APP_PASSWORD", "WEBHOOK_SECRET"]):
+                            lines.append(f"# 【バックアップ時に除外】{key}=")
+                            logger.debug(f"  🔒 除外: {key.strip()}")
+                            continue
 
                 lines.append(line)
 
-            return "\n".join(lines)
+            result = "\n".join(lines)
+
+            # 除外したものをログに記録
+            if not include_api_keys or not include_passwords:
+                excluded_count = sum(1 for line in result.split("\n") if "【バックアップ時に除外】" in line)
+                if excluded_count > 0:
+                    logger.info(f"✅ 設定ファイルから {excluded_count} 個の機密情報を除外しました")
+
+            return result
 
         except Exception as e:
             logger.warning(f"⚠️ settings.env の処理に失敗: {e}")
