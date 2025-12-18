@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 
 # キャッシュファイルを確認
-cache_file = Path('v2/data/youtube_channel_cache.json')
+cache_file = Path('v3/data/youtube_channel_cache.json')
 print(f"キャッシュファイル存在: {cache_file.exists()}")
 if cache_file.exists():
     with open(cache_file, 'r', encoding='utf-8') as f:

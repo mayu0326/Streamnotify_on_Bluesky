@@ -59,7 +59,7 @@ def _classify_video_core(details):
 
 def load_cache():
     """キャッシュから動画情報を読み込む"""
-    cache_file = Path("v2/data/youtube_video_detail_cache.json")
+    cache_file = Path("v3/data/youtube_video_detail_cache.json")
 
     print(f"📂 キャッシュ読み込み中: {cache_file}")
     try:
@@ -132,7 +132,7 @@ def classify_videos(videos):
 
 def update_database(classifications):
     """本番 DB を更新"""
-    db_file = Path("v2/data/video_list.db")
+    db_file = Path("v3/data/video_list.db")
 
     if not db_file.exists():
         print(f"❌ DB ファイルが見つかりません: {db_file}")

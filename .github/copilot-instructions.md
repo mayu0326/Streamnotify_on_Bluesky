@@ -1,6 +1,6 @@
 # AI Copilot Instructions for Streamnotify on Bluesky
 
-> **Note**: This file contains relative links to project documentation. Links reference files at `../v2/` and `../OLD_App/` from this `.github/` directory.
+> **Note**: This file contains relative links to project documentation. Links reference files at `../v3/` and `../OLD_App/` from this `.github/` directory.
 
 ## Project Overview
 **Streamnotify on Bluesky** is a Python application that monitors multiple streaming platforms (Twitch, YouTube, Niconico) via RSS feeds and automatically posts notifications to Bluesky. The codebase follows a **plugin architecture** for extensibility and supports multiple operation modes.
@@ -43,7 +43,7 @@ YouTube RSS Feed (youtube_rss.py)
         ↓
    Database (database.py - SQLite)
         ↓
-   GUI Selection (gui_v2.py - tkinter)
+   GUI Selection (gui_v3.py - tkinter)
         ↓
    Plugin Manager (plugin_manager.py)
         ↓
@@ -55,11 +55,11 @@ YouTube RSS Feed (youtube_rss.py)
 - Plugins handle the actual notification delivery
 
 ### 3. Core Modules
-- **main_v2.py**: Application entry point; initializes config, database, plugins, and GUI
+- **main_v3.py**: Application entry point; initializes config, database, plugins, and GUI
 - **config.py**: Loads `.env` (via dotenv), manages operation modes, validates settings
 - **database.py**: SQLite singleton with multiprocess-safe timeout/retry logic
 - **bluesky_core.py**: Low-level Bluesky API client (Rich Text, image embedding) - used by plugins
-- **gui_v2.py**: tkinter-based management interface (1333 lines)
+- **gui_v3.py**: tkinter-based management interface (1333 lines)
 
 ---
 
@@ -143,7 +143,7 @@ Standard dict passed to plugins via `post_video()`:
 ### Running the Application
 ```bash
 cd v2/
-python main_v2.py
+python main_v3.py
 ```
 
 ### Adding a New Plugin
@@ -172,7 +172,7 @@ python main_v2.py
 ### Testing Configuration
 - Use `DRY_RUN` mode to test without posting
 - Check logs in `v2/logs/` directory
-- Database file at `v2/data/video_list.db`
+- Database file at `v3/data/video_list.db`
 
 ### Debugging Database Issues
 - Multiprocess-safe with 10s timeout, 3 retries
@@ -187,13 +187,13 @@ python main_v2.py
 
 | File | Purpose | Key Classes/Functions |
 |------|---------|----------------------|
-| main_v2.py | Entry point | `main()`, `run_gui()`, signal handlers |
+| main_v3.py | Entry point | `main()`, `run_gui()`, signal handlers |
 | config.py | Settings management | `Config`, `OperationMode`, validation |
 | database.py | Data persistence | `Database` (singleton), schema migrations |
 | plugin_interface.py | Plugin contract | `NotificationPlugin` (ABC) |
 | plugin_manager.py | Plugin lifecycle | `PluginManager`, dynamic loading |
 | bluesky_core.py | Bluesky API | `BlueskyMinimalPoster`, facet building |
-| gui_v2.py | Management UI | `StreamNotifyGUI`, tkinter interface |
+| gui_v3.py | Management UI | `StreamNotifyGUI`, tkinter interface |
 | logging_config.py | Log setup | `setup_logging()`, logger factory |
 | youtube_rss.py | RSS fetching | YouTube RSS parsing |
 | image_manager.py | Image handling | Thumbnail/image caching |
@@ -223,7 +223,7 @@ v2/
 │   ├── niconico/
 │   └── .templates/              # Template backups
 ├── docs/                         # Documentation
-│   ├── README_GITHUB_v2.md      # GitHub README (v2 version)
+│   ├── README_GITHUB_v3.md      # GitHub README (v2 version)
 │   ├── Guides/                  # User guides
 │   ├── Technical/               # Technical documentation
 │   ├── Local/                   # Local deployment info
@@ -277,20 +277,20 @@ v2/
 
 ### Project Overview & Setup
 - **Main README**: See [README.md](../README.md) for project overview and quick start
-- **v2 Main Documentation**: See [v2/docs/README_GITHUB_v2.md](../v2/docs/README_GITHUB_v2.md) for comprehensive v2 documentation
+- **v2 Main Documentation**: See [v2/docs/README_GITHUB_v3.md](../v3/docs/README_GITHUB_v3.md) for comprehensive v2 documentation
 - **VS Code Workspace**: See [Streamnotify_on_Bluesky.code-workspace](../Streamnotify_on_Bluesky.code-workspace) for workspace settings
 
 ### Architecture & Design
 - **Architecture**: See [OLD_App/document/ARCHITECTURE.ja.md](../OLD_App/document/ARCHITECTURE.ja.md)
-- **Plugin System**: See [v2/plugin_interface.py](../v2/plugin_interface.py) and [v2/docs/Technical/PLUGIN_SYSTEM.md](../v2/docs/Technical/PLUGIN_SYSTEM.md)
-- **Template System**: See [v2/docs/Technical/TEMPLATE_SYSTEM.md](../v2/docs/Technical/TEMPLATE_SYSTEM.md)
+- **Plugin System**: See [v2/plugin_interface.py](../v3/plugin_interface.py) and [v2/docs/Technical/PLUGIN_SYSTEM.md](../v3/docs/Technical/PLUGIN_SYSTEM.md)
+- **Template System**: See [v2/docs/Technical/TEMPLATE_SYSTEM.md](../v3/docs/Technical/TEMPLATE_SYSTEM.md)
 
 ### Configuration & Assets
-- **Config example**: See [v2/settings.env.example](../v2/settings.env.example)
-- **Asset deployment**: See [v2/Asset/README.md](../v2/Asset/README.md) and [v2/docs/Technical/ASSET_MANAGER_INTEGRATION_v2.md](../v2/docs/Technical/ASSET_MANAGER_INTEGRATION_v2.md)
-- **Database schema**: See [v2/database.py](../v2/database.py) `_init_db()` method
+- **Config example**: See [v2/settings.env.example](../v3/settings.env.example)
+- **Asset deployment**: See [v2/Asset/README.md](../v3/Asset/README.md) and [v2/docs/Technical/ASSET_MANAGER_INTEGRATION_v3.md](../v3/docs/Technical/ASSET_MANAGER_INTEGRATION_v3.md)
+- **Database schema**: See [v2/database.py](../v3/database.py) `_init_db()` method
 
 ### Implementation Guides
-- **Technical guides**: See [v2/docs/Technical/](../v2/docs/Technical/) for detailed implementation guides
-- **User guides**: See [v2/docs/Guides/](../v2/docs/Guides/) for setup and usage instructions
-- **Development guidelines**: See [v2/docs/Technical/DEVELOPMENT_GUIDELINES.md](../v2/docs/Technical/DEVELOPMENT_GUIDELINES.md)
+- **Technical guides**: See [v2/docs/Technical/](../v3/docs/Technical/) for detailed implementation guides
+- **User guides**: See [v2/docs/Guides/](../v3/docs/Guides/) for setup and usage instructions
+- **Development guidelines**: See [v2/docs/Technical/DEVELOPMENT_GUIDELINES.md](../v3/docs/Technical/DEVELOPMENT_GUIDELINES.md)

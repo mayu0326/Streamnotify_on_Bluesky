@@ -95,11 +95,11 @@ python v3/utils/build_video_cache.py
 ```
 
 ### 機能
-- 本番DB (`v2/data/video_list.db`) から全YouTube動画を取得
+- 本番DB (`v3/data/video_list.db`) から全YouTube動画を取得
 - YouTube APIプラグインを使用して動画詳細情報を取得
 - 50件ずつバッチ処理でキャッシュを構築
 - API コスト（ユニット数）を表示
-- キャッシュを `v2/data/youtube_video_detail_cache.json` に保存
+- キャッシュを `v3/data/youtube_video_detail_cache.json` に保存
 
 ### 実行結果例
 ```
@@ -123,7 +123,7 @@ python v3/utils/build_video_cache.py
 
 💾 キャッシュをファイルに保存中...
 ✅ キャッシュを保存しました
-   ファイル: v2/data/youtube_video_detail_cache.json
+   ファイル: v3/data/youtube_video_detail_cache.json
    ファイルサイズ: 250,456 bytes (244.4 KB)
 
 次回以降、このキャッシュが利用されます！
@@ -197,8 +197,8 @@ python v3/utils/database/restore_db_from_backup.py
 ### 出力例
 ```
 ✅ バックアップから復元しました
-   Source: v2/data/video_list.backup_20251218_104027.db
-   Dest:   v2/data/video_list.db
+   Source: v3/data/video_list.backup_20251218_104027.db
+   Dest:   v3/data/video_list.db
 ```
 
 ### 注意事項
@@ -225,11 +225,11 @@ python v3/utils/cache/build_video_cache.py
 ```
 
 ### 機能
-- 本番DB (`v2/data/video_list.db`) から全YouTube動画を取得
+- 本番DB (`v3/data/video_list.db`) から全YouTube動画を取得
 - YouTube APIプラグインを使用して動画詳細情報を取得
 - 50件ずつバッチ処理でキャッシュを構築
 - API コスト（ユニット数）を表示
-- キャッシュを `v2/data/youtube_video_detail_cache.json` に保存
+- キャッシュを `v3/data/youtube_video_detail_cache.json` に保存
 
 ### 実行結果例
 ```
@@ -253,7 +253,7 @@ python v3/utils/cache/build_video_cache.py
 
 💾 キャッシュをファイルに保存中...
 ✅ キャッシュを保存しました
-   ファイル: v2/data/youtube_video_detail_cache.json
+   ファイル: v3/data/youtube_video_detail_cache.json
    ファイルサイズ: 250,456 bytes (244.4 KB)
 
 次回以降、このキャッシュが利用されます！
@@ -354,7 +354,7 @@ python v3/utils/cache/check_cache_file.py
 ================================================================================
 キャッシュファイル確認
 ================================================================================
-✅ ファイルが存在します: .../v2/data/youtube_video_detail_cache.json
+✅ ファイルが存在します: .../v3/data/youtube_video_detail_cache.json
    ファイルサイズ: 1,234,567 bytes (1205.6 KB)
 
 📊 キャッシュ統計:
