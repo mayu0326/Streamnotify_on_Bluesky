@@ -427,7 +427,20 @@ def _fetch_live_video_ids(self, event_type: str) -> List[str]:
 
 ---
 
-## 📚 参考資料
+## � 制約事項：Niconico Live（ニコニコ生放送）は実装不可
+
+**ステータス**: ❌ **技術的に実装不可（RSS では情報提供されていない）**
+
+ニコニコ動画の RSS フィード（`https://www.nicovideo.jp/user/{USER_ID}/video?rss=2.0`）は**録画済み動画のみ**を提供するため：
+
+- ✅ YouTube Live テンプレート: **実装可能**（YouTube Data API に `liveStreamingDetails` 存在）
+- ❌ Niconico Live テンプレート: **実装不可**（RSS に情報なし、公開 API なし）
+
+ライブ配信情報取得には、HTML スクレイピングか非公開 API の利用が必要となり、いずれも不安定・非推奨のため、本実装では対応しません。
+
+---
+
+## �📚 参考資料
 
 - **API 仕様**: `v2/plugins/youtube_api_plugin.py` に埋め込まれたクォータ情報
 - **プラグイン interface**: `v2/plugin_interface.py`
