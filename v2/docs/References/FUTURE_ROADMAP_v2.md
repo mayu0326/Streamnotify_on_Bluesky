@@ -7,7 +7,7 @@
 差異を整理し、将来実装すべき機能をロードマップとしてまとめたものです。
 
 > **参考**
-> - 現在の実装: `v2 設計仕様書.md`、`v2_design.md` 参照
+> - 現在の実装: [ARCHITECTURE_AND_DESIGN.md](../Technical/ARCHITECTURE_AND_DESIGN.md) 参照
 > - 初期構想: `YouTube新着動画app（初期構想案）` 参照
 
 ***

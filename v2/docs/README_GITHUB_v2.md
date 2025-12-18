@@ -138,29 +138,30 @@ v2/
 │
 ├── docs/                   # 設計ドキュメント
 │   ├── README_GITHUB_v2.md
-│   ├── Technical/          # 技術資料（アーキテクチャ・仕様）
-│   │   ├── ARCHITECTURE_AND_DESIGN.md
+│   ├── DOCS_CLEANUP_PLAN.md       # ドキュメント整理計画（この整理の記録）
+│   ├── Technical/                 # 技術資料（アーキテクチャ・仕様）
+│   │   ├── ARCHITECTURE_AND_DESIGN.md    # ★ メインドキュメント
 │   │   ├── PLUGIN_SYSTEM.md
 │   │   ├── TEMPLATE_SYSTEM.md
 │   │   ├── DELETED_VIDEO_CACHE.md
 │   │   ├── RICHTEXT_FACET_SPECIFICATION.md
-│   │   ├── ModuleList_v2.md
-│   │   ├── SETTINGS_OVERVIEW.md
 │   │   ├── ASSET_MANAGER_INTEGRATION_v2.md
+│   │   ├── ModuleList_v2.md
+│   │   ├── DEVELOPMENT_GUIDELINES.md
+│   │   ├── SETTINGS_OVERVIEW.md
 │   │   └── VERSION_MANAGEMENT.md
-│   ├── Guides/             # ユーザーガイド（実装・手順）
-│   │   ├── DEBUG_DRY_RUN_GUIDE.md
-│   │   ├── IMPLEMENTATION_PLAN.md
-│   │   ├── TEMPLATE_IMPLEMENTATION_CHECKLIST.md
-│   │   ├── SESSION_REPORTS.md
-│   │   ├── IMAGE_RESIZE_GUIDE.md
-│   │   └── IMAGE_RESIZE_IMPLEMENTATION.md
-│   ├── References/         # 参考資料
+│   ├── Guides/                    # ユーザーガイド・実装手順
+│   │   └── SESSION_REPORTS.md            # 進捗記録・セッションレポート
+│   ├── References/                # 参考資料
 │   │   ├── FUTURE_ROADMAP_v2.md
 │   │   ├── YouTube新着動画app（初期構想案）.md
 │   │   └── 投稿テンプレートの引数.md
-│   └── Local/              # ローカル作業用（非公開）
-│       └── DELETION_CHECKLIST_PHASE3.md
+│   └── ARCHIVE/                   # 完了済みプロジェクト（参考用）
+│       ├── youtube_live_classification_plan.md
+│       ├── YOUTUBE_API_CACHING_IMPLEMENTATION.md
+│       ├── TEMPLATE_IMPLEMENTATION_CHECKLIST.md
+│       ├── DEBUG_DRY_RUN_GUIDE.md
+│       └── IMAGE_RESIZE_GUIDE.md
 │
 └── __pycache__/            # Python キャッシュ（Git 管理外）
 ```
@@ -348,11 +349,14 @@ Asset/
 - [**AssetManager 統合ガイド**](Technical/ASSET_MANAGER_INTEGRATION_v2.md) - Asset 自動配置・プラグイン連携
 
 ### 📖 **Guides/** - ユーザーガイド・実装手順
-- [**デバッグ・ドライラン**](Guides/DEBUG_DRY_RUN_GUIDE.md) - トラブルシューティング
-- [**実装計画・チェックリスト**](Guides/IMPLEMENTATION_PLAN.md) - 実装ステップ
-- [**テンプレート実装チェックリスト**](Guides/TEMPLATE_IMPLEMENTATION_CHECKLIST.md) - テンプレート導入手順
 - [**セッション実装レポート**](Guides/SESSION_REPORTS.md) - 2025-12-17～18 実装内容・テスト結果
-- [**画像リサイズガイド**](Guides/IMAGE_RESIZE_GUIDE.md) - 画像処理の使用方法
+
+### 📦 **ARCHIVE/** - 完了済みプロジェクト（参考用）
+- [**デバッグ・ドライラン**](ARCHIVE/DEBUG_DRY_RUN_GUIDE.md) - トラブルシューティング
+- [**テンプレート実装チェックリスト**](ARCHIVE/TEMPLATE_IMPLEMENTATION_CHECKLIST.md) - テンプレート導入手順（完了済み）
+- [**画像リサイズガイド**](ARCHIVE/IMAGE_RESIZE_GUIDE.md) - 画像処理の使用方法（完了済み）
+- [**YouTube API キャッシング実装**](ARCHIVE/YOUTUBE_API_CACHING_IMPLEMENTATION.md) - キャッシング機能（完了済み）
+- [**YouTube Live 判定ロジック**](ARCHIVE/youtube_live_classification_plan.md) - Live / Archive 分類仕様（完了済み）
 
 ### 📑 **References/** - 参考資料
 - [**将来ロードマップ**](References/FUTURE_ROADMAP_v2.md) - v3+ の計画概要
