@@ -22,5 +22,5 @@ Streamnotify_on_Bluesky.code-workspace
 .gitattributes
 **/YouTube_ALL_DATA/*
 **/YouTube_ALL_DATA/yt/*
-data/video_list.db
-data/youtube_video_detail_cache.json
+**/data/*
+**/v2/docs/Local
