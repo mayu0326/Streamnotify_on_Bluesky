@@ -199,11 +199,11 @@ class StreamNotifyGUI:
     def fetch_rss_manually(self):
         """RSS フィードを手動で今すぐ取得・更新"""
         try:
-            from youtube_rss import YouTubeRSSFetcher
-            from config import get_config
+            from youtube_rss import YouTubeRSS
+            from config import Config
 
-            config = get_config("settings.env")
-            channel_id = config.YOUTUBE_CHANNEL_ID
+            config = Config("settings.env")
+            channel_id = config.youtube_channel_id
 
             if not channel_id:
                 messagebox.showerror("エラー", "YouTube チャンネル ID が設定されていません。")
@@ -213,7 +213,7 @@ class StreamNotifyGUI:
             messagebox.showinfo("RSS更新", "YouTube RSS フィードを取得中...\n（ウィンドウを閉じないでください）")
 
             # RSS 取得実行
-            fetcher = YouTubeRSSFetcher(channel_id)
+            fetcher = YouTubeRSS(channel_id)
             new_videos = fetcher.fetch_feed()
 
             if not new_videos:
