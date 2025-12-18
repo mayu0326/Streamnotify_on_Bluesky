@@ -1394,6 +1394,21 @@ class PostSettingsWindow:
 
             logger.info(f"📋 _execute_post 開始: use_image={use_image} (type={type(use_image).__name__}), resize_small={resize_small}")
 
+            # ⭐ 重複投稿チェック（設定値で有効化）
+            try:
+                from config import get_config
+                config = get_config("settings.env")
+                if config.prevent_duplicate_posts and not dry_run:
+                    if self.db.is_duplicate_post(video["video_id"]):
+                        messagebox.showwarning(
+                            "警告: 重複投稿防止",
+                            f"この動画は既に投稿済みです。\n\n{video['title'][:60]}...\n\n重複投稿を防止しました。"
+                        )
+                        logger.warning(f"🛑 重複投稿を防止しました: {video['video_id']}")
+                        return
+            except Exception as e:
+                logger.warning(f"重複チェック機能の読み込みエラー: {e}")
+
             mode_str = "画像" if use_image else "URLリンクカード"
             dry_str = "【投稿テスト】" if dry_run else ""
 
