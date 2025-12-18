@@ -232,10 +232,15 @@ class PluginManager:
 
                 success = plugin.post_video(video)
                 results[plugin_name] = success
+
+                # ログ出力：成功のみ記録（False はスキップ・既存と認識）
+                video_id = video.get("video_id") or video.get("id", "unknown")
                 if success:
-                    post_logger.info(f"{plugin_name}: ✅ 成功")
+                    post_logger.info(f"{plugin_name}: ✅ 成功 (video_id={video_id})")
                 else:
-                    post_error_logger.warning(f"{plugin_name}: ❌ 失敗")
+                    # False の場合は単なる「未処理」（スキップ・既存）として認識
+                    # post_error.log には記録しない
+                    post_logger.debug(f"{plugin_name}: ℹ️ スキップまたは既存 (video_id={video_id})")
             except Exception as e:
                 post_error_logger.error(f"❌ プラグイン {plugin_name} でのポスト失敗: {e}", exc_info=True)
                 results[plugin_name] = False
