@@ -1256,10 +1256,6 @@ YouTube:      {youtube_count} 件 (投稿済み: {youtube_posted})
                     logger.error(f"❌ バックアップ作成失敗: {msg}")
                     messagebox.showerror("バックアップ失敗", msg)
 
-            dialog.destroy()
-
-                dialog.destroy()
-
             # ボタン
             button_frame = ttk.Frame(dialog)
             button_frame.pack(fill=tk.X, padx=20, pady=10)
