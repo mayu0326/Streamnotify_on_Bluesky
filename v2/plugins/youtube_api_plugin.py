@@ -368,37 +368,67 @@ class YouTubeAPIPlugin(NotificationPlugin):
             return True
         return False
 
-    # --- 分類ロジック ---
-    def _classify_video(self, details: Dict[str, Any]) -> Tuple[str, Optional[str], bool]:
+    # --- 分類ロジック（コア・共通部分） ---
+    @staticmethod
+    def _classify_video_core(details: Dict[str, Any]) -> Tuple[str, Optional[str], bool]:
         """
-        動画の種別と状態を判別（content_type, live_status, is_premiere）
+        ★ System コメント 1-6 分類仕様 ★
+
+        動画の種別と時間的状態を判別する共通コア実装
+        YouTube API プラグイン・YouTube Live プラグイン両者から呼び出し
+
+        【System 1】liveBroadcastContent の値による第一判定
+        - "none"      → 通常動画（content_type="video"）
+        - "live"      → ライブ配信関連
+        - "upcoming"  → 予定配信
+        - "completed" → 過去配信
+
+        【System 2】liveStreamingDetails フィールドの検査順序
+        - actualEndTime あり    → 配信終了（"archive", "completed"）
+        - actualStartTime あり  → 配信中（"live", "live"）
+        - scheduledStartTime あり → 予定中（"live", "upcoming"）
+
+        【System 3】プレミア公開判定（is_premiere フラグ）
+        - uploadStatus == "processed" かつ broadcast_type が "live" or "upcoming"
+        - → プレミア配信である可能性
+
+        【System 4】liveStreamingDetails 無し時の代替判定
+        - broadcast_type を直接参照して判定
+
+        【System 5】エッジケース
+        - status.uploadStatus が "uploaded" → 未処理の状態
+        - snippet フィールドが不完全 → デフォルト値で処理
+
+        【System 6】戻り値の構造
+        Returns: (content_type, live_status, is_premiere)
+            - content_type: "video", "live", "archive" のいずれか
+            - live_status: None (通常動画), "upcoming", "live", "completed"
+            - is_premiere: bool (プレミア公開フラグ)
+
+        Args:
+            details: API の videos.list で取得した動画詳細辞書
 
         Returns:
             (content_type, live_status, is_premiere)
-            - content_type: "video", "live", "archive"
-            - live_status: None, "upcoming", "live", "completed"
-            - is_premiere: プレミア公開フラグ
         """
         snippet = details.get("snippet", {})
         status = details.get("status", {})
         live = details.get("liveStreamingDetails", {})
 
-        # 1. snippet.liveBroadcastContent で第一判定
+        # System 1: liveBroadcastContent で第一判定
         broadcast_type = snippet.get("liveBroadcastContent", "none")
 
         if broadcast_type == "none":
             # 通常動画
             return "video", None, False
 
-        # 2. ライブ/プレミア判定
+        # System 3: プレミア公開判定
         is_premiere = False
-
         if live:
-            # プレミア公開判定
             if status.get("uploadStatus") == "processed" and broadcast_type in ("live", "upcoming"):
                 is_premiere = True
 
-            # ライブの時間的状態判定
+            # System 2: ライブの時間的状態判定
             if live.get("actualEndTime"):
                 return "archive", "completed", is_premiere
             elif live.get("actualStartTime"):
@@ -406,13 +436,24 @@ class YouTubeAPIPlugin(NotificationPlugin):
             elif live.get("scheduledStartTime"):
                 return "live", "upcoming", is_premiere
 
-        # liveStreamingDetails がない場合は broadcast_type で判定
+        # System 4: liveStreamingDetails がない場合は broadcast_type で判定
         if broadcast_type == "live":
             return "live", "live", is_premiere
         elif broadcast_type == "upcoming":
             return "live", "upcoming", is_premiere
 
         return "video", None, False
+
+    def _classify_video(self, details: Dict[str, Any]) -> Tuple[str, Optional[str], bool]:
+        """
+        動画の種別と状態を判別（content_type, live_status, is_premiere）
+
+        ⚠️ このメソッドは _classify_video_core() へ委譲（後方互換性のためラッパー保持）
+
+        Returns:
+            (content_type, live_status, is_premiere)
+        """
+        return self._classify_video_core(details)
 
     def on_enable(self) -> None:
         """プラグイン有効化時"""
