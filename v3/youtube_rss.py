@@ -145,6 +145,16 @@ class YouTubeRSS:
 
         return saved_count
 
+    def poll_videos(self):
+        """RSSフィードをポーリングし、キャッシュを更新"""
+        videos = self.fetch_feed()
+        for video in videos:
+            video_id = video['video_id']
+            if video_id not in self.deleted_cache:
+                self.db.insert_video(video_id, video['title'], video['video_url'], video['published_at'], video['channel_name'])
+                # キャッシュ更新を追加
+                self.plugin.update_video_detail_cache(video_id, video)
+
 
 def get_youtube_rss(channel_id: str) -> YouTubeRSS:
     """YouTube RSS オブジェクトを取得"""
