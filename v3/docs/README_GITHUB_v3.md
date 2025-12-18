@@ -1,8 +1,8 @@
 # StreamNotify on Bluesky - v3
 
-> **対象バージョン**: v3.0.0（初期実装）
+> **対象バージョン**: v2.0.0（初期実装）
 > **最終更新**: 2025-12-19
-> **注記**: YouTubeLiveプラグイン完成時に v3.3.0 へ更新予定
+> **注記**: YouTubeLiveプラグイン完成時に v2.3.0 へ更新予定
 
 YouTube チャンネルの新着動画を Bluesky に自動投稿するアプリケーションです。
 （Twitch / ニコニコなどの対応はプラグインで拡張予定）
@@ -294,10 +294,7 @@ python main_v3.py
 
 | プラグイン | 機能 | 状態 |
 |-----------|------|------|
-| `youtube_live_plugin` | YouTube ライブ配信・アーカイブの判定 | ✅ v3.3.0 実装完了予定 |
-| `niconico_plugin` | ニコニコ動画 RSS 監視 | 🔜 v3.x 予定 |
-| `youtube_api_plugin` | YouTube Data API 連携（詳細情報取得） | 🔜 v3.x 予定 |
-| `logging_plugin` | ロギング統合管理 | 🔜 v3.x 予定 |
+
 
 プラグイン導入時に必要なテンプレートファイルと画像は、`Asset/` ディレクトリから自動配置されます。
 

@@ -1,6 +1,6 @@
-# v3.3.0 - GUI フィルタ機能と重複投稿防止オプション
+# v3.1.0 - GUI フィルタ機能と重複投稿防止オプション
 
-**対象バージョン**: v3.3.0+
+**対象バージョン**: v3.1.0+
 **最終更新**: 2025-12-19
 **ステータス**: ✅ 実装完了・本番対応
 
@@ -19,7 +19,7 @@
 
 ## 概要
 
-v3.3.0 では以下の 2 つの主要機能が追加されました：
+v3.1.0 では以下の 2 つの主要機能が追加されました：
 
 ### 1. **GUI フィルタ機能**
 GUI の動画一覧から、複数条件を組み合わせて動画をフィルタリングできます。
@@ -474,7 +474,7 @@ def _execute_post(self, dry_run=False):
 - [モジュール一覧](../Technical/ModuleList_v3.md) - GUI フィルタと重複防止の実装詳細
 - [設定概要](../Technical/SETTINGS_OVERVIEW.md) - PREVENT_DUPLICATE_POSTS の詳細
 - [デバッグ・ドライラン](./DEBUG_DRY_RUN_GUIDE.md) - ドライランモードの使い方
-- [将来ロードマップ](../References/FUTURE_ROADMAP_v3.md) - v3.3.0 以降の計画
+- [将来ロードマップ](../References/FUTURE_ROADMAP_v3.md) - v2.3.0 以降の計画
 
 ---
 

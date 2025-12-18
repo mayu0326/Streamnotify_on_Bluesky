@@ -281,7 +281,7 @@ python main_v2.py
 
 **最終更新**: 2025-12-19
 
-## 🎉 v3.3.0 プロジェクト整理完了
+## 🎉 v3.1.0 プロジェクト整理完了
 
 ### デバッグ・ユーティリティスクリプトの統合（2025-12-19）
 
@@ -295,16 +295,6 @@ python main_v2.py
 
 詳細は [v3/utils/DEBUGGING_UTILITIES.md](v3/utils/DEBUGGING_UTILITIES.md) を参照してください。
 
-### v3.3.0 YouTubeLiveプラグイン実装完了（2025-12-18）
-
-YouTubeLiveプラグインの実装が完全に完了しました。以下の機能がv3で確立されました：
-
-- ✅ YouTube Live/Archive/Normal判定ロジック
-- ✅ Live開始/終了の自動ポーリング・自動投稿
-- ✅ テンプレート選択・投稿（yt_online_template.txt / yt_offline_template.txt）
-- ✅ DB拡張（live_status, content_type）
-- ✅ 全テスト完了（単体 12、統合 10）
-
 ### v3.0.0 初期状態投入（2025-12-18）
 
 次世代版v3が本番環境に投入されました（初期状態）：
@@ -314,6 +304,17 @@ YouTubeLiveプラグインの実装が完全に完了しました。以下の機
 - 🚀 **プラグイン 5 個**: Bluesky・YouTube Live・YouTube API・Niconico・Logging
 - 🚀 **マルチプラットフォーム準備**: YouTube・Niconico・Twitch 対応予定
 - 🚀 **ドキュメント統一**: 30+ ファイルを 4 カテゴリ体系に再構成
+
+### v2.3.0 YouTubeLiveプラグイン実装完了（2025-12-18）
+
+YouTubeLiveプラグインの実装が完全に完了しました。以下の機能がv2で確立されました：
+
+- ✅ YouTube Live/Archive/Normal判定ロジック
+- ✅ Live開始/終了の自動ポーリング・自動投稿
+- ✅ テンプレート選択・投稿（yt_online_template.txt / yt_offline_template.txt）
+- ✅ DB拡張（live_status, content_type）
+- ✅ 全テスト完了（単体 12、統合 10）
+
 
 ### バージョン選択ガイド
 
