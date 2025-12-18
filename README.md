@@ -330,3 +330,7 @@ YouTubeLiveプラグインの実装が完全に完了しました。以下の機
 | **v1（レガシー）** | 参考・学習用 | 最初期実装 | 📚 参考用 |
 
 詳細は [v3/docs/References/FUTURE_ROADMAP_v3.md](v3/docs/References/FUTURE_ROADMAP_v3.md) を参照してください。
+
+## リリースノート
+
+- [リリースノート一覧](./Release_Notes/)
