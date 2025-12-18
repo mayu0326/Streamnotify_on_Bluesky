@@ -89,7 +89,7 @@ class YouTubeRSS:
 
         youtube_logger.info(f"[YouTube RSS] 取得した {len(videos)} 個の動画を DB に照合しています...")
 
-        # ★ 新: ブラックリストを取得
+        # ★ 新: 除外動画リストを取得
         try:
             from deleted_video_cache import get_deleted_video_cache
             deleted_cache = get_deleted_video_cache()
@@ -104,9 +104,9 @@ class YouTubeRSS:
 
         try:
             for video in videos:
-                # ★ 新: ブラックリスト確認
+                # ★ 新: 除外動画リスト確認
                 if deleted_cache and deleted_cache.is_deleted(video["video_id"], source="youtube"):
-                    youtube_logger.info(f"⏭️ ブラックリスト登録済みのため、スキップします: {video['title']}")
+                    youtube_logger.info(f"⏭️ 除外動画リスト登録済みのため、スキップします: {video['title']}")
                     blacklist_skip_count += 1
                     continue
 
@@ -130,7 +130,7 @@ class YouTubeRSS:
 
             summary = f"✅ 保存完了: 新規 {saved_count}, 既存 {existing_count}"
             if blacklist_skip_count > 0:
-                summary += f", ブラックリスト {blacklist_skip_count}"
+                summary += f", 除外動画リスト {blacklist_skip_count}"
 
             if saved_count > 0:
                 youtube_logger.info(summary)
@@ -149,4 +149,3 @@ class YouTubeRSS:
 def get_youtube_rss(channel_id: str) -> YouTubeRSS:
     """YouTube RSS オブジェクトを取得"""
     return YouTubeRSS(channel_id)
-

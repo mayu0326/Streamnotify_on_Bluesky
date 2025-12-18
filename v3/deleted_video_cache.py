@@ -1,12 +1,12 @@
 ﻿# -*- coding: utf-8 -*-
 
 """
-Stream notify on Bluesky - 削除済み動画ブラックリスト管理
+Stream notify on Bluesky - 削除済み動画除外リスト管理
 
 削除済み動画の ID をサービス別に JSON ファイルで管理。
 新着動画検出時にこのリストをチェック。
 
-削除ブラックリストは以下のように構成されます:
+削除除外動画リストは以下のように構成されます:
 {
     "youtube": ["video_id1", "video_id2"],
     "niconico": ["sm12345678"],
@@ -38,7 +38,7 @@ class DeletedVideoCache:
         初期化
 
         Args:
-            cache_file: ブラックリスト JSON ファイルのパス
+            cache_file: 除外動画リスト JSON ファイルのパス
         """
         self.cache_file = Path(cache_file)
         self.cache_file.parent.mkdir(parents=True, exist_ok=True)
@@ -48,7 +48,7 @@ class DeletedVideoCache:
     def _load(self) -> None:
         """JSON ファイルから読み込み"""
         if not self.cache_file.exists():
-            logger.debug(f"ブラックリスト JSON が存在しません。新規作成します: {self.cache_file}")
+            logger.debug(f"除外動画リスト JSON が存在しません。新規作成します: {self.cache_file}")
             self._create_default()
             self._save()
             return
@@ -56,14 +56,14 @@ class DeletedVideoCache:
         try:
             with open(self.cache_file, "r", encoding="utf-8") as f:
                 self.data = json.load(f)
-            logger.info(f"✅ ブラックリストを読み込みました: {self.cache_file}")
+            logger.info(f"✅ 除外動画リストを読み込みました: {self.cache_file}")
         except json.JSONDecodeError as e:
-            logger.error(f"❌ ブラックリスト JSON の形式エラー: {e}")
-            logger.warning("ブラックリスト JSON をリセットします")
+            logger.error(f"❌ 除外動画リスト JSON の形式エラー: {e}")
+            logger.warning("除外動画リスト JSON をリセットします")
             self._create_default()
             self._save()
         except Exception as e:
-            logger.error(f"❌ ブラックリスト読み込みエラー: {e}")
+            logger.error(f"❌ 除外動画リスト読み込みエラー: {e}")
             self._create_default()
 
     def _save(self) -> bool:
@@ -71,10 +71,10 @@ class DeletedVideoCache:
         try:
             with open(self.cache_file, "w", encoding="utf-8") as f:
                 json.dump(self.data, f, ensure_ascii=False, indent=2)
-            logger.debug(f"✅ ブラックリストを保存しました: {self.cache_file}")
+            logger.debug(f"✅ 除外動画リストを保存しました: {self.cache_file}")
             return True
         except Exception as e:
-            logger.error(f"❌ ブラックリスト保存エラー: {e}")
+            logger.error(f"❌ 除外動画リスト保存エラー: {e}")
             return False
 
     def _create_default(self) -> None:
@@ -84,19 +84,19 @@ class DeletedVideoCache:
             "niconico": [],
             "twitch": [],
         }
-        logger.debug("ブラックリストをリセットしました")
+        logger.debug("除外動画リストをリセットしました")
 
     def is_deleted(self, video_id: str, source: str = "youtube") -> bool:
         """
-        動画 ID がブラックリストに含まれているか
+        動画 ID が除外動画リストに含まれているか
 
         Args:
             video_id: チェック対象の動画 ID
             source: サービス名（"youtube", "niconico" など）
 
         Returns:
-            True: ブラックリストに含まれている（削除済み）
-            False: ブラックリストに含まれていない
+            True: 除外動画リストに含まれている（削除済み）
+            False: 除外動画リストに含まれていない
         """
         source_lower = source.lower()
         if source_lower not in self.data:
@@ -104,12 +104,12 @@ class DeletedVideoCache:
 
         is_blacklisted = video_id in self.data[source_lower]
         if is_blacklisted:
-            logger.debug(f"⏭️ ブラックリスト確認: {video_id} (source: {source})")
+            logger.debug(f"⏭️ 除外動画リスト確認: {video_id} (source: {source})")
         return is_blacklisted
 
     def add_deleted_video(self, video_id: str, source: str = "youtube") -> bool:
         """
-        ブラックリストに ID を追加
+        除外動画リストに ID を追加
 
         Args:
             video_id: 追加対象の動画 ID
@@ -126,19 +126,19 @@ class DeletedVideoCache:
 
         # 重複チェック
         if video_id in self.data[source_lower]:
-            logger.debug(f"既にブラックリスト登録済みです: {video_id} (source: {source})")
+            logger.debug(f"既に除外動画リスト登録済みです: {video_id} (source: {source})")
             return True
 
         # リストに追加
         self.data[source_lower].append(video_id)
-        logger.info(f"✅ ブラックリストに追加しました: {video_id} (source: {source})")
+        logger.info(f"✅ 除外動画リストに追加しました: {video_id} (source: {source})")
 
         # 保存
         return self._save()
 
     def remove_deleted_video(self, video_id: str, source: str = "youtube") -> bool:
         """
-        ブラックリストから ID を削除
+        除外動画リストから ID を削除
 
         Args:
             video_id: 削除対象の動画 ID
@@ -150,16 +150,16 @@ class DeletedVideoCache:
         source_lower = source.lower()
 
         if source_lower not in self.data:
-            logger.debug(f"サービス '{source}' はブラックリストに存在しません")
+            logger.debug(f"サービス '{source}' は除外動画リストに存在しません")
             return False
 
         if video_id not in self.data[source_lower]:
-            logger.debug(f"動画 ID '{video_id}' はブラックリスト登録されていません")
+            logger.debug(f"動画 ID '{video_id}' は除外動画リスト登録されていません")
             return False
 
         # リストから削除
         self.data[source_lower].remove(video_id)
-        logger.info(f"🗑️ ブラックリストから削除しました: {video_id} (source: {source})")
+        logger.info(f"🗑️ 除外動画リストから削除しました: {video_id} (source: {source})")
 
         # 保存
         return self._save()
@@ -182,25 +182,25 @@ class DeletedVideoCache:
         return len(self.data.get(source_lower, []))
 
     def clear_all_deleted(self) -> bool:
-        """全ブラックリストをクリア"""
+        """全除外動画リストをクリア"""
         try:
             self._create_default()
             self._save()
-            logger.info("✅ ブラックリストをクリアしました")
+            logger.info("✅ 除外動画リストをクリアしました")
             return True
         except Exception as e:
-            logger.error(f"❌ ブラックリストクリアエラー: {e}")
+            logger.error(f"❌ 除外動画リストクリアエラー: {e}")
             return False
 
     def get_deleted_videos(self, source: Optional[str] = None) -> dict:
         """
-        ブラックリストの内容を取得
+        除外動画リストの内容を取得
 
         Args:
             source: サービス名（None の場合は全体）
 
         Returns:
-            ブラックリストデータ
+            除外動画リストデータ
         """
         if source is None:
             return dict(self.data)
@@ -215,4 +215,3 @@ def get_deleted_video_cache(cache_file: str = "data/deleted_videos.json") -> Del
     if _deleted_video_cache is None:
         _deleted_video_cache = DeletedVideoCache(cache_file)
     return _deleted_video_cache
-

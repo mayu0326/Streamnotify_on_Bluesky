@@ -349,7 +349,7 @@ Asset/
 - [**設定概要**](Technical/SETTINGS_OVERVIEW.md) - 環境変数・設定項目の詳細
 - [**プラグインシステム**](Technical/PLUGIN_SYSTEM.md) - プラグイン開発方法、Rich Text Facet、画像処理
 - [**テンプレートシステム**](Technical/TEMPLATE_SYSTEM.md) - テンプレートファイルの仕様・使用方法
-- [**削除済み動画ブラックリスト**](Technical/DELETED_VIDEO_CACHE.md) - ブラックリスト機能、API リファレンス
+- [**削除済み動画除外動画リスト**](Technical/DELETED_VIDEO_CACHE.md) - 除外動画リスト機能、API リファレンス
 - [**Rich Text Facet 仕様**](Technical/RICHTEXT_FACET_SPECIFICATION.md) - URL・ハッシュタグリンク化の技術仕様
 - [**AssetManager 統合ガイド**](Technical/ASSET_MANAGER_INTEGRATION_v3.md) - Asset 自動配置・プラグイン連携
 
@@ -576,4 +576,3 @@ YouTubeLiveプラグインの実装が完全に完了しました。以下の機
 - ✅ 全テスト完了（単体 12、統合 10）
 
 詳細は [v3_COMPLETION_PLAN.md](References/v3_COMPLETION_PLAN.md) を参照してください。
-

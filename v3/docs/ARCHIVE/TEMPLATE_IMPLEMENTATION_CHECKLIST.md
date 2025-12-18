@@ -20,7 +20,7 @@
 - [x] ニコニコテンプレート仕様（生放送 - 将来予定）
 - [x] Twitch テンプレート仕様（将来予定）
 - [x] Jinja2 形式の説明（基本・フィルター・条件分岐）
-- [x] ブラックリスト変数の説明
+- [x] 除外動画リスト変数の説明
 - [x] Vanilla 環境での注意事項
 - [x] トラブルシューティング
 - [x] 参考資料リンク
@@ -38,7 +38,7 @@
 
 - [x] `TEMPLATE_REQUIRED_KEYS` - 必須キー一覧（9 テンプレート種別）
 - [x] `TEMPLATE_ARGS` - 表示可能変数（GUI ボタン用）
-- [x] `TEMPLATE_VAR_BLACKLIST` - ブラックリスト変数
+- [x] `TEMPLATE_VAR_BLACKLIST` - 除外動画リスト変数
 - [x] `TEMPLATE_ROOT` - テンプレートルートディレクトリ
 - [x] `DEFAULT_TEMPLATE_PATH` - デフォルトテンプレートパス
 
@@ -224,7 +224,7 @@
 - [x] ニコニコ新着動画: title, video_id, video_url, channel_name
 - [x] その他テンプレート: 必要に応じて定義
 
-### ブラックリスト変数
+### 除外動画リスト変数
 
 - [x] 内部用キーの定義（image_filename, posted_at, use_link_card など）
 - [x] GUI では表示しない設定
@@ -342,4 +342,3 @@
 **ステータス**: ✅ **実装完了・本番利用可能**
 
 ---
-
