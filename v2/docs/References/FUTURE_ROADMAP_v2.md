@@ -1,6 +1,6 @@
 ﻿# Streamnotify on Bluesky - 将来実装機能ロードマップ
 
-> **対象バージョン**: v2.2.0 時点
+> **対象バージョン**: v2.3.0 時点（YouTubeLiveプラグイン完成）
 > **最終更新**: 2025-12-18
 
 本ドキュメントは、**v2 の現在の実装設計**と**最初の構想ドキュメント**（`YouTube新着動画app（初期構想案）`）の
@@ -17,15 +17,13 @@
 ### v2 での実装（完了 ✅）
 - ✅ YouTube 新着動画投稿（RSS 方式）
 - ✅ ニコニコ動画 動画投稿（niconico_plugin.py で実装）
-
-### v2 での実装（実験的 ⚠️ → 実装完了予定）
-- ⚠️ **YouTube Live 判定プラグイン** (`youtube_live_plugin.py`)
-  - **現状**: プラグインの枠のみ実装済み
-  - **v2 完了条件**: 以下の機能実装でv2完了とする
-    - ✅ ライブ開始/終了の自動検知ロジック
-    - ✅ ライブイベント用テンプレート自動適用（`yt_online_template.txt`, `yt_offline_template.txt`）
-    - ✅ `live_status` の自動更新機能
-  - **実装予定**: v2.3.0 でプラグイン完成
+- ✅ **YouTube Live 判定プラグイン** (`youtube_live_plugin.py`) - **2025-12-18 完成**
+  - ✅ ライブ開始/終了の自動検知ロジック
+  - ✅ ライブイベント用テンプレート自動適用（`yt_online_template.txt`, `yt_offline_template.txt`）
+  - ✅ `live_status` の自動更新機能
+  - ✅ 単体テスト: 12/12 パス
+  - ✅ 統合テスト: 10/10 パス
+  - **実装完了**: v2.3.0
 
 ### 将来実装（TwitchAPI連携プラグイン）
 
@@ -96,13 +94,17 @@
 
 ### v2 での実装
 - **テンプレート処理**: Jinja2 形式（YouTube・ニコニコ動画両対応）
-- **テンプレート種別**: 2 種類（YouTube 新着動画、ニコニコ新着動画）
+- **テンプレート種別**: 4 種類
+  - YouTube 新着動画 ✅
+  - YouTube Live 開始 ✅ (v2.3.0)
+  - YouTube Live 終了（アーカイブ化） ✅ (v2.3.0)
+  - ニコニコ新着動画 ✅
 
 #### テンプレート対応プラットフォーム（Live/Archive）
 
 | プラットフォーム | ステータス | 理由 |
 |:--|:--|:--|
-| **YouTube Live** | ⏳ 実装予定（v2.x） | YouTube Data API で `liveStreamingDetails` 取得可能 |
+| **YouTube Live** | ✅ **実装完了** | v2.3.0 で完全実装・テスト済み（2025-12-18）|
 | **Niconico Live（ニコニコ生放送）** | ❌ **非対応** | RSS フィードでライブ配信情報は提供されていない |
 
 **⚠️ Niconico Live が非対応の理由:**
