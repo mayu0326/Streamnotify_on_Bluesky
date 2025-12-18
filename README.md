@@ -207,7 +207,7 @@ python main_v2.py
 
 - [テンプレートシステム](v3/docs/Technical/TEMPLATE_SYSTEM.md) - テンプレートファイルの仕様・使用方法
 - [削除済み動画除外リスト](v3/docs/Technical/DELETED_VIDEO_CACHE.md) - 除外動画リスト機能、API リファレンス
-- [デバッグ用ユーティリティ](v3/docs/Technical/DEBUGGING_UTILITIES.md) - デバッグスクリプト、検証スクリプトの使用方法
+- [デバッグ用ユーティリティ](v3/utils/DEBUGGING_UTILITIES.md) - デバッグスクリプト、検証スクリプトの使用方法
 
 ### 📋 ユーザーガイド・トラブルシューティング
 
