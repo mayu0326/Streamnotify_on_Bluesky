@@ -226,9 +226,9 @@ class StreamNotifyGUI:
                 if self.db.insert_video(
                     video_id=video["video_id"],
                     title=video["title"],
-                    video_url=video["link"],
-                    published_at=video["published"],
-                    channel_name=video.get("author", ""),
+                    video_url=video["video_url"],
+                    published_at=video["published_at"],
+                    channel_name=video.get("channel_name", ""),
                     source="youtube"
                 ):
                     added_count += 1
