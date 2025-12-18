@@ -293,7 +293,7 @@ python main_v2.py
 - ✅ **analysis/**: API・環境検証スクリプト（4ファイル）
 - ✅ **DEBUGGING_UTILITIES.md**: 包括的ドキュメント（200+ 行）
 
-詳細は [v3/utils/DEBUGGING_UTILITIES.md](v3/utils/DEBUGGING_UTILITIES.md) を参照してください。
+詳細は [v3/utils/DEBUGGING_UTILITIES.md](v3/Technical/DEBUGGING_UTILITIES.md) を参照してください。
 
 ### v3.3.0 YouTubeLiveプラグイン実装完了（2025-12-18）
 
