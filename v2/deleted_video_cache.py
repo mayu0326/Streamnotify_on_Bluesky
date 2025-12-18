@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Stream notify on Bluesky - 削除済み動画除外動画リスト管理
+Stream notify on Bluesky - 削除済み動画除外リスト管理
 
 削除済み動画の ID をサービス別に JSON ファイルで管理。
 新着動画検出時にこのリストをチェック。
