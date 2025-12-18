@@ -45,7 +45,17 @@
 │   ├── gui_v3.py                # 拡張 GUI（1,363 行）
 │   ├── plugin_manager.py        # プラグイン管理
 │   ├── plugins/                 # プラグイン実装（5 種）
-│   ├── docs/                    # ドキュメント（v2 統一版）
+│   ├── utils/                   # デバッグ・検証スクリプト
+│   │   ├── database/            # DB操作・検証
+│   │   ├── cache/               # キャッシュ管理
+│   │   ├── classification/      # 分類・検証
+│   │   ├── analysis/            # 分析・検証
+│   │   └── DEBUGGING_UTILITIES.md
+│   ├── docs/                    # ドキュメント（4 カテゴリ体系）
+│   │   ├── Technical/           # 技術資料
+│   │   ├── Guides/              # ユーザーガイド
+│   │   ├── References/          # 参考資料
+│   │   └── Local/               # ローカル作業用
 │   ├── Asset/                   # テンプレート・画像配布
 │   └── settings.env.example     # 設定ファイル例
 │
@@ -70,7 +80,7 @@
 │   │   │   ├── SESSION_REPORTS.md
 │   │   │   └── ...
 │   │   ├── References/          # 参考資料（ロードマップ・構想）
-│   │   │   ├── FUTURE_ROADMAP_v2.md
+│   │   │   ├── FUTURE_ROADMAP_v3.md
 │   │   │   └── ...
 │   │   ├── ARCHIVE/             # 実装計画・記録（完了後）
 │   │   │   ├── TEMPLATE_IMPLEMENTATION_CHECKLIST.md
@@ -149,7 +159,7 @@ cp settings.env.example settings.env
 | `BLUESKY_PASSWORD` | Bluesky のアプリパスワード | `xxxx-xxxx-xxxx-xxxx` |
 | `POLL_INTERVAL_MINUTES` | ポーリング間隔（分、最小値 5） | `10` |
 
-その他のオプション設定については、`settings.env` 内のコメント、または [Streamnotify v2 設定項目一覧](v2/docs/Technical/SETTINGS_OVERVIEW.md) を参照してください。
+その他のオプション設定については、`settings.env` 内のコメント、または [Streamnotify v3 設定項目一覧](v3/docs/Technical/SETTINGS_OVERVIEW.md) を参照してください。
 
 ## 使用方法
 
@@ -187,41 +197,28 @@ python main_v2.py
 
 ### 📚 コア設計・アーキテクチャ
 
-- [アーキテクチャと設計方針](v2/docs/Technical/ARCHITECTURE_AND_DESIGN.md) - システム構成とデータベース設計の詳細
-- [モジュール一覧](v2/docs/Technical/ModuleList_v2.md) - 全コンポーネントの説明
-- [設定概要](v2/docs/Technical/SETTINGS_OVERVIEW.md) - 環境変数・設定項目の詳細
-- [プラグインシステム](v2/docs/Technical/PLUGIN_SYSTEM.md) - プラグイン開発方法、Rich Text Facet、画像処理
-- [YouTube API キャッシング](v2/docs/Technical/YOUTUBE_API_CACHING_IMPLEMENTATION.md) - キャッシング機能の技術仕様
+- [アーキテクチャと設計方針](v3/docs/Technical/ARCHITECTURE_AND_DESIGN.md) - システム構成とデータベース設計の詳細
+- [モジュール一覧](v3/docs/Technical/ModuleList_v3.md) - 全コンポーネントの説明
+- [設定概要](v3/docs/Technical/SETTINGS_OVERVIEW.md) - 環境変数・設定項目の詳細
+- [プラグインシステム](v3/docs/Technical/PLUGIN_SYSTEM.md) - プラグイン開発方法、Rich Text Facet、画像処理
+- [YouTube API キャッシング](v3/docs/Technical/YOUTUBE_API_CACHING_IMPLEMENTATION.md) - キャッシング機能の技術仕様
 
-### 🎨 テンプレート・キャッシュ・セッション
+### 🎨 テンプレート・キャッシュ・デバッグ
 
-- [テンプレートシステム](v2/docs/Technical/TEMPLATE_SYSTEM.md) - テンプレートファイルの仕様・使用方法
-- [削除済み動画除外リスト](v2/docs/Technical/DELETED_VIDEO_CACHE.md) - 除外動画リスト機能、API リファレンス
-- [セッション実装レポート](v2/docs/Guides/SESSION_REPORTS.md) - 2025-12-17～18 実装内容・テスト結果
+- [テンプレートシステム](v3/docs/Technical/TEMPLATE_SYSTEM.md) - テンプレートファイルの仕様・使用方法
+- [削除済み動画除外リスト](v3/docs/Technical/DELETED_VIDEO_CACHE.md) - 除外動画リスト機能、API リファレンス
+- [デバッグ用ユーティリティ](v3/docs/Technical/DEBUGGING_UTILITIES.md) - デバッグスクリプト、検証スクリプトの使用方法
 
 ### 📋 ユーザーガイド・トラブルシューティング
 
-- [デバッグ・ドライラン](v2/docs/Guides/DEBUG_DRY_RUN_GUIDE.md) - トラブルシューティング・操作方法
-- [画像リサイズガイド](v2/docs/Guides/IMAGE_RESIZE_GUIDE.md) - 画像処理の使い方
-- [セッション実装レポート](v2/docs/Guides/SESSION_REPORTS.md) - 2025-12-17～18 実装内容・テスト結果
+- [デバッグ・ドライラン](v3/docs/Guides/DEBUG_DRY_RUN_GUIDE.md) - トラブルシューティング・操作方法
+- [画像リサイズガイド](v3/docs/Guides/IMAGE_RESIZE_GUIDE.md) - 画像処理の使い方
 
 ### 🚀 その他・参考資料
 
-- [将来ロードマップ](v2/docs/References/FUTURE_ROADMAP_v2.md) - v3+ の計画概要
-- [Rich Text Facet 仕様](v2/docs/Technical/RICHTEXT_FACET_SPECIFICATION.md) - URL・ハッシュタグリンク化の技術仕様
-- [AssetManager 統合ガイド](v2/docs/Technical/ASSET_MANAGER_INTEGRATION_v2.md) - Asset 自動配置・プラグイン連携の詳細
-- [Asset ディレクトリ README](v2/Asset/README.md) - ユーザー向けの Asset 管理方法
-
-### 📂 全ドキュメント構成
-
-ドキュメントは以下のカテゴリに整理されています：
-
-- **Technical/** - 技術資料（アーキテクチャ・仕様・設計）
-- **Guides/** - ユーザーガイド（実装手順・操作方法）
-- **References/** - 参考資料（ロードマップ・構想案）
-- **Local/** - ローカル作業用（内部用・非公開推奨）
-
-詳細は [v3/docs/README_GITHUB_v2.md](v3/docs/README_GITHUB_v2.md)（v3 用）または [v2/docs/README_GITHUB_v2.md](v2/docs/README_GITHUB_v2.md)（v2 用）を参照してください。
+- [将来ロードマップ](v3/docs/References/FUTURE_ROADMAP_v3.md) - v3+ の計画概要
+- [Rich Text Facet 仕様](v3/docs/Technical/RICHTEXT_FACET_SPECIFICATION.md) - URL・ハッシュタグリンク化の技術仕様
+- [AssetManager 統合ガイド](v3/docs/Technical/ASSET_MANAGER_INTEGRATION_v3.md) - Asset 自動配置・プラグイン連携の詳細
 
 ## 設定ファイルについて
 
@@ -251,7 +248,7 @@ python main_v2.py
 - **error.log**: エラーのみを記録
 - その他のログファイル：プラグイン導入時に自動生成
 
-詳細は [DEBUG ログとドライラン機能 ガイド](v2/docs/Guides/DEBUG_DRY_RUN_GUIDE.md) を参照してください。
+詳細は [DEBUG ログとドライラン機能 ガイド](v3/docs/Guides/DEBUG_DRY_RUN_GUIDE.md) を参照してください。
 
 ## ライセンス
 
@@ -259,6 +256,7 @@ python main_v2.py
 
 このプロジェクトは **GPL License v2** で提供されます。
 
+- **v3/**: アプリケーション本体（GPLv2）
 - **v2/**: アプリケーション本体（GPLv2）
 - **v1/**: レガシー版アプリケーション（GPLv2）
 - **OLD_App/**: 旧バージョン（GPLv2）
@@ -281,12 +279,25 @@ python main_v2.py
 
 ---
 
-**最終更新**: 2025-12-18
+**最終更新**: 2025-12-19
 
-## 🎉 v2.3.0 完了・v3.0.0 リリース
+## 🎉 v3.3.0 プロジェクト整理完了
 
-### v2.3.0 本番環境リリース（2025-12-18）
-YouTubeLiveプラグインの実装が完全に完了しました。以下の機能がv2で確立されました：
+### デバッグ・ユーティリティスクリプトの統合（2025-12-19）
+
+デバッグ・検証・分析スクリプトを `v3/utils/` 配下に体系的に整理しました：
+
+- ✅ **database/**: DB操作・検証スクリプト（5ファイル）
+- ✅ **cache/**: キャッシュ管理スクリプト（2ファイル）
+- ✅ **classification/**: 分類・検証スクリプト（4ファイル）
+- ✅ **analysis/**: API・環境検証スクリプト（4ファイル）
+- ✅ **DEBUGGING_UTILITIES.md**: 包括的ドキュメント（200+ 行）
+
+詳細は [v3/utils/DEBUGGING_UTILITIES.md](v3/utils/DEBUGGING_UTILITIES.md) を参照してください。
+
+### v3.3.0 YouTubeLiveプラグイン実装完了（2025-12-18）
+
+YouTubeLiveプラグインの実装が完全に完了しました。以下の機能がv3で確立されました：
 
 - ✅ YouTube Live/Archive/Normal判定ロジック
 - ✅ Live開始/終了の自動ポーリング・自動投稿
@@ -295,6 +306,7 @@ YouTubeLiveプラグインの実装が完全に完了しました。以下の機
 - ✅ 全テスト完了（単体 12、統合 10）
 
 ### v3.0.0 初期状態投入（2025-12-18）
+
 次世代版v3が本番環境に投入されました（初期状態）：
 
 - 🚀 **GUI 1,363 行拡張**: 複合フィルタリング・ドラッグドロップ対応
@@ -307,8 +319,8 @@ YouTubeLiveプラグインの実装が完全に完了しました。以下の機
 
 | バージョン | 推奨用途 | 特徴 | 状態 |
 |:--|:--|:--|:--|
-| **v3（推奨）** | 新規ユーザー、複合投稿 | 最新機能、複合プラグイン、拡張 GUI | 🚀 本番（初期） |
+| **v3（推奨）** | 新規ユーザー、複合投稿 | 最新機能、複合プラグイン、拡張 GUI | 🚀 本番（最新） |
 | **v2（安定版）** | 既存ユーザー、シンプル運用 | 安定動作、YouTube Live 対応 | ✅ 本番（安定） |
 | **v1（レガシー）** | 参考・学習用 | 最初期実装 | 📚 参考用 |
 
-詳細は [v3/docs/References/FUTURE_ROADMAP_v2.md](v3/docs/References/FUTURE_ROADMAP_v2.md) または [v2/docs/References/V2_COMPLETION_PLAN.md](v2/docs/References/V2_COMPLETION_PLAN.md) を参照してください。
+詳細は [v3/docs/References/FUTURE_ROADMAP_v3.md](v3/docs/References/FUTURE_ROADMAP_v3.md) を参照してください。
