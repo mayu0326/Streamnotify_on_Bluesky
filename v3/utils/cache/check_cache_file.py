@@ -6,7 +6,7 @@
 from pathlib import Path
 import json
 
-cache_file = Path('v2/data/youtube_video_detail_cache.json')
+cache_file = Path('v3/data/youtube_video_detail_cache.json')
 
 print("=" * 80)
 print("キャッシュファイル確認")
