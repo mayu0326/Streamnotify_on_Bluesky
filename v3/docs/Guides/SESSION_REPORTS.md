@@ -260,7 +260,7 @@ elif source in ("niconico", "nico"):
    - 容量: 110 KB → 65 KB (41% 削減)
 
 2. **DELETED_VIDEO_CACHE.md** (3個統合)
-   - ブラックリスト機能の完全ガイド
+   - 除外動画リスト機能の完全ガイド
    - 要件分析、API リファレンス、テスト手順
    - 容量: 50 KB → 40 KB (20% 削減)
 
@@ -334,7 +334,7 @@ hashtag_pattern = r'(?:^|\s)(#[^\s#]+)'
 | ドキュメント | 容量 | 内容 |
 |:--|:--:|:--|
 | TEMPLATE_SYSTEM.md | 65 KB | テンプレート機能完全ガイド |
-| DELETED_VIDEO_CACHE.md | 40 KB | ブラックリスト完全ガイド |
+| DELETED_VIDEO_CACHE.md | 40 KB | 除外動画リスト完全ガイド |
 | ARCHITECTURE_AND_DESIGN.md | 55 KB | アーキテクチャ設計書 |
 | PLUGIN_SYSTEM.md | 45 KB | プラグイン実装ガイド |
 | SESSION_REPORTS.md | 80 KB | セッションレポート統合版 |
@@ -373,4 +373,3 @@ hashtag_pattern = r'(?:^|\s)(#[^\s#]+)'
 **総セッション時間**: 約 4 時間
 **実装完了度**: 95%（フェーズ1-3）
 **ステータス**: ✅ 本番環境反映可能
-

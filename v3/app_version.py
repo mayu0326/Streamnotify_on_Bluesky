@@ -9,8 +9,8 @@ StreamNotify on Bluesky v3 - バージョン情報
 - patch: バグ修正
 """
 
-__version__ = "2.1.0"
-__release_date__ = "2025-12-17"
+__version__ = "3.0.0"
+__release_date__ = "2025-12-18"
 __status__ = "development"  # development / alpha / beta / stable
 __author__ = "mayuneco(mayunya)"
 __license__ = "GPLv3"
@@ -50,4 +50,3 @@ def get_full_version_info() -> dict:
         "git_branch": __git_branch__,
         "formatted": get_version_info()
     }
-

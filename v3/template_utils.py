@@ -508,7 +508,7 @@ def get_template_args_for_dialog(
 
     Args:
         template_type: テンプレート種別
-        blacklist: ブラックリストを適用するか（デフォルト: True）
+        blacklist: 除外動画リストを適用するか（デフォルト: True）
 
     Returns:
         [(変数表示名, 変数キー), ...] のリスト
@@ -747,4 +747,3 @@ if __name__ == "__main__":
 
     print("\n" + "=" * 50)
     print("✅ template_utils.py の基本動作確認完了")
-

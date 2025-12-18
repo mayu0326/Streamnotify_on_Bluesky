@@ -146,69 +146,15 @@ class Database:
             cursor.execute("PRAGMA table_info(videos)")
             columns = {row[1] for row in cursor.fetchall()}
 
-            required_columns = {
-                "selected_for_post": "INTEGER DEFAULT 0",
-                "scheduled_at": "TEXT",
-                "posted_at": "TEXT",
-                "thumbnail_url": "TEXT",
-                "content_type": "TEXT DEFAULT 'video'",
-                "live_status": "TEXT",
-                "is_premiere": "INTEGER DEFAULT 0",
-                "image_mode": "TEXT",
-                "image_filename": "TEXT",
-                "source": "TEXT DEFAULT 'youtube'"
-            }
+            if "classification_type" not in columns:
+                logger.info("🔄 カラムを追加します: classification_type")
+                cursor.execute("ALTER TABLE videos ADD COLUMN classification_type TEXT")
 
-            migration_needed = False
+            if "broadcast_status" not in columns:
+                logger.info("🔄 カラムを追加します: broadcast_status")
+                cursor.execute("ALTER TABLE videos ADD COLUMN broadcast_status TEXT")
 
-            for col_name, col_def in required_columns.items():
-                if col_name not in columns:
-                    logger.info(f"🔄 カラムを追加します: {col_name}")
-                    try:
-                        cursor.execute(f"ALTER TABLE videos ADD COLUMN {col_name} {col_def}")
-                        migration_needed = True
-                    except sqlite3.OperationalError as e:
-                        logger.warning(f"カラム追加スキップ（既に存在？）: {col_name} - {e}")
-
-
-            # 既存データのsourceカラムが空欄のものを自動補完
-
-            try:
-                # YouTube: video_idが11桁英数字
-                cursor.execute("UPDATE videos SET source='youtube' WHERE (source IS NULL OR source='') AND LENGTH(video_id)=11 AND video_id GLOB '[A-Za-z0-9]*'")
-                # niconico: video_idが'tag:','sm','nm','so'で始まるもの
-                cursor.execute("UPDATE videos SET source='niconico' WHERE (source IS NULL OR source='') AND (video_id LIKE 'tag:%' OR video_id LIKE 'sm%' OR video_id LIKE 'nm%' OR video_id LIKE 'so%')")
-                # Twitch: それ以外
-                cursor.execute("UPDATE videos SET source='twitch' WHERE (source IS NULL OR source='')")
-                conn.commit()
-                logger.info("✅ 既存データのsourceカラムを自動補完しました")
-            except Exception as e:
-                logger.warning(f"既存データのsourceカラム補完処理に失敗しました: {e}")
-
-            # 既存データの content_type を正規化
-            try:
-                # 不正な値（例："ニコニコ動画"）を "video" に正規化
-                cursor.execute("UPDATE videos SET content_type='video' WHERE content_type NOT IN ('video', 'live', 'archive', 'none')")
-                # NULL値をデフォルト値に設定
-                cursor.execute("UPDATE videos SET content_type='video' WHERE content_type IS NULL")
-                conn.commit()
-                logger.info("✅ 既存データの content_type を正規化しました")
-            except Exception as e:
-                logger.warning(f"既存データの content_type 正規化処理に失敗しました: {e}")
-
-            # 既存データの live_status を正規化
-            try:
-                # 不正な値を NULL に正規化
-                cursor.execute("UPDATE videos SET live_status=NULL WHERE live_status NOT IN ('none', 'upcoming', 'live', 'completed')")
-                conn.commit()
-                logger.info("✅ 既存データの live_status を正規化しました")
-            except Exception as e:
-                logger.warning(f"既存データの live_status 正規化処理に失敗しました: {e}")
-
-            if migration_needed:
-                conn.commit()
-                logger.info("✅ DB スキーマのマイグレーションが完了しました")
-
+            conn.commit()
             conn.close()
 
         except Exception as e:
@@ -217,7 +163,7 @@ class Database:
 
     def insert_video(self, video_id, title, video_url, published_at, channel_name="", thumbnail_url="", content_type="video", live_status=None, is_premiere=False, source="youtube"):
         """
-        動画情報を挿入（リトライ付き）
+        動画情報を挿入（リトライ付き、YouTube重複排除対応）
 
         Args:
             video_id: 動画ID
@@ -234,6 +180,86 @@ class Database:
         # バリデーション
         content_type = self._validate_content_type(content_type)
         live_status = self._validate_live_status(live_status, content_type)
+
+        # YouTube動画の重複チェック（優先度ロジック適用）
+        if source == "youtube" and title and channel_name:
+            try:
+                from youtube_dedup_priority import get_video_priority, should_keep_video
+
+                conn = self._get_connection()
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+
+                cursor.execute("""
+                    SELECT * FROM videos
+                    WHERE source='youtube' AND title=? AND channel_name=?
+                """, (title, channel_name))
+
+                existing_videos = [dict(row) for row in cursor.fetchall()]
+                conn.close()
+
+                if existing_videos:
+                    # 新しい動画の優先度と既存動画の優先度を比較
+                    new_video = {
+                        'video_id': video_id,
+                        'content_type': content_type,
+                        'live_status': live_status,
+                        'is_premiere': 1 if is_premiere else 0,
+                        'published_at': published_at
+                    }
+
+                    if not should_keep_video(new_video, existing_videos):
+                        logger.debug(f"⏭️ YouTube重複排除: より優先度の高い動画が既に登録されています（{title}）")
+                        return False
+
+                    # 優先度が高い場合は既存の低優先度動画を削除
+                    existing_priority = max(get_video_priority(v) for v in existing_videos)
+                    new_priority = get_video_priority(new_video)
+
+                    if new_priority > existing_priority:
+                        # 既存動画から低優先度のものを削除
+                        ids_to_delete = [
+                            v['id'] for v in existing_videos
+                            if get_video_priority(v) < new_priority
+                        ]
+                        if ids_to_delete:
+                            try:
+                                from deleted_video_cache import get_deleted_video_cache
+                                deleted_cache = get_deleted_video_cache()
+                            except ImportError:
+                                deleted_cache = None
+
+                            conn = self._get_connection()
+                            cursor = conn.cursor()
+                            for del_id in ids_to_delete:
+                                # video_id を取得してから削除
+                                cursor.execute("SELECT video_id FROM videos WHERE id=?", (del_id,))
+                                row = cursor.fetchone()
+                                if row:
+                                    deleted_video_id = row[0]
+
+                                    # DB から削除
+                                    cursor.execute("DELETE FROM videos WHERE id=?", (del_id,))
+                                    logger.debug(f"✅ 削除: 優先度が低い動画 ID={del_id}, video_id={deleted_video_id}")
+
+                                    # deleted_videos.json に登録
+                                    if deleted_cache:
+                                        try:
+                                            deleted_cache.add_deleted_video(deleted_video_id, source=source)
+                                        except Exception as e:
+                                            logger.warning(f"削除動画キャッシュへの登録失敗: {e}")
+
+                            conn.commit()
+                            conn.close()
+                    else:
+                        # 優先度が同じか低い場合はスキップ
+                        return False
+
+            except ImportError:
+                logger.warning("youtube_dedup_priority モジュールが見つかりません")
+            except Exception as e:
+                logger.warning(f"重複チェック処理でエラー: {e}")
+                # エラー時は続行して挿入を試みる
 
         for attempt in range(DB_RETRY_MAX):
             try:
@@ -535,7 +561,7 @@ class Database:
             return False
 
     def delete_video(self, video_id: str) -> bool:
-        """動画をDBから削除（ブラックリスト連携付き）"""
+        """動画をDBから削除（除外動画リスト連携付き）"""
         for attempt in range(DB_RETRY_MAX):
             try:
                 conn = sqlite3.connect(self.db_path, timeout=DB_TIMEOUT)
@@ -552,7 +578,7 @@ class Database:
                 conn.commit()
                 conn.close()
 
-                # ★ 新: ブラックリストに追加
+                # ★ 新: 除外動画リストに追加
                 try:
                     from deleted_video_cache import get_deleted_video_cache
                     cache = get_deleted_video_cache()
@@ -560,7 +586,7 @@ class Database:
                 except ImportError:
                     logger.warning("deleted_video_cache モジュールが見つかりません")
                 except Exception as e:
-                    logger.error(f"ブラックリスト登録エラー: {video_id} - {e}")
+                    logger.error(f"除外動画リスト登録エラー: {video_id} - {e}")
 
                 logger.info(f"✅ 動画を削除しました: {video_id}")
                 return True
@@ -600,4 +626,3 @@ class Database:
 def get_database(db_path=DB_PATH) -> Database:
     """データベースオブジェクトを取得"""
     return Database(db_path)
-

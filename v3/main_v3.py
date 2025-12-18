@@ -90,19 +90,19 @@ def main():
         logger.error(f"データベースの読み込みに失敗しました: {e}")
         sys.exit(1)
 
-    # ★ 新: 削除済み動画ブラックリストを初期化
+    # ★ 新: 削除済み動画除外リストを初期化
     try:
         from deleted_video_cache import get_deleted_video_cache
         deleted_cache = get_deleted_video_cache()
         total_deleted = deleted_cache.get_deleted_count()
         if total_deleted > 0:
-            logger.info(f"🔒 ブラックリストから削除済み動画 {total_deleted} 件を読み込みました")
+            logger.info(f"🔒 除外動画リストから削除済み動画 {total_deleted} 件を読み込みました")
         else:
-            logger.debug("ブラックリストはクリア状態です")
+            logger.debug("除外動画リストはクリア状態です")
     except ImportError:
         logger.warning("deleted_video_cache モジュールが見つかりません")
     except Exception as e:
-        logger.error(f"ブラックリストの初期化に失敗しました: {e}")
+        logger.error(f"除外動画リストの初期化に失敗しました: {e}")
 
     try:
         logger.info("[YouTube] YouTubeRSS の取得を準備しています...")
@@ -336,4 +336,3 @@ if __name__ == "__main__":
     if sys.platform.startswith('win'):
         signal.signal(signal.SIGBREAK, signal_handler)
     main()
-

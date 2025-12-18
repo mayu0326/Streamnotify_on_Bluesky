@@ -1,40 +1,65 @@
 # StreamNotify on Bluesky
 
-YouTube チャンネルの新着動画を Bluesky に自動投稿するアプリケーションです。
-（Twitch / ニコニコなどの対応はプラグインで拡張予定）
+- YouTube チャンネルの新着動画を Bluesky に自動投稿するアプリケーションです。
+- YouTube動画に対応。YouTubeLive / Twitch / ニコニコなどはプラグインで対応
 
 ## 概要
 
-- このプロジェクトは、特定の YouTube チャンネルの新着動画を RSS で監視し、Bluesky に自動投稿する常駐ボットです。
-- 設定ファイルで簡単にカスタマイズでき、将来的にはプラグインで複数の配信プラットフォームに対応予定です。
+- このプロジェクトは、YouTube・Niconico・Twitch など複数の配信プラットフォームを監視し、Bluesky に自動投稿する常駐ボットです。
+- プラグインアーキテクチャにより、新しいプラットフォーム・通知先の対応は拡張プラグインで実現できます。
+- **v3（次世代版）**: GUI 大幅拡張、トンネルサービス対応予定、Twitch 対応予定 \
+- **v2（安定版）**: YouTube RSS 監視、Bluesky 投稿、基本 GUI、YouTube Live 対応、  \
+テンプレート管理、画像処理パイプライン
 
 ## 主な機能
 
+### v3（推奨）
+- **複数プラットフォーム監視**: v2実装済みのYouTube・Niconicoに加え、Twitch に対応
+- **Twitch対応**: TwitchAPIに対応(Webhook、トンネルサービス対応予定)
+- **拡張 GUI**: 複合フィルタリング、ドラッグドロップ、スケジュール管理
+
+### v2（安定版）
 - **YouTube RSS 監視**: 指定チャンネルの新着動画を自動検出
+- **YouTube Live 判定・投稿**: ライブ配信の開始・終了を自動検出して投稿
+- **YouTube API キャッシング**: API 呼び出し回数削減のためのローカルキャッシュ
+- **ライブ配信対応**: YouTube Live の自動判定・投稿
+- **ニコニコIDからユーザー名取得**： ニコニコ動画のユーザー名を自動取得
+- **ニコニコ動画 RSS 監視**: 指定ユーザーの新着動画を自動検出
+- **動画重複登録抑止のための制御**： 削除済み動画の除外リスト管理
+- **画像処理パイプライン**: サムネイル自動取得・リサイズ・最適化・キャッシング
 - **Bluesky 自動投稿**: 動画情報を指定フォーマットで Bluesky へ投稿
+- **テンプレート管理**: プラットフォーム別・イベント別にテンプレート選択可能
+- **プラグイン拡張**: YouTube Live・YouTube API・Niconico・ロギング拡張に対応
+- **投稿内容カスタマイズ**: 設定で投稿形式(画像・リンクカード、予約投稿)をカスタマイズ可能
 - **ローカル DB**: SQLite で動画情報・投稿状態を管理
 - **Tkinter GUI**: 動画一覧表示・手動投稿・統計表示に対応
-- **プラグイン拡張**: ニコニコ / YouTube Live / ロギング拡張などに対応（将来計画含む）
-- **テンプレートカスタマイズ**: 設定ファイル＋テンプレートファイルで投稿形式をカスタマイズ可能
 
 ## プロジェクト構成
 
 ```
-.
 ├── README.md                    # このファイル
 ├── LICENSE                      # ライセンス
 │
-├── v2/                          # v2（推奨、現在のメインアプリケーション）
-│   ├── main_v2.py               # エントリーポイント
-│   ├── config.py                # 設定管理
-│   ├── database.py              # SQLite データベース管理
-│   ├── youtube_rss.py           # YouTube RSS フィード取得
-│   ├── bluesky_core.py          # Bluesky API クライアント
-│   ├── gui_v2.py                # Tkinter GUI インターフェース
+├── v3/                          # v3（推奨、次世代版）
+│   ├── main_v3.py               # エントリーポイント
+│   ├── gui_v3.py                # 拡張 GUI（1,363 行）
 │   ├── plugin_manager.py        # プラグイン管理
-│   ├── plugin_interface.py      # プラグイン基本インターフェース
-│   ├── requirements.txt         # 依存パッケージ
-│   ├── settings.env.example     # 設定ファイル例
+│   ├── plugins/                 # プラグイン実装（5 種）
+│   ├── utils/                   # デバッグ・検証スクリプト
+│   │   ├── database/            # DB操作・検証
+│   │   ├── cache/               # キャッシュ管理
+│   │   ├── classification/      # 分類・検証
+│   │   ├── analysis/            # 分析・検証
+│   │   └── DEBUGGING_UTILITIES.md
+│   ├── docs/                    # ドキュメント（4 カテゴリ体系）
+│   │   ├── Technical/           # 技術資料
+│   │   ├── Guides/              # ユーザーガイド
+│   │   ├── References/          # 参考資料
+│   │   └── Local/               # ローカル作業用
+│   ├── Asset/                   # テンプレート・画像配布
+│   └── settings.env.example     # 設定ファイル例
+│
+├── v2/                          # v2（安定版、既存ユーザー向け）
 │   │
 │   ├── plugins/                 # プラグインディレクトリ
 │   │   ├── bluesky_plugin.py    # Bluesky 投稿プラグイン
@@ -55,7 +80,7 @@ YouTube チャンネルの新着動画を Bluesky に自動投稿するアプリ
 │   │   │   ├── SESSION_REPORTS.md
 │   │   │   └── ...
 │   │   ├── References/          # 参考資料（ロードマップ・構想）
-│   │   │   ├── FUTURE_ROADMAP_v2.md
+│   │   │   ├── FUTURE_ROADMAP_v3.md
 │   │   │   └── ...
 │   │   ├── ARCHIVE/             # 実装計画・記録（完了後）
 │   │   │   ├── TEMPLATE_IMPLEMENTATION_CHECKLIST.md
@@ -96,8 +121,8 @@ YouTube チャンネルの新着動画を Bluesky に自動投稿するアプリ
 ### 1. リポジトリをクローン
 
 ```bash
-git clone https://github.com/yourusername/Streamnotify_on_Bluesky.git
-cd Streamnotify_on_Bluesky/v2
+git clone https://git.neco-server.net/mayuneco/Streamnotify_on_Bluesky.git
+cd Streamnotify_on_Bluesky/v3    # v3（推奨）または v2（安定版）
 ```
 
 ### 2. 依存パッケージをインストール
@@ -134,13 +159,17 @@ cp settings.env.example settings.env
 | `BLUESKY_PASSWORD` | Bluesky のアプリパスワード | `xxxx-xxxx-xxxx-xxxx` |
 | `POLL_INTERVAL_MINUTES` | ポーリング間隔（分、最小値 5） | `10` |
 
-その他のオプション設定については、`settings.env` 内のコメント、または [Streamnotify v2 設定項目一覧](v2/docs/Technical/SETTINGS_OVERVIEW.md) を参照してください。
+その他のオプション設定については、`settings.env` 内のコメント、または [Streamnotify v3 設定項目一覧](v3/docs/Technical/SETTINGS_OVERVIEW.md) を参照してください。
 
 ## 使用方法
 
 ### アプリケーションの起動
 
 ```bash
+# v3（推奨）
+python main_v3.py
+
+# または v2（安定版）
 python main_v2.py
 ```
 
@@ -168,41 +197,28 @@ python main_v2.py
 
 ### 📚 コア設計・アーキテクチャ
 
-- [アーキテクチャと設計方針](v2/docs/Technical/ARCHITECTURE_AND_DESIGN.md) - システム構成とデータベース設計の詳細
-- [モジュール一覧](v2/docs/Technical/ModuleList_v2.md) - 全コンポーネントの説明
-- [設定概要](v2/docs/Technical/SETTINGS_OVERVIEW.md) - 環境変数・設定項目の詳細
-- [プラグインシステム](v2/docs/Technical/PLUGIN_SYSTEM.md) - プラグイン開発方法、Rich Text Facet、画像処理
-- [YouTube API キャッシング](v2/docs/Technical/YOUTUBE_API_CACHING_IMPLEMENTATION.md) - キャッシング機能の技術仕様
+- [アーキテクチャと設計方針](v3/docs/Technical/ARCHITECTURE_AND_DESIGN.md) - システム構成とデータベース設計の詳細
+- [モジュール一覧](v3/docs/Technical/ModuleList_v3.md) - 全コンポーネントの説明
+- [設定概要](v3/docs/Technical/SETTINGS_OVERVIEW.md) - 環境変数・設定項目の詳細
+- [プラグインシステム](v3/docs/Technical/PLUGIN_SYSTEM.md) - プラグイン開発方法、Rich Text Facet、画像処理
+- [YouTube API キャッシング](v3/docs/Technical/YOUTUBE_API_CACHING_IMPLEMENTATION.md) - キャッシング機能の技術仕様
 
-### 🎨 テンプレート・キャッシュ・セッション
+### 🎨 テンプレート・キャッシュ・デバッグ
 
-- [テンプレートシステム](v2/docs/Technical/TEMPLATE_SYSTEM.md) - テンプレートファイルの仕様・使用方法
-- [削除済み動画ブラックリスト](v2/docs/Technical/DELETED_VIDEO_CACHE.md) - ブラックリスト機能、API リファレンス
-- [セッション実装レポート](v2/docs/Guides/SESSION_REPORTS.md) - 2025-12-17～18 実装内容・テスト結果
+- [テンプレートシステム](v3/docs/Technical/TEMPLATE_SYSTEM.md) - テンプレートファイルの仕様・使用方法
+- [削除済み動画除外リスト](v3/docs/Technical/DELETED_VIDEO_CACHE.md) - 除外動画リスト機能、API リファレンス
+- [デバッグ用ユーティリティ](v3/docs/Technical/DEBUGGING_UTILITIES.md) - デバッグスクリプト、検証スクリプトの使用方法
 
 ### 📋 ユーザーガイド・トラブルシューティング
 
-- [デバッグ・ドライラン](v2/docs/Guides/DEBUG_DRY_RUN_GUIDE.md) - トラブルシューティング・操作方法
-- [画像リサイズガイド](v2/docs/Guides/IMAGE_RESIZE_GUIDE.md) - 画像処理の使い方
-- [セッション実装レポート](v2/docs/Guides/SESSION_REPORTS.md) - 2025-12-17～18 実装内容・テスト結果
+- [デバッグ・ドライラン](v3/docs/Guides/DEBUG_DRY_RUN_GUIDE.md) - トラブルシューティング・操作方法
+- [画像リサイズガイド](v3/docs/Guides/IMAGE_RESIZE_GUIDE.md) - 画像処理の使い方
 
 ### 🚀 その他・参考資料
 
-- [将来ロードマップ](v2/docs/References/FUTURE_ROADMAP_v2.md) - v3+ の計画概要
-- [Rich Text Facet 仕様](v2/docs/Technical/RICHTEXT_FACET_SPECIFICATION.md) - URL・ハッシュタグリンク化の技術仕様
-- [AssetManager 統合ガイド](v2/docs/Technical/ASSET_MANAGER_INTEGRATION_v2.md) - Asset 自動配置・プラグイン連携の詳細
-- [Asset ディレクトリ README](v2/Asset/README.md) - ユーザー向けの Asset 管理方法
-
-### 📂 全ドキュメント構成
-
-ドキュメントは以下のカテゴリに整理されています：
-
-- **Technical/** - 技術資料（アーキテクチャ・仕様・設計）
-- **Guides/** - ユーザーガイド（実装手順・操作方法）
-- **References/** - 参考資料（ロードマップ・構想案）
-- **Local/** - ローカル作業用（内部用・非公開推奨）
-
-詳細は [v2/docs/README_GITHUB_v2.md](v2/docs/README_GITHUB_v2.md) を参照してください。
+- [将来ロードマップ](v3/docs/References/FUTURE_ROADMAP_v3.md) - v3+ の計画概要
+- [Rich Text Facet 仕様](v3/docs/Technical/RICHTEXT_FACET_SPECIFICATION.md) - URL・ハッシュタグリンク化の技術仕様
+- [AssetManager 統合ガイド](v3/docs/Technical/ASSET_MANAGER_INTEGRATION_v3.md) - Asset 自動配置・プラグイン連携の詳細
 
 ## 設定ファイルについて
 
@@ -232,7 +248,7 @@ python main_v2.py
 - **error.log**: エラーのみを記録
 - その他のログファイル：プラグイン導入時に自動生成
 
-詳細は [DEBUG ログとドライラン機能 ガイド](v2/docs/Guides/DEBUG_DRY_RUN_GUIDE.md) を参照してください。
+詳細は [DEBUG ログとドライラン機能 ガイド](v3/docs/Guides/DEBUG_DRY_RUN_GUIDE.md) を参照してください。
 
 ## ライセンス
 
@@ -240,6 +256,7 @@ python main_v2.py
 
 このプロジェクトは **GPL License v2** で提供されます。
 
+- **v3/**: アプリケーション本体（GPLv2）
 - **v2/**: アプリケーション本体（GPLv2）
 - **v1/**: レガシー版アプリケーション（GPLv2）
 - **OLD_App/**: 旧バージョン（GPLv2）
@@ -254,7 +271,7 @@ python main_v2.py
 - **Issue 報告**: 不具合や機能リクエストは Issue セクションでお願いします
 - **Pull Request**: 改善提案や機能追加は PR でお願いします
 
-詳細な開発ガイドは [CONTRIBUTING.md](v2/CONTRIBUTING.md)を参照してください。
+詳細な開発ガイドは [v3/CONTRIBUTING.md](v3/CONTRIBUTING.md)（v3）または [v2/CONTRIBUTING.md](v2/CONTRIBUTING.md)（v2）を参照してください。
 
 ## サポート
 
@@ -262,11 +279,25 @@ python main_v2.py
 
 ---
 
-**最終更新**: 2025-12-18
+**最終更新**: 2025-12-19
 
-## 🎉 v2.3.0 完了状況
+## 🎉 v3.3.0 プロジェクト整理完了
 
-YouTubeLiveプラグインの実装が完全に完了しました。以下の機能がv2で確立されました：
+### デバッグ・ユーティリティスクリプトの統合（2025-12-19）
+
+デバッグ・検証・分析スクリプトを `v3/utils/` 配下に体系的に整理しました：
+
+- ✅ **database/**: DB操作・検証スクリプト（5ファイル）
+- ✅ **cache/**: キャッシュ管理スクリプト（2ファイル）
+- ✅ **classification/**: 分類・検証スクリプト（4ファイル）
+- ✅ **analysis/**: API・環境検証スクリプト（4ファイル）
+- ✅ **DEBUGGING_UTILITIES.md**: 包括的ドキュメント（200+ 行）
+
+詳細は [v3/utils/DEBUGGING_UTILITIES.md](v3/utils/DEBUGGING_UTILITIES.md) を参照してください。
+
+### v3.3.0 YouTubeLiveプラグイン実装完了（2025-12-18）
+
+YouTubeLiveプラグインの実装が完全に完了しました。以下の機能がv3で確立されました：
 
 - ✅ YouTube Live/Archive/Normal判定ロジック
 - ✅ Live開始/終了の自動ポーリング・自動投稿
@@ -274,4 +305,22 @@ YouTubeLiveプラグインの実装が完全に完了しました。以下の機
 - ✅ DB拡張（live_status, content_type）
 - ✅ 全テスト完了（単体 12、統合 10）
 
-詳細は [v2/docs/References/V2_COMPLETION_PLAN.md](v2/docs/References/V2_COMPLETION_PLAN.md) を参照してください。
+### v3.0.0 初期状態投入（2025-12-18）
+
+次世代版v3が本番環境に投入されました（初期状態）：
+
+- 🚀 **GUI 1,363 行拡張**: 複合フィルタリング・ドラッグドロップ対応
+- 🚀 **画像処理パイプライン（691 行）**: サムネイル自動取得・最適化・キャッシング
+- 🚀 **プラグイン 5 個**: Bluesky・YouTube Live・YouTube API・Niconico・Logging
+- 🚀 **マルチプラットフォーム準備**: YouTube・Niconico・Twitch 対応予定
+- 🚀 **ドキュメント統一**: 30+ ファイルを 4 カテゴリ体系に再構成
+
+### バージョン選択ガイド
+
+| バージョン | 推奨用途 | 特徴 | 状態 |
+|:--|:--|:--|:--|
+| **v3（推奨）** | 新規ユーザー、複合投稿 | 最新機能、複合プラグイン、拡張 GUI | 🚀 本番（最新） |
+| **v2（安定版）** | 既存ユーザー、シンプル運用 | 安定動作、YouTube Live 対応 | ✅ 本番（安定） |
+| **v1（レガシー）** | 参考・学習用 | 最初期実装 | 📚 参考用 |
+
+詳細は [v3/docs/References/FUTURE_ROADMAP_v3.md](v3/docs/References/FUTURE_ROADMAP_v3.md) を参照してください。

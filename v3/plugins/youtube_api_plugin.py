@@ -247,6 +247,12 @@ class YouTubeAPIPlugin(NotificationPlugin):
         self.video_detail_cache[video_id] = details
         self.cache_timestamps[video_id] = time.time()
 
+    def update_video_detail_cache(self, video_id: str, video_details: dict):
+        """動画詳細キャッシュを更新"""
+        self.video_detail_cache[video_id] = video_details
+        self.cache_timestamps[video_id] = time.time()
+        self._save_video_detail_cache()
+
     def clear_video_detail_cache(self) -> None:
         """ビデオ詳細キャッシュをクリア"""
         self.video_detail_cache.clear()
@@ -598,8 +604,15 @@ class YouTubeAPIPlugin(NotificationPlugin):
         # 終了時にキャッシュを保存
         self._save_video_detail_cache()
 
+    def poll_and_update_cache(self):
+        """ポーリングごとにキャッシュを更新"""
+        for video_id, video_details in self.video_detail_cache.items():
+            # APIから最新情報を取得（仮の関数名: fetch_video_details）
+            updated_details = self.fetch_video_details(video_id)
+            if updated_details:
+                self.update_video_detail_cache(video_id, updated_details)
+
 
 def get_plugin():
     """PluginManager から取得するためのヘルパー"""
     return YouTubeAPIPlugin()
-

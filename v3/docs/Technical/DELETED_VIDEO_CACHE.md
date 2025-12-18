@@ -1,4 +1,4 @@
-﻿# v3 削除済み動画ブラックリスト - 完全ガイド
+﻿# v3 削除済み動画除外リスト - 完全ガイド
 
 **対象バージョン**: v3.1.1+
 **最終更新**: 2025-12-18
@@ -26,8 +26,8 @@
 ユーザーが GUI から「削除」した動画が、次の RSS チェック時に「新規動画」と誤認されて再度 DB に挿入される
 
 **解決**:
-- ✅ ブラックリスト JSON（`data/deleted_videos.json`）で削除済み ID を管理
-- ✅ RSS 取得時にブラックリストをチェック → 該当動画をスキップ
+- ✅ 除外動画リスト JSON（`data/deleted_videos.json`）で削除済み ID を管理
+- ✅ RSS 取得時に除外動画リストをチェック → 該当動画をスキップ
 - ✅ サービス別（YouTube/Niconico）ID 分類対応
 - ✅ JSON 破損時も自動修復でアプリ落とさない
 
@@ -35,8 +35,8 @@
 
 | 機能 | 説明 |
 |:--|:--|
-| **ブラックリスト管理** | JSON ファイルで削除済み ID を永続化 |
-| **自動チェック** | RSS 取得時に自動的にブラックリストと照合 |
+| **除外動画リスト管理** | JSON ファイルで削除済み ID を永続化 |
+| **自動チェック** | RSS 取得時に自動的に除外動画リストと照合 |
 | **エラー耐性** | JSON 破損時も自動修復、アプリ落とさない |
 | **ロギング** | 削除・追加時に詳細ログを記録 |
 | **サービス分類** | YouTube、Niconico など複数サービスに対応 |
@@ -52,7 +52,7 @@
    ↓
 【ユーザー操作】GUI の「削除」ボタンをクリック
    ↓
-【状態 2】DB から削除、ブラックリスト JSON に追記
+【状態 2】DB から削除、除外動画リスト JSON に追記
    └─ data/deleted_videos.json:
       {
         "youtube": ["yt123abc"],
@@ -60,7 +60,7 @@
       }
    ↓
 【状態 3】次の RSS チェック時、同じ動画が再度来ても
-   └─ ブラックリストに存在 → 「削除済み」と判定 → DB に入れない
+   └─ 除外動画リストに存在 → 「削除済み」と判定 → DB に入れない
 ```
 
 ### 必須要件
@@ -82,10 +82,10 @@
 
 ```
 v3/
-├── deleted_video_cache.py        ← 新規作成: ブラックリスト管理
-├── database.py                    ← 修正: delete_video() 時にブラックリストに追記
-├── youtube_rss.py                 ← 修正: 新着判定前にブラックリスト確認
-└── gui_v3.py                      ← 修正: 削除時にブラックリスト連携
+├── deleted_video_cache.py        ← 新規作成: 除外動画リスト管理
+├── database.py                    ← 修正: delete_video() 時に除外動画リストに追記
+├── youtube_rss.py                 ← 修正: 新着判定前に除外動画リスト確認
+└── gui_v3.py                      ← 修正: 削除時に除外動画リスト連携
 ```
 
 ### ファイル構成
@@ -93,7 +93,7 @@ v3/
 #### deleted_video_cache.py（新規作成）
 
 **責務**:
-- ブラックリスト JSON の読み書き
+- 除外動画リスト JSON の読み書き
 - サービス別（youtube/niconico）の ID 管理
 - エラー耐性（JSON 破損時も継続動作）
 
@@ -129,14 +129,14 @@ cache = get_deleted_video_cache()
 
 #### `is_deleted(video_id: str, source: str = "youtube") -> bool`
 
-動画 ID がブラックリストに含まれているか確認
+動画 ID が除外動画リストに含まれているか確認
 
 **パラメータ**:
 - `video_id` (str): チェック対象の動画 ID
 - `source` (str): サービス名（"youtube", "niconico", "twitch"）
 
 **戻り値**:
-- `True`: ブラックリストに含まれている
+- `True`: 除外動画リストに含まれている
 - `False`: 含まれていない
 
 **例**:
@@ -149,7 +149,7 @@ else:
 
 #### `add_deleted_video(video_id: str, source: str = "youtube") -> bool`
 
-ブラックリストに ID を追加
+除外動画リストに ID を追加
 
 **パラメータ**:
 - `video_id` (str): 追加対象の動画 ID
@@ -162,14 +162,14 @@ else:
 **例**:
 ```python
 if cache.add_deleted_video("yt123abc", source="youtube"):
-    logger.info("✅ ブラックリストに追加しました")
+    logger.info("✅ 除外動画リストに追加しました")
 else:
-    logger.warning("⚠️ 既にブラックリストに含まれています")
+    logger.warning("⚠️ 既に除外動画リストに含まれています")
 ```
 
 #### `remove_deleted_video(video_id: str, source: str = "youtube") -> bool`
 
-ブラックリストから ID を削除
+除外動画リストから ID を削除
 
 **パラメータ**:
 - `video_id` (str): 削除対象の動画 ID
@@ -182,9 +182,9 @@ else:
 **例**:
 ```python
 if cache.remove_deleted_video("yt123abc", source="youtube"):
-    logger.info("✅ ブラックリストから削除しました")
+    logger.info("✅ 除外動画リストから削除しました")
 else:
-    logger.warning("⚠️ ブラックリストに含まれていません")
+    logger.warning("⚠️ 除外動画リストに含まれていません")
 ```
 
 #### `get_deleted_count(source: str = None) -> int`
@@ -207,7 +207,7 @@ print(f"削除済み: YouTube {yt_count}, Niconico {nico_count}, 合計 {total_c
 
 #### `clear_all_deleted() -> bool`
 
-全ブラックリストをクリア
+全除外動画リストをクリア
 
 **戻り値**:
 - `True`: クリア成功
@@ -216,9 +216,9 @@ print(f"削除済み: YouTube {yt_count}, Niconico {nico_count}, 合計 {total_c
 **例**:
 ```python
 if cache.clear_all_deleted():
-    logger.info("✅ ブラックリストをクリアしました")
+    logger.info("✅ 除外動画リストをクリアしました")
 else:
-    logger.error("❌ ブラックリストのクリアに失敗")
+    logger.error("❌ 除外動画リストのクリアに失敗")
 ```
 
 ---
@@ -229,11 +229,11 @@ else:
 
 **変更内容**:
 
-削除時に自動的にブラックリストに登録
+削除時に自動的に除外動画リストに登録
 
 ```python
 def delete_video(self, video_id: str) -> bool:
-    """動画を削除（ブラックリスト連携付き）"""
+    """動画を削除（除外動画リスト連携付き）"""
 
     try:
         # 削除前に source を取得
@@ -250,11 +250,11 @@ def delete_video(self, video_id: str) -> bool:
         cursor.execute("DELETE FROM posts WHERE video_id = ?", (video_id,))
         self._get_connection().commit()
 
-        # ★ 新: ブラックリストに追加
+        # ★ 新: 除外動画リストに追加
         cache = get_deleted_video_cache()
         cache.add_deleted_video(video_id, source=source)
 
-        logger.info(f"✅ 削除完了: {video_id}（ブラックリスト登録済み）")
+        logger.info(f"✅ 削除完了: {video_id}（除外動画リスト登録済み）")
         return True
 
     except Exception as e:
@@ -266,7 +266,7 @@ def delete_video(self, video_id: str) -> bool:
 
 **変更内容**:
 
-新着判定前にブラックリストをチェック
+新着判定前に除外動画リストをチェック
 
 ```python
 def save_to_db(self, videos: list) -> tuple:
@@ -279,7 +279,7 @@ def save_to_db(self, videos: list) -> tuple:
         video_id = video["video_id"]
         source = video.get("source", "youtube")
 
-        # ★ 新: ブラックリスト確認
+        # ★ 新: 除外動画リスト確認
         cache = get_deleted_video_cache()
         if cache.is_deleted(video_id, source=source):
             logger.debug(f"⏭️ スキップ（削除済み）: {video_id}")
@@ -302,7 +302,7 @@ def save_to_db(self, videos: list) -> tuple:
 
 **変更内容**:
 
-GUI から削除時に自動的にブラックリストに登録（database.py の連携で自動化）
+GUI から削除時に自動的に除外動画リストに登録（database.py の連携で自動化）
 
 ```python
 def on_delete_video(self):
@@ -314,7 +314,7 @@ def on_delete_video(self):
 
     video_id = self.video_list.item(selected_item, "values")[0]
 
-    # DB から削除（自動的にブラックリスト登録される）
+    # DB から削除（自動的に除外動画リスト登録される）
     if self.db.delete_video(video_id):
         self.refresh_video_list()
         logger.info(f"✅ 削除完了: {video_id}")
@@ -341,9 +341,9 @@ rm -rf logs/*
 python main_v3.py
 ```
 
-### テスト 1: ブラックリスト JSON 初期化
+### テスト 1: 除外動画リスト JSON 初期化
 
-**目的**: アプリケーション起動時にブラックリスト JSON が正しく作成されるか
+**目的**: アプリケーション起動時に除外動画リスト JSON が正しく作成されるか
 
 **実行**:
 
@@ -352,7 +352,7 @@ python main_v3.py
 python main_v3.py
 
 # ログで確認
-grep "ブラックリスト" logs/app.log
+grep "除外動画リスト" logs/app.log
 
 # JSON ファイルを確認
 cat data/deleted_videos.json
@@ -387,9 +387,9 @@ videos = db.get_all_videos(); print(f'合計: {len(videos)} 件')"
 - ✅ 新規動画が DB に追加される
 - ✅ ログに「保存完了」メッセージ
 
-### テスト 3: 動画削除とブラックリスト登録
+### テスト 3: 動画削除と除外動画リスト登録
 
-**目的**: GUI から動画を削除したとき、ブラックリストに正しく登録されるか
+**目的**: GUI から動画を削除したとき、除外動画リストに正しく登録されるか
 
 **実行**:
 
@@ -398,7 +398,7 @@ videos = db.get_all_videos(); print(f'合計: {len(videos)} 件')"
 # 2. 「🗑️ 削除」ボタンをクリック
 # 3. ログで確認
 grep "削除完了" logs/app.log
-grep "ブラックリスト登録" logs/app.log
+grep "除外動画リスト登録" logs/app.log
 
 # 4. JSON ファイルを確認
 cat data/deleted_videos.json
@@ -410,7 +410,7 @@ cat data/deleted_videos.json
 - ✅ `data/deleted_videos.json` にビデオ ID が追加される
 - ✅ ログに削除メッセージが出力される
 
-### テスト 4: ブラックリスト動画のスキップ
+### テスト 4: 除外動画リスト動画のスキップ
 
 **目的**: 削除済み動画が RSS で再度来ても、DB に追加されないか
 
@@ -441,7 +441,7 @@ video = db.get_video('yt123abc'); print('DB に含まれている' if video else
 **ログ確認**:
 
 ```bash
-grep "ブラックリスト" logs/app.log
+grep "除外動画リスト" logs/app.log
 grep "ERROR" logs/app.log | grep "deleted_videos"
 ```
 
@@ -461,10 +461,10 @@ grep "ERROR" logs/app.log | grep "deleted_videos"
 # 1. JSON ファイルが正しく作成されているか
 cat data/deleted_videos.json
 
-# 2. 削除時にブラックリストに登録されているか
+# 2. 削除時に除外動画リストに登録されているか
 grep -A 5 "削除完了" logs/app.log
 
-# 3. RSS チェック時にブラックリストを確認しているか
+# 3. RSS チェック時に除外動画リストを確認しているか
 grep "スキップ（削除済み）" logs/app.log
 ```
 
@@ -507,4 +507,3 @@ rm -f data/deleted_videos.json
 **作成日**: 2025-12-18
 **最後の修正**: 2025-12-18
 **ステータス**: ✅ 完成・検証済み
-
