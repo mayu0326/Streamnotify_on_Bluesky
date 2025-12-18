@@ -146,22 +146,27 @@ v2/
 │   │   ├── DELETED_VIDEO_CACHE.md
 │   │   ├── RICHTEXT_FACET_SPECIFICATION.md
 │   │   ├── ASSET_MANAGER_INTEGRATION_v2.md
+│   │   ├── YOUTUBE_API_CACHING_IMPLEMENTATION.md
 │   │   ├── ModuleList_v2.md
 │   │   ├── DEVELOPMENT_GUIDELINES.md
 │   │   ├── SETTINGS_OVERVIEW.md
 │   │   └── VERSION_MANAGEMENT.md
-│   ├── Guides/                    # ユーザーガイド・実装手順
+│   ├── Guides/                    # ユーザーガイド・使い方
+│   │   ├── DEBUG_DRY_RUN_GUIDE.md        # デバッグ・トラブルシューティング
+│   │   ├── IMAGE_RESIZE_GUIDE.md         # 画像処理の使い方
 │   │   └── SESSION_REPORTS.md            # 進捗記録・セッションレポート
 │   ├── References/                # 参考資料
 │   │   ├── FUTURE_ROADMAP_v2.md
 │   │   ├── YouTube新着動画app（初期構想案）.md
 │   │   └── 投稿テンプレートの引数.md
-│   └── ARCHIVE/                   # 完了済みプロジェクト（参考用）
-│       ├── youtube_live_classification_plan.md
-│       ├── YOUTUBE_API_CACHING_IMPLEMENTATION.md
-│       ├── TEMPLATE_IMPLEMENTATION_CHECKLIST.md
-│       ├── DEBUG_DRY_RUN_GUIDE.md
-│       └── IMAGE_RESIZE_GUIDE.md
+│   ├── ARCHIVE/                   # 実装計画・記録（完了後）
+│   │   ├── TEMPLATE_IMPLEMENTATION_CHECKLIST.md
+│   │   ├── youtube_live_classification_plan.md
+│   │   └── DOCS_CLEANUP_COMPLETION_REPORT.md
+│   └── Local/                     # AI生成レポート・一時作業ファイル
+│       ├── LINK_CORRECTION_REPORT.md
+│       ├── README_LINK_VERIFICATION_REPORT.md
+│       └── （その他作業用一時ファイル）
 │
 └── __pycache__/            # Python キャッシュ（Git 管理外）
 ```
@@ -349,14 +354,13 @@ Asset/
 - [**AssetManager 統合ガイド**](Technical/ASSET_MANAGER_INTEGRATION_v2.md) - Asset 自動配置・プラグイン連携
 
 ### 📖 **Guides/** - ユーザーガイド・実装手順
+- [**デバッグ・ドライラン**](Guides/DEBUG_DRY_RUN_GUIDE.md) - トラブルシューティング・操作方法
+- [**画像リサイズガイド**](Guides/IMAGE_RESIZE_GUIDE.md) - 画像処理の使い方
 - [**セッション実装レポート**](Guides/SESSION_REPORTS.md) - 2025-12-17～18 実装内容・テスト結果
 
-### 📦 **ARCHIVE/** - 完了済みプロジェクト（参考用）
-- [**デバッグ・ドライラン**](ARCHIVE/DEBUG_DRY_RUN_GUIDE.md) - トラブルシューティング
-- [**テンプレート実装チェックリスト**](ARCHIVE/TEMPLATE_IMPLEMENTATION_CHECKLIST.md) - テンプレート導入手順（完了済み）
-- [**画像リサイズガイド**](ARCHIVE/IMAGE_RESIZE_GUIDE.md) - 画像処理の使用方法（完了済み）
-- [**YouTube API キャッシング実装**](ARCHIVE/YOUTUBE_API_CACHING_IMPLEMENTATION.md) - キャッシング機能（完了済み）
-- [**YouTube Live 判定ロジック**](ARCHIVE/youtube_live_classification_plan.md) - Live / Archive 分類仕様（完了済み）
+### 📦 **ARCHIVE/** - 完了済みプロジェクト（実装計画・記録）
+- [**テンプレート実装チェックリスト**](ARCHIVE/TEMPLATE_IMPLEMENTATION_CHECKLIST.md) - テンプレート導入の実装記録
+- [**YouTube Live 判定ロジック計画**](ARCHIVE/youtube_live_classification_plan.md) - Live 分類実装計画（完了）
 
 ### 📑 **References/** - 参考資料
 - [**将来ロードマップ**](References/FUTURE_ROADMAP_v2.md) - v3+ の計画概要
