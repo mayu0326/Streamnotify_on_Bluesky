@@ -1,4 +1,4 @@
-﻿# StreamNotify on Bluesky - v3
+# StreamNotify on Bluesky - v3
 
 > **対象バージョン**: v3.0.0（初期実装）
 > **最終更新**: 2025-12-19
@@ -294,7 +294,7 @@ python main_v3.py
 
 | プラグイン | 機能 | 状態 |
 |-----------|------|------|
-| `youtube_live_plugin` | YouTube ライブ配信・アーカイブの判定 | ✅ v3.3.0 実装完了 (2025-12-18) |
+| `youtube_live_plugin` | YouTube ライブ配信・アーカイブの判定 | ✅ v3.3.0 実装完了予定 |
 | `niconico_plugin` | ニコニコ動画 RSS 監視 | 🔜 v3.x 予定 |
 | `youtube_api_plugin` | YouTube Data API 連携（詳細情報取得） | 🔜 v3.x 予定 |
 | `logging_plugin` | ロギング統合管理 | 🔜 v3.x 予定 |
@@ -306,19 +306,9 @@ python main_v3.py
 ## Assetディレクトリとテンプレート・画像管理
 
 - `Asset/` ディレクトリに全サービス・全プラグイン用のテンプレート・画像を保管します。
-- **起動時に自動配置**: アプリケーション起動時（`main_v3.py` 実行時）、必要なテンプレート・画像が `Asset/` から本番ディレクトリに自動コピーされます。  \
-※初回起動時のみ配置され、以降の起動では既存ファイルがある場合はコピーされません。
+- **起動時に自動配置**: アプリケーション起動時（`main_v3.py` 実行時）、必要なテンプレート・画像が `Asset/` から本番ディレクトリに自動コピーされます。
 - **既存ファイル保護**: 既に存在するファイルは上書きされません（ユーザーの手動編集を保護）。
 - **詳細な配置ログ**: ログ（`logs/app.log`）に配置されたファイル一覧が記録されます。
-
-### 動作例: YouTubeLiveプラグイン導入時
-
-1. YouTubeLive プラグイン読み込み時に以下が自動コピーされます：
-   - `Asset/templates/youtube/yt_online_template.txt` → `templates/youtube/yt_online_template.txt`
-   - `Asset/templates/youtube/yt_offline_template.txt` → `templates/youtube/yt_offline_template.txt`
-   - `Asset/images/youtube/` 配下の画像ファイル群
-
-2. 追加済みファイルはプラグイン削除後も残ります（手動削除が必要）
 
 ### Asset ディレクトリ構成
 
@@ -340,10 +330,6 @@ Asset/
 
 詳細な情報は以下をご覧ください：
 
-## 📚 ドキュメント構成
-
-ドキュメントは以下の4つのカテゴリに分類されています：
-
 ### 🔧 **Technical/** - 技術資料（開発者向け）
 - [**アーキテクチャと設計方針**](Technical/ARCHITECTURE_AND_DESIGN.md) - システム構成、プラグインアーキテクチャ、データベース設計
 - [**モジュール一覧**](Technical/ModuleList_v3.md) - 全コンポーネントの説明
@@ -357,20 +343,9 @@ Asset/
 ### 📖 **Guides/** - ユーザーガイド・実装手順
 - [**デバッグ・ドライラン**](Guides/DEBUG_DRY_RUN_GUIDE.md) - トラブルシューティング・操作方法
 - [**画像リサイズガイド**](Guides/IMAGE_RESIZE_GUIDE.md) - 画像処理の使い方
-- [**セッション実装レポート**](Guides/SESSION_REPORTS.md) - 2025-12-17～18 実装内容・テスト結果
-
-### 📦 **ARCHIVE/** - 完了済みプロジェクト（実装計画・記録）
-- [**テンプレート実装チェックリスト**](ARCHIVE/TEMPLATE_IMPLEMENTATION_CHECKLIST.md) - テンプレート導入の実装記録
-- [**YouTube Live 判定ロジック計画**](ARCHIVE/youtube_live_classification_plan.md) - Live 分類実装計画（完了）
 
 ### 📑 **References/** - 参考資料
 - [**将来ロードマップ**](References/FUTURE_ROADMAP_v3.md) - v3+ の計画概要
-- [**YouTube新着動画app（初期構想案）**](References/YouTube新着動画app（初期構想案）.md) - 初期構想資料
-- [**投稿テンプレートの引数**](References/投稿テンプレートの引数.md) - テンプレート引数リファレンス
-
-### 🔒 **Local/** - ローカル作業用（内部用・非公開）
-ドキュメント統合レポート、分析結果、進捗トラッキング等
-- Git 公開時は `.gitignore` で除外推奨
 
 ---
 
@@ -381,27 +356,6 @@ Asset/
 **注意**: `settings.env` には個人の ID・パスワード・API キーを記載するため、Git による公開リポジトリには含めないでください（`.gitignore` で除外済み）。
 
 設定編集後は、アプリケーションを再起動して反映させます。
-
----
-
-## 制限事項
-
-### RSS方式の制限
-
-- YouTubeの仕様により、RSSで取得可能な動画は通常動画のみです。限定公開、非公開動画は含みません。
-- 初回起動後の初回取得で取得されるのは、本アプリ導入以前に公開された通常動画最大15本です。それ以上の過去動画の遡及取得はRSSでは取得出来ません。
-- ライブ配信・アーカイブの判別は **✅ YouTube Live判定プラグインで対応完了（v3.3.0）**
-
-### プラグイン未導入時の制限
-
-| 機能 | バニラ状態 | YouTubeLiveプラグイン | その他プラグイン |
-|-----|----------|--------|-----|
-| YouTube 新着動画 | ✅ 対応 | ✅ 対応 | ✅ 対応 |
-| YouTube ライブ判定 | ❌ 未対応 | ✅ **実装完了** (v3.3.0) | - |
-| YouTube Live 自動投稿 | ❌ 未対応 | ✅ **実装完了** (v3.3.0) | - |
-| ニコニコ動画監視 | ❌ 未対応 | - | ✅ ニコニコプラグイン |
-| 詳細情報取得 | ❌ 未対応 | - | ✅ YouTube APIプラグイン |
-| 拡張ロギング | ✅ 基本 | ✅ 基本 | ✅ ロギングプラグイン |
 
 ---
 
@@ -419,134 +373,11 @@ Asset/
 - Bluesky のアプリパスワードは Web 版の設定画面から生成する必要があります
 - `logs/app.log` でエラーメッセージを確認してください
 
-### ログの見方
-
-#### ログファイルの場所
-
-ログファイルは `logs/` ディレクトリに出力されます：
-
-**バニラ状態（プラグイン未導入時）:**
-- `logs/app.log` - アプリケーション全体のログ（起動、RSS取得、投稿試行など）
-- `logs/error.log` - エラーのみを記録
-
-**プラグイン導入時:**
-- `logs/app.log` - アプリケーション全体のログ
-- `logs/post.log` - Bluesky 投稿成功ログ
-- `logs/post_error.log` - 投稿エラーログ
-- `logs/audit.log` - 監査ログ（GUI操作履歴など）
-- `logs/youtube.log` - YouTube RSS 監視ログ
-- `logs/niconico.log` - ニコニコ監視ログ（ニコニコプラグイン導入時）
-- `logs/gui.log` - GUI 操作ログ
-
-#### ログ確認のコツ
-
-1. **最新のログを確認する**
-   ```bash
-   # Windows PowerShell
-   Get-Content logs/app.log -Tail 50
-
-   # Linux / WSL
-   tail -50 logs/app.log
-   ```
-
-2. **エラーのみを表示**
-   ```bash
-   # Windows PowerShell
-   Select-String "ERROR|CRITICAL" logs/app.log
-
-   # Linux / WSL
-   grep -E "ERROR|CRITICAL" logs/app.log
-   ```
-
-3. **特定の時刻のログを確認**
-   ```bash
-   # 例: 2025-12-18 のログのみ表示
-   Select-String "2025-12-18" logs/app.log  # Windows
-   grep "2025-12-18" logs/app.log           # Linux
-   ```
-
-詳細は [DEBUG_DRY_RUN_GUIDE.md](Guides/DEBUG_DRY_RUN_GUIDE.md) を参照してください.
-
----
-
 ## ライセンス
 
-このプロジェクトは **GPL License v2** で提供されます。詳細は [LICENSE](LICENSE) を参照してください。
+このプロジェクトは **GPL License v2** で提供されます。詳細は [LICENSE](../../LICENSE) を参照してください。
 
 ---
-
-## 開発・貢献
-
-このプロジェクトは GitHub でオープンソース化されています。
-
-- **Issue 報告**: 不具合や機能リクエストは Issue セクションでお願いします
-- **Pull Request**: 改善提案や機能追加は PR でお願いします
-
-詳細な開発ガイドは [CONTRIBUTING.md](./CONTRIBUTING.md) を参照してください。
-
----
-
-## Issue の出し方
-
-問題が解決しない場合は、GitHub の Issue で報告いただけます。以下の情報があると対応が速くなります：
-
-### Issue 報告時に含めるべき情報
-
-1. **実行環境**
-   - OS（Windows 10/11、Ubuntu 20.04 など）
-   - Python バージョン（`python --version`）
-   - v3 のブランチ/コミット（`git log -1 --oneline`）
-
-2. **設定情報（センシティブ情報は除外）**
-   - 動作モード（`APP_MODE` の値）
-   - プラグイン導入状況（導入済みプラグイン一覧）
-   - `DEBUG_MODE` が有効か
-
-3. **問題の説明**
-   - 何をしようとしたか
-   - 実際に何が起きたか
-   - いつから問題が発生しているか
-
-4. **ログファイル**
-   - `logs/app.log` の関連部分（最後の 50～100 行が目安）
-   - エラーが発生している場合は、エラーメッセージ全体
-   - **個人情報（チャンネルID、ユーザー名など）は削除してください**
-
-5. **再現手順**
-   - 問題を再現するための具体的な手順
-   - 例：「GUI で『投稿設定』をクリックしたのに投稿設定画面が表示されない」
-
-### Issue 報告のテンプレート
-
-```markdown
-## 問題の説明
-[簡潔に説明してください]
-
-## 実行環境
-- OS: [例: Windows 11]
-- Python: [例: 3.10.5]
-- 導入プラグイン: [例: YouTube API プラグイン、ロギングプラグイン]
-
-## 動作モード
-- APP_MODE: [例: auto_post]
-- DEBUG_MODE: [有効/無効]
-
-## 再現手順
-1. ...
-2. ...
-
-## ログ出力
-[logs/app.log の関連部分を貼り付け]
-
-## 期待される動作
-[本来はこうなるべきという動作]
-```
-
-### Issue 報告時の注意点
-- ⚠️ ログに含まれる個人情報（チャンネルID、ユーザー名など）は削除してください
-- 🔒 `settings.env` の内容は絶対に共有しないでください
-- 📋 複数の問題がある場合は、Issue を分けて報告してください
-- ✅ 既存の Issue に同じ問題がないか確認してから報告してください
 
 ## サポート
 
@@ -554,26 +385,4 @@ Asset/
 
 ---
 
-## 開発・貢献
-
-このプロジェクトへの貢献を歓迎します！
-
-- **貢献ガイド**: 詳細な手順は [CONTRIBUTING.md](../CONTRIBUTING.md) を参照してください
-- **バグ報告**: Issue で既に報告されていないか確認してから、新しい Issue を開いてください
-- **機能リクエスト**: 新しいアイデアや改善提案も Issue で議論できます
-
----
-
-**最終更新**: 2025-12-18
-
-## 🎉 v3.3.0 完了状況
-
-YouTubeLiveプラグインの実装が完全に完了しました。以下の機能がv3で確立されました：
-
-- ✅ YouTube Live/Archive/Normal判定ロジック
-- ✅ Live開始/終了の自動ポーリング・自動投稿
-- ✅ テンプレート選択・投稿（yt_online_template.txt / yt_offline_template.txt）
-- ✅ DB拡張（live_status, content_type）
-- ✅ 全テスト完了（単体 12、統合 10）
-
-詳細は [v3_COMPLETION_PLAN.md](References/v3_COMPLETION_PLAN.md) を参照してください。
+**最終更新**: 2025-12-19
