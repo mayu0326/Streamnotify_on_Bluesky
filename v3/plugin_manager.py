@@ -211,6 +211,18 @@ class PluginManager:
         """
         return self.loaded_plugins.copy()
 
+    def get_plugin(self, plugin_name: str) -> Optional[NotificationPlugin]:
+        """
+        指定されたプラグインを取得
+
+        Args:
+            plugin_name: プラグイン名
+
+        Returns:
+            NotificationPlugin: プラグイン（見つからない場合は None）
+        """
+        return self.enabled_plugins.get(plugin_name) or self.loaded_plugins.get(plugin_name)
+
     def post_video_with_all_enabled(self, video: dict, dry_run: bool = False) -> Dict[str, bool]:
         """
         すべての有効なプラグインで動画をポスト
@@ -246,4 +258,3 @@ class PluginManager:
                 results[plugin_name] = False
 
         return results
-
