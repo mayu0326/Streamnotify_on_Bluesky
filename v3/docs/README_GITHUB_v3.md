@@ -1,11 +1,10 @@
 # StreamNotify on Bluesky - v3
 
-> **対象バージョン**: v2.0.0（初期実装）
+> **対象バージョン**: v3.0.0（初期実装）
 > **最終更新**: 2025-12-19
-> **注記**: YouTubeLiveプラグイン完成時に v2.3.0 へ更新予定
 
 YouTube チャンネルの新着動画を Bluesky に自動投稿するアプリケーションです。
-（Twitch / ニコニコなどの対応はプラグインで拡張予定）
+（Twitch の対応はプラグインで拡張予定）
 
 ## 概要
 
@@ -30,7 +29,7 @@ YouTube チャンネルの新着動画を Bluesky に自動投稿するアプリ
 ### 1. クローン＆セットアップ
 
 ```bash
-git clone https://github.com/yourusername/Streamnotify_on_Bluesky.git
+git clone https://git.neco-server.net/mayuneco/Streamnotify_on_Bluesky
 cd Streamnotify_on_Bluesky/v3
 
 # 仮想環境作成
@@ -176,6 +175,10 @@ v3/
 
 前のバージョンです。参考用に保管されています。
 
+### v2（安定版、既存ユーザー向け）
+
+現行の安定版です。v3 への移行を推奨しますが、既存ユーザーは v2 を継続利用できます。
+
 ---
 
 ## 必要な環境
@@ -191,7 +194,7 @@ v3/
 ### 1. リポジトリをクローン
 
 ```bash
-git clone https://github.com/yourusername/Streamnotify_on_Bluesky.git
+git clone https://git.neco-server.net/mayuneco/Streamnotify_on_Bluesky
 cd Streamnotify_on_Bluesky/v3
 ```
 
@@ -294,6 +297,10 @@ python main_v3.py
 
 | プラグイン | 機能 | 状態 |
 |-----------|------|------|
+| `youtube_live_plugin` | YouTube ライブ配信・アーカイブの判定 | ✅ v2.3.0 実装完了 (2025-12-18) |
+| `niconico_plugin` | ニコニコ動画 RSS 監視 | ✅ v2.3.0 実装完了 (2025-12-18) |
+| `youtube_api_plugin` | YouTube Data API 連携（詳細情報取得） | ✅ v2.3.0 実装完了 (2025-12-18) |
+| `logging_plugin` | ロギング統合管理 | ✅ v2.3.0 実装完了 (2025-12-18) |
 
 
 プラグイン導入時に必要なテンプレートファイルと画像は、`Asset/` ディレクトリから自動配置されます。
@@ -303,7 +310,8 @@ python main_v3.py
 ## Assetディレクトリとテンプレート・画像管理
 
 - `Asset/` ディレクトリに全サービス・全プラグイン用のテンプレート・画像を保管します。
-- **起動時に自動配置**: アプリケーション起動時（`main_v3.py` 実行時）、必要なテンプレート・画像が `Asset/` から本番ディレクトリに自動コピーされます。
+- **起動時に自動配置**: アプリケーション起動時（`main_v3.py` 実行時）、必要なテンプレート・画像が  \
+ `Asset/` から本番ディレクトリに自動コピーされます。
 - **既存ファイル保護**: 既に存在するファイルは上書きされません（ユーザーの手動編集を保護）。
 - **詳細な配置ログ**: ログ（`logs/app.log`）に配置されたファイル一覧が記録されます。
 
