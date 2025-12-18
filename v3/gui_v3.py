@@ -110,8 +110,21 @@ class StreamNotifyGUI:
         source_combo.grid(row=0, column=5, sticky=tk.W, padx=5, pady=5)
         source_combo.bind("<<ComboboxSelected>>", lambda e: self.apply_filters())
 
+        # タイプフィルタ（YouTube: 動画/アーカイブ/Live）
+        ttk.Label(filter_frame, text="タイプ:").grid(row=0, column=6, sticky=tk.W, padx=5, pady=5)
+        self.filter_type_var = tk.StringVar(value="全て")
+        type_combo = ttk.Combobox(
+            filter_frame,
+            textvariable=self.filter_type_var,
+            values=["全て", "🎬 動画", "📹 アーカイブ", "🔴 配信"],
+            state="readonly",
+            width=15
+        )
+        type_combo.grid(row=0, column=7, sticky=tk.W, padx=5, pady=5)
+        type_combo.bind("<<ComboboxSelected>>", lambda e: self.apply_filters())
+
         # ボタン
-        ttk.Button(filter_frame, text="🔄 リセット", command=self.reset_filters).grid(row=0, column=6, padx=5, pady=5)
+        ttk.Button(filter_frame, text="🔄 リセット", command=self.reset_filters).grid(row=0, column=8, padx=5, pady=5)
 
         table_frame = ttk.Frame(self.root)
         table_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
@@ -249,6 +262,7 @@ DB を再読込みします。
         title_filter = self.filter_title_entry.get().lower()
         status_filter = self.filter_status_var.get()
         source_filter = self.filter_source_var.get()
+        type_filter = self.filter_type_var.get()
 
         # Treeview をクリア
         for item in self.tree.get_children():
@@ -269,9 +283,29 @@ DB を再読込みします。
                 continue
 
             # 配信元フィルタ
-            source = video.get("source", "")
-            if source_filter != "全て" and source != source_filter:
+            # DBには小文字で保存されているため、フィルタ値を小文字に変換して比較
+            source = video.get("source", "").lower()
+            source_filter_lower = source_filter.lower()
+            if source_filter_lower != "全て" and source != source_filter_lower:
                 continue
+
+            # タイプフィルタ（動画/アーカイブ/Live）
+            if type_filter != "全て":
+                # 表示用のタイプを計算
+                classification_type = video.get("classification_type", "video")
+                source_for_display = video.get("source", "").lower()
+                if source_for_display == "niconico":
+                    display_type = "🎬 動画"
+                elif classification_type == "archive":
+                    display_type = "📹 アーカイブ"
+                elif classification_type == "live":
+                    display_type = "🔴 配信"
+                else:
+                    display_type = "🎬 動画"
+
+                # フィルタと比較
+                if display_type != type_filter:
+                    continue
 
             # フィルタを通った動画を表示
             self.filtered_videos.append(video)
@@ -335,6 +369,7 @@ DB を再読込みします。
         self.filter_title_entry.delete(0, tk.END)
         self.filter_status_var.set("全て")
         self.filter_source_var.set("全て")
+        self.filter_type_var.set("全て")
         self.apply_filters()
         logger.info("✅ フィルタをリセットしました")
 
