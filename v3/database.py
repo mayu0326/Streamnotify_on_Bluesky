@@ -184,6 +184,9 @@ class Database:
         # YouTube動画の重複チェック（優先度ロジック適用）
         if source == "youtube" and title and channel_name:
             try:
+                import sys
+                from pathlib import Path
+                sys.path.insert(0, str(Path(__file__).parent / 'utils' / 'database'))
                 from youtube_dedup_priority import get_video_priority, should_keep_video
 
                 conn = self._get_connection()
