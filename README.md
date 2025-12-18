@@ -49,14 +49,16 @@ YouTube チャンネルの新着動画を Bluesky に自動投稿するアプリ
 │   │   │   ├── TEMPLATE_SYSTEM.md
 │   │   │   ├── DELETED_VIDEO_CACHE.md
 │   │   │   └── ...
-│   │   ├── Guides/              # ユーザーガイド（実装・手順）
-│   │   │   ├── DEBUG_DRY_RUN_GUIDE.md
-│   │   │   ├── IMPLEMENTATION_PLAN.md
-│   │   │   └── ...
-│   │   ├── References/          # 参考資料（構想・ロードマップ）
+│   │   ├── Guides/              # ユーザーガイド（実装手順・進捗記録）
+│   │   │   └── SESSION_REPORTS.md
+│   │   ├── References/          # 参考資料（ロードマップ・構想）
 │   │   │   ├── FUTURE_ROADMAP_v2.md
 │   │   │   └── ...
-│   │   └── Local/               # ローカル作業用（非公開推奨）
+│   │   └── ARCHIVE/             # 完了済みプロジェクト（参考用）
+│   │       ├── DEBUG_DRY_RUN_GUIDE.md
+│   │       ├── TEMPLATE_IMPLEMENTATION_CHECKLIST.md
+│   │       ├── IMAGE_RESIZE_GUIDE.md
+│   │       └── ...
 │   │
 │   ├── data/                    # ローカルデータ
 │   │   └── video_list.db        # SQLite データベース
@@ -174,11 +176,13 @@ python main_v2.py
 - [削除済み動画ブラックリスト](v2/docs/Technical/DELETED_VIDEO_CACHE.md) - ブラックリスト機能、API リファレンス
 - [セッション実装レポート](v2/docs/Guides/SESSION_REPORTS.md) - 2025-12-17～18 実装内容・テスト結果
 
-### 📋 ユーザーガイド・トラブルシューティング
+### 📋 ユーザーガイド・トラブルシューティング（アーカイブ・完了済み）
 
-- [デバッグ・ドライラン](v2/docs/Guides/DEBUG_DRY_RUN_GUIDE.md) - トラブルシューティング
-- [テンプレート実装チェックリスト](v2/docs/Guides/TEMPLATE_IMPLEMENTATION_CHECKLIST.md) - テンプレート導入手順
-- [画像リサイズガイド](v2/docs/Guides/IMAGE_RESIZE_GUIDE.md) - 画像処理の使用方法
+以下は完了済みプロジェクトのドキュメントです。参考用に保持されています：
+
+- [デバッグ・ドライラン](v2/docs/ARCHIVE/DEBUG_DRY_RUN_GUIDE.md) - トラブルシューティング
+- [テンプレート実装チェックリスト](v2/docs/ARCHIVE/TEMPLATE_IMPLEMENTATION_CHECKLIST.md) - テンプレート導入手順（完了済み）
+- [画像リサイズガイド](v2/docs/ARCHIVE/IMAGE_RESIZE_GUIDE.md) - 画像処理の使用方法（完了済み）
 
 ### 🚀 その他・参考資料
 
@@ -226,7 +230,7 @@ python main_v2.py
 - **error.log**: エラーのみを記録
 - その他のログファイル：プラグイン導入時に自動生成
 
-詳細は [DEBUG ログとドライラン機能 ガイド](v2/docs/Guides/DEBUG_DRY_RUN_GUIDE.md) を参照してください。
+詳細は [DEBUG ログとドライラン機能 ガイド](v2/docs/ARCHIVE/DEBUG_DRY_RUN_GUIDE.md) を参照してください。
 
 ## ライセンス
 
