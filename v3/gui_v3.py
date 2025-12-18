@@ -73,6 +73,9 @@ class StreamNotifyGUI:
         ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=2)
         ttk.Button(toolbar, text="ℹ️ 統計", command=self.show_stats).pack(side=tk.LEFT, padx=2)
         ttk.Button(toolbar, text="🔧 プラグイン", command=self.show_plugins).pack(side=tk.LEFT, padx=2)
+        ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=2)
+        ttk.Button(toolbar, text="💾 バックアップ", command=self.backup_data).pack(side=tk.LEFT, padx=2)
+        ttk.Button(toolbar, text="📂 復元", command=self.restore_data).pack(side=tk.LEFT, padx=2)
 
         # === フィルタパネル ===
         filter_frame = ttk.LabelFrame(self.root, text="🔍 フィルタ設定")
@@ -1182,6 +1185,137 @@ YouTube:      {youtube_count} 件 (投稿済み: {youtube_posted})
         button_frame = ttk.Frame(info_window)
         button_frame.pack(fill=tk.X, padx=10, pady=5)
         ttk.Button(button_frame, text="閉じる", command=info_window.destroy).pack(side=tk.RIGHT)
+
+    def backup_data(self):
+        """データベース・テンプレート・設定をバックアップ"""
+        try:
+            from backup_manager import get_backup_manager
+
+            # 保存先を選択
+            backup_file = filedialog.asksaveasfilename(
+                title="バックアップファイルを保存",
+                defaultextension=".zip",
+                filetypes=[("ZIP ファイル", "*.zip"), ("すべてのファイル", "*.*")],
+                initialfile=f"streamnotify_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+            )
+
+            if not backup_file:
+                return
+
+            # バックアップ作成ダイアログ
+            dialog = tk.Toplevel(self.root)
+            dialog.title("バックアップオプション")
+            dialog.geometry("400x300")
+            dialog.resizable(False, False)
+
+            ttk.Label(dialog, text="バックアップオプション", font=("Arial", 12, "bold")).pack(pady=10)
+
+            # API キー・パスワード包含オプション
+            include_api_keys_var = tk.BooleanVar(value=False)
+            include_passwords_var = tk.BooleanVar(value=False)
+            include_images_var = tk.BooleanVar(value=False)
+
+            ttk.Checkbutton(
+                dialog,
+                text="🔐 API キーを含める（セキュリティリスク）",
+                variable=include_api_keys_var
+            ).pack(anchor=tk.W, padx=20, pady=5)
+
+            ttk.Checkbutton(
+                dialog,
+                text="🔒 パスワードを含める（セキュリティリスク）",
+                variable=include_passwords_var
+            ).pack(anchor=tk.W, padx=20, pady=5)
+
+            ttk.Checkbutton(
+                dialog,
+                text="🖼️ 画像フォルダを含める",
+                variable=include_images_var
+            ).pack(anchor=tk.W, padx=20, pady=5)
+
+            ttk.Label(
+                dialog,
+                text="⚠️ 機密情報を含めることはお勧めしません。\n\n推奨: 公開環境でのバックアップ共有時は\nAPI キー・パスワード除外オプションを推奨します。",
+                justify=tk.LEFT,
+                foreground="red"
+            ).pack(padx=20, pady=10)
+
+            def do_backup():
+                backup_manager = get_backup_manager()
+                success, msg = backup_manager.create_backup(
+                    backup_file,
+                    include_api_keys=include_api_keys_var.get(),
+                    include_passwords=include_passwords_var.get(),
+                    include_images=include_images_var.get()
+                )
+
+                if success:
+                    logger.info(f"✅ バックアップ作成完了: {backup_file}")
+                    messagebox.showinfo("バックアップ完了", msg)
+                else:
+                    logger.error(f"❌ バックアップ作成失敗: {msg}")
+                    messagebox.showerror("バックアップ失敗", msg)
+
+            dialog.destroy()
+
+                dialog.destroy()
+
+            # ボタン
+            button_frame = ttk.Frame(dialog)
+            button_frame.pack(fill=tk.X, padx=20, pady=10)
+
+            ttk.Button(button_frame, text="✅ バックアップ作成", command=do_backup).pack(side=tk.LEFT, padx=5)
+            ttk.Button(button_frame, text="キャンセル", command=dialog.destroy).pack(side=tk.LEFT, padx=5)
+
+        except ImportError:
+            logger.error("❌ backup_manager モジュールが見つかりません")
+            messagebox.showerror("エラー", "バックアップマネージャーが見つかりません")
+        except Exception as e:
+            logger.error(f"❌ バックアップ処理エラー: {e}")
+            messagebox.showerror("エラー", f"バックアップ処理に失敗しました:\n{e}")
+
+    def restore_data(self):
+        """バックアップから復元"""
+        try:
+            from backup_manager import get_backup_manager
+
+            # 復元ファイルを選択
+            backup_file = filedialog.askopenfilename(
+                title="バックアップファイルを選択",
+                filetypes=[("ZIP ファイル", "*.zip"), ("すべてのファイル", "*.*")]
+            )
+
+            if not backup_file:
+                return
+
+            # 確認ダイアログ
+            result = messagebox.askyesno(
+                "復元確認",
+                f"このバックアップから復元しますか？\n\n{backup_file}\n\n⚠️ 現在のデータは上書きされます。\n既存データは自動的にバックアップされます。"
+            )
+
+            if not result:
+                return
+
+            # 復元実行
+            backup_manager = get_backup_manager()
+            success, msg = backup_manager.restore_backup(backup_file)
+
+            if success:
+                logger.info(f"✅ 復元完了: {backup_file}")
+                messagebox.showinfo("復元完了", msg)
+                # 復元後はアプリケーション再起動が必要なため、GUI を再読込
+                self.refresh_data()
+            else:
+                logger.error(f"❌ 復元失敗: {msg}")
+                messagebox.showerror("復元失敗", msg)
+
+        except ImportError:
+            logger.error("❌ backup_manager モジュールが見つかりません")
+            messagebox.showerror("エラー", "バックアップマネージャーが見つかりません")
+        except Exception as e:
+            logger.error(f"❌ 復元処理エラー: {e}")
+            messagebox.showerror("エラー", f"復元処理に失敗しました:\n{e}")
 
     def validate_datetime(self, date_string):
         """日時形式をバリデーション"""
