@@ -18,6 +18,7 @@ Streamnotify_on_Bluesky.code-workspace
 .gitattributes
 **/YouTube_ALL_DATA/*
 **/YouTube_ALL_DATA/yt/*
+data/video_list.db
 
 # テスト用スクリプト（一時的な検証・デバッグ用）
 test_scripts/
