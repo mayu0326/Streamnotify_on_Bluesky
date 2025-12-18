@@ -1,3 +1,7 @@
+# テスト用スクリプト（一時的な検証・デバッグ用）
+test_scripts/
+**/test_settings/*
+
 **/.venv/*
 **/.vscode/*
 .env
@@ -19,7 +23,4 @@ Streamnotify_on_Bluesky.code-workspace
 **/YouTube_ALL_DATA/*
 **/YouTube_ALL_DATA/yt/*
 data/video_list.db
-
-# テスト用スクリプト（一時的な検証・デバッグ用）
-test_scripts/
-**/test_settings/*
+data/youtube_video_detail_cache.json
