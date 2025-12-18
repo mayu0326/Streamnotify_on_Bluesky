@@ -72,14 +72,15 @@ class StreamNotifyGUI:
         table_frame = ttk.Frame(self.root)
         table_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
-        columns = ("Select", "Video ID", "Published", "Source", "Title", "Date", "Posted", "Image Mode", "Image File")
+        columns = ("Select", "Video ID", "Published", "Source", "Type", "Title", "Date", "Posted", "Image Mode", "Image File")
         self.tree = ttk.Treeview(table_frame, columns=columns, height=20, show="headings")
 
         self.tree.column("Select", width=50, anchor=tk.CENTER)
         self.tree.column("Video ID", width=110)
         self.tree.column("Published", width=130)
-        self.tree.column("Source", width=120, anchor=tk.CENTER)
-        self.tree.column("Title", width=400)
+        self.tree.column("Source", width=100, anchor=tk.CENTER)
+        self.tree.column("Type", width=80, anchor=tk.CENTER)
+        self.tree.column("Title", width=350)
         self.tree.column("Date", width=150)
         self.tree.column("Posted", width=60, anchor=tk.CENTER)
         self.tree.column("Image Mode", width=80, anchor=tk.CENTER)
@@ -89,6 +90,7 @@ class StreamNotifyGUI:
         self.tree.heading("Video ID", text="Video ID")
         self.tree.heading("Published", text="公開日時")
         self.tree.heading("Source", text="配信元")
+        self.tree.heading("Type", text="タイプ")
         self.tree.heading("Title", text="タイトル")
         self.tree.heading("Date", text="投稿予定/投稿日時")
         self.tree.heading("Posted", text="投稿実績")
@@ -145,11 +147,23 @@ class StreamNotifyGUI:
             image_mode = video.get("image_mode") or ""
             image_filename = video.get("image_filename") or ""
 
+            # 分類情報を取得（YouTube は分類結果、ニコニコは常に「動画」）
+            classification_type = video.get("classification_type", "video")
+            if source == "Niconico":
+                display_type = "🎬 動画"
+            elif classification_type == "archive":
+                display_type = "📹 アーカイブ"
+            elif classification_type == "live":
+                display_type = "🔴 配信"
+            else:
+                display_type = "🎬 動画"
+
             self.tree.insert("", tk.END, values=(
                 checked,                         # Select
                 video["video_id"],              # Video ID
                 video["published_at"][:10],     # Published
                 source,                          # Source
+                display_type,                    # Type (video/live/archive)
                 video["title"][:100],           # Title
                 date_info[:16] if date_info != "（未設定）" else date_info, # Date (Posted or Scheduled)
                 "✓" if video.get("posted_to_bluesky") else "–",  # Posted
@@ -192,11 +206,11 @@ class StreamNotifyGUI:
         if not item_id:
             return
 
-        # 予約日時列
-        if col == "#6":
+        # 予約日時列（#7 に変更）
+        if col == "#7":
             self.edit_scheduled_time(item_id)
-        # 画像モード列または画像ファイル列
-        elif col in ("#8", "#9"):
+        # 画像モード列または画像ファイル列（#9, #10 に変更）
+        elif col in ("#9", "#10"):
             self.edit_image_file(item_id)
 
     def select_all(self):
