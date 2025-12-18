@@ -8,6 +8,7 @@ test_scripts/
 *.env
 *.log
 **/logs/*
+**/v3/logs/*
 **/v2/logs/*
 **/v1/logs/*
 **/OLD_App/*
@@ -15,12 +16,16 @@ test_scripts/
 __pycache__
 **/v1/data/*
 **/v2/data/*
+**/v3/data/*
 **/v2/images/*
+**/v3/images/*
 **/v2/templates/*
+**/v3/templates/*
+**/v2/docs/Local/*
+**/v3/docs/Local/*
 Streamnotify_on_Bluesky.code-workspace
 .editorconfig
 .gitattributes
 **/YouTube_ALL_DATA/*
 **/YouTube_ALL_DATA/yt/*
 **/data/*
-**/v2/docs/Local/*
