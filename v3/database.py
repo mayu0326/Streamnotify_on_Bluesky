@@ -475,7 +475,9 @@ class Database:
 
         except Exception as e:
             logger.error(f"AUTOPOST 対象取得に失敗: {e}")
-            return []    def get_videos_by_live_status(self, live_status: str):
+            return []
+
+    def get_videos_by_live_status(self, live_status: str):
         """
         指定された live_status の動画を取得
 
