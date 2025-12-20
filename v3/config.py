@@ -22,10 +22,14 @@ DB_PATH = "data/video_list.db"
 
 class OperationMode:
     """動作モードの定義"""
-    NORMAL = "normal"           # 通常モード（収集＋手動投稿）
-    AUTO_POST = "auto_post"     # 自動投稿モード（収集＋手動・自動投稿）
+    SELFPOST = "selfpost"       # SELFPOST モード（人間が操作する完全手動投稿モード）
+    AUTOPOST = "autopost"       # AUTOPOST モード（人間の介入を一切行わない完全自動投稿モード）
     DRY_RUN = "dry_run"         # ドライランモード（デバッグ用途・投稿機能オフ）
     COLLECT = "collect"         # 収集モード（RSS取得のみ・投稿機能オフ）
+
+    # 後方互換性のため旧名を定義
+    NORMAL = SELFPOST
+    AUTO_POST = AUTOPOST
 
 
 class Config:
@@ -117,20 +121,32 @@ class Config:
 
         # 動作モードの判定
         db_exists = Path(DB_PATH).exists()
-        app_mode = os.getenv("APP_MODE", "normal").strip().lower()
+        app_mode_str = os.getenv("APP_MODE", "selfpost").strip().lower()
 
-        # 動作モードの決定ロジック
-        if not db_exists or app_mode == OperationMode.COLLECT:
+        # 後方互換性：old名を新名にマップ
+        if app_mode_str == "normal":
+            app_mode_str = OperationMode.SELFPOST
+        elif app_mode_str == "auto_post":
+            app_mode_str = OperationMode.AUTOPOST
+
+        # 動作モードの決定ロジック（仕様 v1.0）
+        # SELFPOST / AUTOPOST は排他的
+        if not db_exists or app_mode_str == OperationMode.COLLECT:
             self.operation_mode = OperationMode.COLLECT
-        elif app_mode == OperationMode.DRY_RUN:
+        elif app_mode_str == OperationMode.DRY_RUN:
             self.operation_mode = OperationMode.DRY_RUN
-        elif app_mode == OperationMode.AUTO_POST and self.bluesky_post_enabled:
-            self.operation_mode = OperationMode.AUTO_POST
-        elif app_mode == OperationMode.NORMAL or not self.bluesky_post_enabled:
-            self.operation_mode = OperationMode.NORMAL
+        elif app_mode_str == OperationMode.AUTOPOST:
+            # AUTOPOST は Bluesky 投稿が有効化されている場合のみ
+            if self.bluesky_post_enabled:
+                self.operation_mode = OperationMode.AUTOPOST
+            else:
+                logger.warning("AUTOPOST モードが指定されていますが、BLUESKY_POST_ENABLED=true に設定してください。SELFPOST モードで起動します。")
+                self.operation_mode = OperationMode.SELFPOST
+        elif app_mode_str == OperationMode.SELFPOST or not self.bluesky_post_enabled:
+            self.operation_mode = OperationMode.SELFPOST
         else:
-            # デフォルトは通常モード
-            self.operation_mode = OperationMode.NORMAL
+            # デフォルトは SELFPOST モード
+            self.operation_mode = OperationMode.SELFPOST
 
         # 後方互換性のため is_collect_mode を保持
         self.is_collect_mode = (self.operation_mode == OperationMode.COLLECT)
@@ -171,12 +187,78 @@ class Config:
             logger.warning("NICONICO_LIVE_POLL_INTERVAL が無効です。10分に設定します。")
             self.niconico_poll_interval_minutes = 10
 
+        # ===== AUTOPOST 固有の環境変数（仕様 v1.0） =====
+
+        # AUTOPOST 投稿間隔（分）
+        try:
+            self.autopost_interval_minutes = int(os.getenv("AUTOPOST_INTERVAL_MINUTES", "5"))
+            if self.autopost_interval_minutes < 1 or self.autopost_interval_minutes > 60:
+                logger.warning(f"AUTOPOST 間隔が範囲外です (1〜60): {self.autopost_interval_minutes}。5分に設定します。")
+                self.autopost_interval_minutes = 5
+        except ValueError:
+            logger.warning("AUTOPOST_INTERVAL_MINUTES が無効です。5分に設定します。")
+            self.autopost_interval_minutes = 5
+
+        # AUTOPOST LOOKBACK 時間窓（分）
+        try:
+            self.autopost_lookback_minutes = int(os.getenv("AUTOPOST_LOOKBACK_MINUTES", "30"))
+            if self.autopost_lookback_minutes < 5 or self.autopost_lookback_minutes > 1440:
+                logger.warning(f"AUTOPOST LOOKBACK が範囲外です (5〜1440): {self.autopost_lookback_minutes}。30分に設定します。")
+                self.autopost_lookback_minutes = 30
+        except ValueError:
+            logger.warning("AUTOPOST_LOOKBACK_MINUTES が無効です。30分に設定します。")
+            self.autopost_lookback_minutes = 30
+
+        # AUTOPOST 未投稿大量検知閾値（件数）
+        try:
+            self.autopost_unposted_threshold = int(os.getenv("AUTOPOST_UNPOSTED_THRESHOLD", "20"))
+            if self.autopost_unposted_threshold < 1 or self.autopost_unposted_threshold > 1000:
+                logger.warning(f"AUTOPOST 閾値が範囲外です (1〜1000): {self.autopost_unposted_threshold}。20件に設定します。")
+                self.autopost_unposted_threshold = 20
+        except ValueError:
+            logger.warning("AUTOPOST_UNPOSTED_THRESHOLD が無効です。20件に設定します。")
+            self.autopost_unposted_threshold = 20
+
+        # AUTOPOST 動画種別フィルタ
+        autopost_include_normal = os.getenv("AUTOPOST_INCLUDE_NORMAL", "true").strip().lower()
+        self.autopost_include_normal = autopost_include_normal in ("true", "1", "yes", "on")
+
+        autopost_include_shorts = os.getenv("AUTOPOST_INCLUDE_SHORTS", "false").strip().lower()
+        self.autopost_include_shorts = autopost_include_shorts in ("true", "1", "yes", "on")
+
+        autopost_include_member_only = os.getenv("AUTOPOST_INCLUDE_MEMBER_ONLY", "false").strip().lower()
+        self.autopost_include_member_only = autopost_include_member_only in ("true", "1", "yes", "on")
+
+        autopost_include_premiere = os.getenv("AUTOPOST_INCLUDE_PREMIERE", "true").strip().lower()
+        self.autopost_include_premiere = autopost_include_premiere in ("true", "1", "yes", "on")
+
+        # YouTube Live AUTOPOST モード（新統合環境変数、後方互換性あり）
+        self.youtube_live_autopost_mode = os.getenv("YOUTUBE_LIVE_AUTO_POST_MODE", "").strip().lower()
+
+        # 旧環境変数からのマッピング（後方互換性）
+        if not self.youtube_live_autopost_mode:
+            auto_post_start = os.getenv("YOUTUBE_LIVE_AUTO_POST_START", "true").lower() == "true"
+            auto_post_end = os.getenv("YOUTUBE_LIVE_AUTO_POST_END", "true").lower() == "true"
+
+            if auto_post_start and auto_post_end:
+                self.youtube_live_autopost_mode = "live"
+            elif auto_post_start and not auto_post_end:
+                self.youtube_live_autopost_mode = "schedule"
+            else:
+                self.youtube_live_autopost_mode = "off"
+
+        # バリデーション
+        valid_modes = {"all", "schedule", "live", "archive", "off"}
+        if self.youtube_live_autopost_mode not in valid_modes:
+            logger.warning(f"YOUTUBE_LIVE_AUTO_POST_MODE が無効です: {self.youtube_live_autopost_mode}。'off' に設定します。")
+            self.youtube_live_autopost_mode = "off"
+
 
     def _log_operation_mode(self):
         """現在の動作モードをログに出力"""
         mode_descriptions = {
-            OperationMode.NORMAL: "通常モード（収集＋手動投稿）",
-            OperationMode.AUTO_POST: "自動投稿モード（収集＋手動・自動投稿）",
+            OperationMode.SELFPOST: "SELFPOST（人間が操作する完全手動投稿モード）",
+            OperationMode.AUTOPOST: "AUTOPOST（人間の介入を一切行わない完全自動投稿モード）",
             OperationMode.DRY_RUN: "ドライランモード（デバッグ用途・投稿機能オフ）",
             OperationMode.COLLECT: "収集モード（RSS取得のみ・投稿機能オフ）"
         }
@@ -204,10 +286,10 @@ class Config:
             logger.warning("📦 RSS を取得して DB に保存するだけです。Bluesky への投稿は行いません。")
         elif self.operation_mode == OperationMode.DRY_RUN:
             logger.warning("🧪 デバッグモードです。投稿のシミュレーションのみ行い、実際には投稿しません。")
-        elif self.operation_mode == OperationMode.NORMAL:
-            logger.info("📝 投稿対象をGUIから設定し、手動で投稿を行ってください。")
-        elif self.operation_mode == OperationMode.AUTO_POST:
-            logger.info("🚀 投稿対象をGUIから設定後、5分間隔で順次自動投稿します。")
+        elif self.operation_mode == OperationMode.SELFPOST:
+            logger.info("👤 投稿対象をGUIから設定し、手動で投稿を行ってください。")
+        elif self.operation_mode == OperationMode.AUTOPOST:
+            logger.info("🤖 自動投稿モード。人間の介入なく自動投稿が実行されます。GUI投稿操作は無効化されます。")
 
 
 def get_config(env_path="settings.env") -> Config:
