@@ -45,6 +45,11 @@ class StreamNotifyGUI:
         self.image_manager = get_image_manager()  # 画像管理クラスを初期化
         self.selected_rows = set()
 
+        # 設定を読み込み（AUTOPOST モード判定用）
+        from config import get_config, OperationMode
+        self.config = get_config("settings.env")
+        self.operation_mode = self.config.operation_mode
+
         # フィルタ用の変数
         self.all_videos = []  # フィルタ前のすべての動画
         self.filtered_videos = []  # フィルタ後の動画
@@ -68,8 +73,19 @@ class StreamNotifyGUI:
         ttk.Button(toolbar, text="💾 選択を保存", command=self.save_selection).pack(side=tk.LEFT, padx=2)
         ttk.Button(toolbar, text="🗑️ 削除", command=self.delete_selected).pack(side=tk.LEFT, padx=2)
         ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=2)
-        ttk.Button(toolbar, text="🧪 投稿テスト", command=self.dry_run_post).pack(side=tk.LEFT, padx=2)
-        ttk.Button(toolbar, text="📤 投稿設定", command=self.execute_post).pack(side=tk.LEFT, padx=2)
+
+        # 投稿ボタン（AUTOPOST モード時は無効化）
+        self.dry_run_button = ttk.Button(toolbar, text="🧪 投稿テスト", command=self.dry_run_post)
+        self.dry_run_button.pack(side=tk.LEFT, padx=2)
+
+        self.execute_post_button = ttk.Button(toolbar, text="📤 投稿設定", command=self.execute_post)
+        self.execute_post_button.pack(side=tk.LEFT, padx=2)
+
+        # AUTOPOST モード時は投稿ボタンを無効化
+        from config import OperationMode
+        if self.operation_mode == OperationMode.AUTOPOST:
+            self.dry_run_button.config(state=tk.DISABLED)
+            self.execute_post_button.config(state=tk.DISABLED)
         ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=2)
         ttk.Button(toolbar, text="ℹ️ 統計", command=self.show_stats).pack(side=tk.LEFT, padx=2)
         ttk.Button(toolbar, text="🔧 プラグイン", command=self.show_plugins).pack(side=tk.LEFT, padx=2)
@@ -978,6 +994,18 @@ DB を再読込みします。
 
     def dry_run_post(self):
         """ドライラン：投稿設定ウィンドウを表示（ドライランモード）"""
+        # AUTOPOST モード時は実行禁止
+        from config import OperationMode
+        if self.operation_mode == OperationMode.AUTOPOST:
+            messagebox.showerror(
+                "エラー",
+                "🤖 AUTOPOST モード では手動投稿操作は禁止されています。\n\n"
+                "投稿はすべて自動制御されます。\n"
+                "手動投稿を実行するには、settings.env で APP_MODE を\n"
+                "'selfpost' に変更して、アプリを再起動してください。"
+            )
+            return
+
         if not self.selected_rows:
             messagebox.showwarning("警告", "投稿対象の動画がありません。\n\n☑️ をクリックして選択してください。")
             return
@@ -1015,6 +1043,18 @@ DB を再読込みします。
 
     def execute_post(self):
         """投稿設定：投稿設定ウィンドウを表示"""
+        # AUTOPOST モード時は実行禁止
+        from config import OperationMode
+        if self.operation_mode == OperationMode.AUTOPOST:
+            messagebox.showerror(
+                "エラー",
+                "🤖 AUTOPOST モード では手動投稿操作は禁止されています。\n\n"
+                "投稿はすべて自動制御されます。\n"
+                "手動投稿を実行するには、settings.env で APP_MODE を\n"
+                "'selfpost' に変更して、アプリを再起動してください。"
+            )
+            return
+
         if not self.plugin_manager:
             messagebox.showerror("エラー", "プラグインマネージャが初期化されていません。再起動してください。")
             return
