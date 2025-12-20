@@ -179,12 +179,12 @@ class Config:
 
         # ニコニコポーリング間隔（分）
         try:
-            self.niconico_poll_interval_minutes = int(os.getenv("NICONICO_LIVE_POLL_INTERVAL", "10"))
+            self.niconico_poll_interval_minutes = int(os.getenv("NICONICO_POLL_INTERVAL", "10"))
             if self.niconico_poll_interval_minutes < 5 or self.niconico_poll_interval_minutes > 60:
                 logger.warning(f"ニコニコポーリング間隔が範囲外です (5〜60): {self.niconico_poll_interval_minutes}。10分に設定します。")
                 self.niconico_poll_interval_minutes = 10
         except ValueError:
-            logger.warning("NICONICO_LIVE_POLL_INTERVAL が無効です。10分に設定します。")
+            logger.warning("NICONICO_POLL_INTERVAL が無効です。10分に設定します。")
             self.niconico_poll_interval_minutes = 10
 
         # ===== AUTOPOST 固有の環境変数（仕様 v1.0） =====
