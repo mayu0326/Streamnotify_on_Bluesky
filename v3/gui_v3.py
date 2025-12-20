@@ -66,6 +66,7 @@ class StreamNotifyGUI:
 
         ttk.Button(toolbar, text="🔄 再読込", command=self.refresh_data).pack(side=tk.LEFT, padx=2)
         ttk.Button(toolbar, text="🌐 RSS更新", command=self.fetch_rss_manually).pack(side=tk.LEFT, padx=2)
+        ttk.Button(toolbar, text="🎬 Live判定", command=self.classify_youtube_live_manually).pack(side=tk.LEFT, padx=2)
         ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=2)
         ttk.Button(toolbar, text="☑️ すべて選択", command=self.select_all).pack(side=tk.LEFT, padx=2)
         ttk.Button(toolbar, text="☐ すべて解除", command=self.deselect_all).pack(side=tk.LEFT, padx=2)
@@ -274,6 +275,46 @@ DB を再読込みします。
         except Exception as e:
             logger.error(f"❌ RSS更新中にエラー: {e}")
             messagebox.showerror("エラー", f"RSS更新中にエラーが発生しました:\n{e}")
+
+    def classify_youtube_live_manually(self):
+        """YouTube Live 判定を手動で今すぐ実行"""
+        try:
+            # YouTubeLive プラグインを取得
+            youtube_live_plugin = self.plugin_manager.get_plugin("youtube_live_plugin")
+
+            if not youtube_live_plugin:
+                messagebox.showwarning("警告", "YouTube Live プラグインがロードされていません。")
+                logger.warning("⚠️ YouTube Live プラグインが見つかりません")
+                return
+
+            if not youtube_live_plugin.is_available():
+                messagebox.showwarning("警告", "YouTube Live プラグインが利用不可です。\n（YouTube API キーが設定されていない可能性があります）")
+                logger.warning("⚠️ YouTube Live プラグインが利用不可")
+                return
+
+            # 判定開始を通知
+            messagebox.showinfo("YouTube Live判定", "未判定動画のYouTube Live判定を実行中...\n（ウィンドウを閉じないでください）")
+
+            # YouTube Live 判定を実行（on_enable と同じロジック）
+            updated_count = youtube_live_plugin._update_unclassified_videos()
+
+            # 結果をメッセージボックスで表示
+            result_msg = f"""
+✅ YouTube Live判定完了
+
+判定結果: {updated_count} 件更新
+
+DB を再読込みします。
+            """
+            messagebox.showinfo("YouTube Live判定完了", result_msg)
+
+            # DB を再読込して表示更新
+            self.refresh_data()
+            logger.info(f"✅ YouTube Live 手動判定完了: {updated_count} 件更新")
+
+        except Exception as e:
+            logger.error(f"❌ YouTube Live判定中にエラー: {e}")
+            messagebox.showerror("エラー", f"YouTube Live判定中にエラーが発生しました:\n{e}")
 
     def apply_filters(self):
         """現在のフィルタ条件をツリーに適用"""
