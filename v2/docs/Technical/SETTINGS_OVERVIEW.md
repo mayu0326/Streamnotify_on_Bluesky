@@ -23,7 +23,7 @@
 
 ## ニコニコ動画プラグイン
 - `NICONICO_USER_ID`: 監視対象のユーザーID（数値）。
-- `NICONICO_LIVE_POLL_INTERVAL`: RSS ポーリング間隔（分）。**注記**: RSS は録画済み動画のみ対応。生放送は非対応。
+- `NICONICO_POLL_INTERVAL`: RSS ポーリング間隔（分）。**注記**: RSS は録画済み動画のみ対応。生放送は非対応。
 
 ## YouTubeAPI 連携プラグイン
 - `YOUTUBE_API_KEY`: UC以外の識別子対応・ライブ詳細取得で使用。未導入時は不要。
