@@ -263,4 +263,3 @@ SELFPOST で投稿不可なものは、AUTOPOST でも投稿不可とする。
 本仕様は **AUTOPOST / SELFPOST 機能の正式仕様 v1.0** として確定する。
 
 ---
-
