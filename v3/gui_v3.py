@@ -311,13 +311,13 @@ DB を再読込みします。
             # タイプフィルタ（動画/アーカイブ/Live）
             if type_filter != "全て":
                 # 表示用のタイプを計算
-                classification_type = video.get("classification_type", "video")
+                content_type = video.get("content_type", "video")
                 source_for_display = video.get("source", "").lower()
                 if source_for_display == "niconico":
                     display_type = "🎬 動画"
-                elif classification_type == "archive":
+                elif content_type == "archive":
                     display_type = "📹 アーカイブ"
-                elif classification_type == "live":
+                elif content_type == "live":
                     display_type = "🔴 配信"
                 else:
                     display_type = "🎬 動画"
@@ -344,12 +344,12 @@ DB を再読込みします。
             image_filename = video.get("image_filename") or ""
 
             # 分類情報を取得
-            classification_type = video.get("classification_type", "video")
+            content_type = video.get("content_type", "video")
             if source == "Niconico":
                 display_type = "🎬 動画"
-            elif classification_type == "archive":
+            elif content_type == "archive":
                 display_type = "📹 アーカイブ"
-            elif classification_type == "live":
+            elif content_type == "live":
                 display_type = "🔴 配信"
             else:
                 display_type = "🎬 動画"
