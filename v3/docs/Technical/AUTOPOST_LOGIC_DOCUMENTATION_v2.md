@@ -1,0 +1,196 @@
+# Autopost Logic Documentation - Quick Reference
+
+**Date:** 2025年12月20日
+**Version:** v3.x
+**Status:** ✅ 完成・検証済み
+
+> **注意**: このドキュメントは簡易版です。詳細な実装ドキュメントは以下を参照してください：
+> - [COMPREHENSIVE_AUTOPOST_LOGIC.md](./COMPREHENSIVE_AUTOPOST_LOGIC.md) - 包括的な解析ドキュメント（推奨）
+
+---
+
+## 概要
+
+v3 の Autopost 機能は、複数のプラットフォーム（YouTube、YouTubeLive、Niconico）から動画・配信情報を自動収集し、設定に基づいて Bluesky に自動投稿する機能を提供します。
+
+### 対応プラットフォーム
+
+| プラットフォーム | プラグイン | 機能 | Autopost |
+|:--|:--|:--|:--:|
+| YouTube | `youtube_api_plugin` | 新着動画検出 | ✅ |
+| YouTubeLive | `youtube_live_plugin` | ライブ/アーカイブ判定・自動投稿 | ✅ |
+| Niconico | `niconico_plugin` | RSS監視・新着投稿 | ✅ |
+
+---
+
+## 動作モード（4種類）
+
+### NORMAL（通常モード）
+- 設定: `APP_MODE=normal`
+- 動作: RSS 取得 + **手動投稿**
+- 用途: ユーザーが確認してから投稿
+
+### AUTO_POST（自動投稿モード）
+- 設定: `APP_MODE=auto_post` + `BLUESKY_POST_ENABLED=true`
+- 動作: RSS 取得 + **自動投稿**（定期実行）
+- 用途: 投稿を自動化したい場合
+
+### DRY_RUN（デバッグモード）
+- 設定: `APP_MODE=dry_run`
+- 動作: RSS 取得 + **投稿シミュレーション**（実投稿なし）
+- 用途: 投稿内容確認・動作テスト
+
+### COLLECT（収集専用）
+- 設定: `APP_MODE=collect` または DB 未作成
+- 動作: **RSS 取得のみ**（投稿機能完全オフ）
+- 用途: データ収集フェーズ
+
+---
+
+## YouTubeLive イベント投稿
+
+### ステージ 1: スケジュール（予定）
+- **データ**: RSS で検知、キャッシュに登録
+- **DB 状態**: `live_status="upcoming"`, `content_type="live"`
+
+### ステージ 2: 開始
+- **検知**: API ポーリングで `live_status="live"` を確認
+- **自動投稿**: `yt_online_template.txt` で投稿
+- **設定**: `YOUTUBE_LIVE_AUTO_POST_START=true`
+
+### ステージ 3: 終了
+- **検知**: API ポーリングで `live_status="completed"` を確認
+- **自動投稿**: `yt_offline_template.txt` で投稿
+- **設定**: `YOUTUBE_LIVE_AUTO_POST_END=true`
+- **ポーリング間隔**: `YOUTUBE_LIVE_POLL_INTERVAL=15` (分、15～60分範囲)
+
+### ステージ 4: アーカイブ
+- **判定**: 配信終了後、公開されたアーカイブを検知
+- **DB 状態**: `content_type="archive"`, `live_status=null`
+- **投稿**: `yt_archive_template.txt` で投稿（オプション）
+
+---
+
+## Niconico 自動投稿
+
+### RSS 監視フロー
+1. **定期取得**: RSS フィードを `NICONICO_LIVE_POLL_INTERVAL` 間隔で取得
+2. **新着判定**: 前回の `last_video_id` と比較
+3. **DB 登録**: 新着動画を自動的に DB に保存
+4. **テンプレート投稿**: `nico_new_video_template.txt` で投稿
+
+### 設定
+```env
+NICONICO_USER_ID=              # 監視対象ユーザーID
+NICONICO_USER_NAME=            # 表示名（自動取得/手動指定）
+NICONICO_LIVE_POLL_INTERVAL=10 # ポーリング間隔（分）
+TEMPLATE_NICO_NEW_VIDEO_PATH=  # テンプレートパス
+```
+
+---
+
+## 画像管理（autopost モード専用）
+
+### ディレクトリ構造
+```
+images/
+├── YouTube/
+│   ├── autopost/              ← autopost 専用
+│   │   ├── video1.jpg
+│   │   └── video2.jpg
+├── Niconico/
+│   ├── autopost/
+│   │   └── ...
+└── default/
+    └── noimage.png
+```
+
+### 実装
+- **ファイル**: `image_manager.py`
+- **モード**: `"autopost"` / `"import"`
+- **保存先**: `images/{site}/autopost/{filename}`
+
+---
+
+## プラグインインターフェース
+
+すべてのプラグインが実装すべき抽象インターフェース:
+
+```python
+class NotificationPlugin(ABC):
+    def is_available(self) -> bool:
+        """プラグインが利用可能かどうかを判定"""
+
+    def post_video(self, video: Dict[str, Any]) -> bool:
+        """動画情報を投稿"""
+
+    def get_name(self) -> str:
+        """プラグイン名"""
+
+    def get_version(self) -> str:
+        """プラグインバージョン"""
+```
+
+---
+
+## 重要なファイル
+
+| ファイル | 役割 |
+|:--|:--|
+| `config.py` | 動作モード判定・設定管理 |
+| `plugin_manager.py` | プラグイン管理・post_video 統合実行 |
+| `plugins/youtube_live_plugin.py` | YouTubeLive 検知・自動投稿 |
+| `plugins/niconico_plugin.py` | Niconico RSS 監視・自動投稿 |
+| `plugins/bluesky_plugin.py` | Bluesky 投稿（テンプレート・画像） |
+| `image_manager.py` | 画像管理（autopost モード専用） |
+| `database.py` | 動画情報永続化 |
+| `youtube_live_cache.py` | ライブキャッシュ管理 |
+| `main_v3.py` | 全体初期化・スレッド管理 |
+
+---
+
+## 環境変数（重要な設定）
+
+```env
+# 動作モード
+APP_MODE=auto_post                      # normal/auto_post/dry_run/collect
+
+# YouTube
+YOUTUBE_CHANNEL_ID=UC...                # 監視対象チャンネル
+YOUTUBE_API_KEY=...                     # YouTube Data API キー（オプション）
+
+# YouTubeLive
+YOUTUBE_LIVE_AUTO_POST_START=true       # ライブ開始自動投稿
+YOUTUBE_LIVE_AUTO_POST_END=true         # ライブ終了自動投稿
+YOUTUBE_LIVE_POLL_INTERVAL=15           # ポーリング間隔（15～60分）
+
+# Niconico
+NICONICO_USER_ID=...                    # 監視対象ユーザーID
+NICONICO_LIVE_POLL_INTERVAL=10          # ポーリング間隔（分）
+
+# Bluesky
+BLUESKY_USERNAME=...                    # ハンドル名
+BLUESKY_PASSWORD=...                    # アプリパスワード
+BLUESKY_POST_ENABLED=true               # 投稿機能有効化
+
+# テンプレート
+TEMPLATE_YOUTUBE_NEW_VIDEO_PATH=...
+TEMPLATE_YOUTUBE_ONLINE_PATH=...
+TEMPLATE_YOUTUBE_OFFLINE_PATH=...
+TEMPLATE_YOUTUBE_ARCHIVE_PATH=...
+TEMPLATE_NICO_NEW_VIDEO_PATH=...
+```
+
+---
+
+## 参考ドキュメント
+
+📚 **詳細な実装ドキュメント**:
+- [COMPREHENSIVE_AUTOPOST_LOGIC.md](./COMPREHENSIVE_AUTOPOST_LOGIC.md) ⭐ **推奨**（詳細な実装解析）
+- [PLUGIN_SYSTEM.md](./PLUGIN_SYSTEM.md)（プラグインシステム）
+- [TEMPLATE_SYSTEM.md](./TEMPLATE_SYSTEM.md)（テンプレートシステム）
+
+---
+
+**作成日**: 2025年12月20日
+**ステータス**: ✅ 完成・検証済み
