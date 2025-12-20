@@ -17,6 +17,7 @@ import signal
 import logging
 import threading
 import tkinter as tk
+import gc
 from datetime import datetime, timedelta
 
 # バージョン情報
@@ -53,13 +54,40 @@ def run_gui(db, plugin_manager, stop_event, bluesky_core=None):
     gui_instance = StreamNotifyGUI(root, db, plugin_manager, bluesky_core=bluesky_core)
 
     def on_closing():
-        stop_event.set()
-        root.destroy()
         logger.info("管理画面が閉じられたためアプリケーションを終了します...")
-        sys.exit(0)
+        stop_event.set()
+
+        # GUI インスタンスの参照をクリア
+        global gui_instance
+        try:
+            # GUI オブジェクトの明示的なクリーンアップ
+            if hasattr(gui_instance, 'cleanup'):
+                gui_instance.cleanup()
+            gui_instance = None
+        except:
+            pass
+
+        # tkinter オブジェクトの破棄
+        try:
+            root.quit()  # mainloop をクリアに終了（destroy ではなく）
+        except:
+            pass
 
     root.protocol("WM_DELETE_WINDOW", on_closing)
-    root.mainloop()
+
+    try:
+        root.mainloop()
+    except Exception as e:
+        logger.debug(f"GUI mainloop エラー（無視）: {e}")
+    finally:
+        # スレッド終了時の最終クリーンアップ
+        try:
+            root.destroy()
+        except:
+            pass
+
+        # グローバル参照をクリア
+        gui_instance = None
 
 
 def signal_handler(signum, frame):
@@ -71,6 +99,7 @@ def signal_handler(signum, frame):
 def main():
     """メインエントリポイント (v3: プラグインアーキテクチャ対応)"""
     global logger
+    global gui_instance
 
     # バージョン情報をコンソールに出力
     print(f"StreamNotify on Bluesky {get_version_info()}")
@@ -401,8 +430,13 @@ def main():
                 if niconico_plugin and niconico_plugin.is_available():
                     logger.debug("[ニコニコプラグイン] 監視停止中...")
                     niconico_plugin.stop_monitoring()
-            except Exception as e:
-                logger.debug(f"[ニコニコプラグイン停止] エラー: {e}")
+            except Exception as plugin_error:
+                logger.debug(f"[ニコニコプラグイン停止] エラー: {plugin_error}")
+        logger.info("🛑 アプリケーションをシャットダウン中...")
+        stop_event.set()
+        gui_instance = None  # GUI インスタンスをクリア
+        gui_thread.join(timeout=5)  # GUI スレッドの終了を待つ（最大5秒）
+        gc.collect()  # 強制ガベージコレクション
         sys.exit(0)
     except Exception as e:
         logger.error(f"[予期せぬエラー] {type(e).__name__}: {e}", exc_info=True)
@@ -412,8 +446,13 @@ def main():
                 if niconico_plugin and niconico_plugin.is_available():
                     logger.debug("[ニコニコプラグイン] 監視停止中...")
                     niconico_plugin.stop_monitoring()
-            except Exception as e:
-                logger.debug(f"[ニコニコプラグイン停止] エラー: {e}")
+            except Exception as plugin_error:
+                logger.debug(f"[ニコニコプラグイン停止] エラー: {plugin_error}")
+        logger.info("🛑 アプリケーションをシャットダウン中...")
+        stop_event.set()
+        gui_instance = None  # GUI インスタンスをクリア
+        gui_thread.join(timeout=5)  # GUI スレッドの終了を待つ（最大5秒）
+        gc.collect()  # 強制ガベージコレクション
         sys.exit(1)
 
 
