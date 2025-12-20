@@ -45,6 +45,104 @@ class YouTubeLivePlugin(NotificationPlugin):
     def get_description(self) -> str:
         return "YouTubeライブ/アーカイブ判定を行いDBに格納するプラグイン（クォータ対応）"
 
+    def on_enable(self) -> None:
+        """
+        プラグイン有効化時に実行
+
+        RSS で登録された未判定動画（content_type="video" でも liveStreamingDetails がある場合）
+        を自動検出して、正しい分類に更新する
+        """
+        logger.info("🔍 YouTube Live プラグイン: RSS登録動画の自動判定を開始します...")
+        updated_count = self._update_unclassified_videos()
+        if updated_count > 0:
+            logger.info(f"✅ {updated_count} 個の動画を自動判定して更新しました")
+        else:
+            logger.info(f"ℹ️ 自動判定結果: 更新対象の動画はありません（既に分類済みか、分類不可）")
+
+    def _update_unclassified_videos(self) -> int:
+        """
+        DB から content_type="video" の動画を取得し、
+        キャッシュされた YouTube API 詳細情報を使用してライブ/アーカイブを判定・更新
+
+        戦略:
+        1️⃣ キャッシュから取得を試みる（既に API で取得済みの動画）
+        2️⃣ キャッシュにない場合は API から取得（初回起動時の分類用）
+        3️⃣ API エラーの場合はスキップ（コスト・エラー耐性重視）
+
+        Returns:
+            int: 更新した動画数
+        """
+        try:
+            # 全動画取得
+            all_videos = self.db.get_all_videos()
+
+            # content_type="video" で、未だ判定されていない動画を抽出
+            unclassified = [
+                v for v in all_videos
+                if v.get("content_type") == "video" or v.get("content_type") is None
+            ]
+
+            if not unclassified:
+                logger.debug("ℹ️ 未判定動画はありません")
+                return 0
+
+            logger.info(f"📊 未判定動画: {len(unclassified)} 件を確認します（キャッシュ優先、キャッシュなければ API 取得）...")
+
+            updated_count = 0
+            skipped_no_cache = 0
+            skipped_no_live = 0
+
+            for video in unclassified:
+                video_id = video.get("video_id")
+                if not video_id:
+                    continue
+
+                # Niconico など非YouTube形式をスキップ
+                if not self._is_valid_youtube_video_id(video_id):
+                    continue
+
+                # ⭐ ステップ 1️⃣: キャッシュから取得を試みる
+                details = self.api_plugin._get_cached_video_detail(video_id)
+
+                # ⭐ ステップ 2️⃣: キャッシュになければ API から取得
+                if not details:
+                    logger.debug(f"🔄 キャッシュなし、API から取得します: {video_id}")
+                    try:
+                        details = self.api_plugin._fetch_video_detail(video_id)
+                        if details:
+                            logger.debug(f"✅ API から動画詳細を取得: {video_id}")
+                        else:
+                            logger.debug(f"⏭️ API から詳細情報が取得できませんでした（スキップ）: {video_id}")
+                            skipped_no_cache += 1
+                            continue
+                    except Exception as e:
+                        logger.debug(f"⏭️ API エラー（スキップ）: {video_id} - {e}")
+                        skipped_no_cache += 1
+                        continue
+
+                # 分類
+                content_type, live_status, is_premiere = self._classify_live(details)
+                logger.debug(f"📋 分類結果: {video_id} → content_type={content_type}, live_status={live_status}")
+
+                # ライブ or アーカイブの場合のみ更新
+                if content_type in ("live", "archive"):
+                    success = self.db.update_video_status(video_id, content_type, live_status)
+                    if success:
+                        updated_count += 1
+                        logger.info(f"✅ 判定更新: {video_id} → {content_type} ({live_status})")
+                    else:
+                        logger.error(f"❌ DB更新失敗: {video_id}")
+                else:
+                    logger.debug(f"⏭️ スキップ（live/archive 以外）: {video_id} → {content_type}")
+                    skipped_no_live += 1
+
+            logger.info(f"✅ 自動判定完了: 更新 {updated_count} 件、キャッシュなし {skipped_no_cache} 件、非ライブ {skipped_no_live} 件")
+            return updated_count
+
+        except Exception as e:
+            logger.error(f"❌ 未判定動画の自動判定に失敗: {e}")
+            return 0
+
     def post_video(self, video: Dict[str, Any]) -> bool:
         """
         ライブ/アーカイブ判定を行い DB に保存
