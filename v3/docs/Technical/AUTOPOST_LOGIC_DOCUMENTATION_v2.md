@@ -102,7 +102,7 @@ v3 の Autopost 機能は、複数のプラットフォーム（YouTube、YouTub
 ## Niconico 自動投稿
 
 ### RSS 監視フロー
-1. **定期取得**: RSS フィードを `NICONICO_LIVE_POLL_INTERVAL` 間隔で取得
+1. **定期取得**: RSS フィードを `NICONICO_POLL_INTERVAL` 間隔で取得
 2. **新着判定**: 前回の `last_video_id` と比較
 3. **DB 登録**: 新着動画を自動的に DB に保存
 4. **テンプレート投稿**: `nico_new_video_template.txt` で投稿
@@ -111,7 +111,7 @@ v3 の Autopost 機能は、複数のプラットフォーム（YouTube、YouTub
 ```env
 NICONICO_USER_ID=              # 監視対象ユーザーID
 NICONICO_USER_NAME=            # 表示名（自動取得/手動指定）
-NICONICO_LIVE_POLL_INTERVAL=10 # ポーリング間隔（分）
+NICONICO_POLL_INTERVAL=10 # ポーリング間隔（分）
 TEMPLATE_NICO_NEW_VIDEO_PATH=  # テンプレートパス
 ```
 
@@ -202,7 +202,7 @@ AUTOPOST_INCLUDE_PREMIERE=true          # プレミア配信を投稿
 
 # Niconico
 NICONICO_USER_ID=...                    # 監視対象ユーザーID
-NICONICO_LIVE_POLL_INTERVAL=10          # ポーリング間隔（分）
+NICONICO_POLL_INTERVAL=10          # ポーリング間隔（分）
 
 # Bluesky
 BLUESKY_USERNAME=...                    # ハンドル名
