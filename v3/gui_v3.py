@@ -199,6 +199,25 @@ class StreamNotifyGUI:
         self.status_label = ttk.Label(status_frame, text="準備完了", relief=tk.SUNKEN)
         self.status_label.pack(fill=tk.X)
 
+    def cleanup(self):
+        """GUI クローズ時のクリーンアップ処理"""
+        try:
+            # tkinter Variable の明示的な破棄
+            for var_name in ['filter_status_var', 'filter_source_var', 'filter_type_var', 'filter_title_entry']:
+                try:
+                    var = getattr(self, var_name, None)
+                    if var and hasattr(var, 'set'):
+                        var.set("")  # 内容をクリア
+                except:
+                    pass
+
+            # その他のオブジェクト参照をクリア
+            self.all_videos = []
+            self.filtered_videos = []
+            self.selected_rows = set()
+        except Exception as e:
+            pass
+
     def refresh_data(self):
         """DB から最新データを取得して表示"""
         # すべての動画をキャッシュ
