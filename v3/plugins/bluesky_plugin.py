@@ -209,6 +209,20 @@ class BlueskyImagePlugin(NotificationPlugin):
                     post_logger.info(f"✅ テンプレートを使用して本文を生成しました: youtube_online (classification_type='live')")
                 else:
                     post_logger.debug(f"ℹ️ youtube_online テンプレート未使用またはレンダリング失敗（従来フォーマットを使用）")
+            elif classification_type == "schedule" or live_status == "upcoming":
+                # 放送枠予約テンプレート
+                rendered = self.render_template_with_utils("youtube_schedule", video)
+                if rendered:
+                    video["text_override"] = rendered
+                    post_logger.info(f"✅ テンプレートを使用して本文を生成しました: youtube_schedule (classification_type='schedule' or live_status='upcoming')")
+                else:
+                    post_logger.debug(f"ℹ️ youtube_schedule テンプレート未使用。youtube_new_video にフォールバック")
+                    rendered = self.render_template_with_utils("youtube_new_video", video)
+                    if rendered:
+                        video["text_override"] = rendered
+                        post_logger.info(f"✅ テンプレートを使用して本文を生成しました: youtube_new_video (フォールバック)")
+                    else:
+                        post_logger.debug(f"ℹ️ youtube_new_video テンプレート未使用またはレンダリング失敗（従来フォーマットを使用）")
             elif classification_type == "archive":
                 # アーカイブテンプレート（フォールバック機能付き）
                 rendered = self.render_template_with_utils("youtube_archive", video)
