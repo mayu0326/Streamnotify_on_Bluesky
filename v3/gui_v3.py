@@ -1046,7 +1046,8 @@ DB を再読込みします。
         if messagebox.askyesno("確認", msg):
             for video in selected:
                 post_window = PostSettingsWindow(
-                    self.root, video, self.db, self.plugin_manager, self.bluesky_core
+                    self.root, video, self.db, self.plugin_manager, self.bluesky_core,
+                    operation_mode=self.operation_mode, is_dry_run=True
                 )
                 self.root.wait_window(post_window.window)
 
@@ -1097,7 +1098,8 @@ DB を再読込みします。
         # 各動画について投稿設定ウィンドウを表示
         for video in selected:
             post_window = PostSettingsWindow(
-                self.root, video, self.db, self.plugin_manager, self.bluesky_core
+                self.root, video, self.db, self.plugin_manager, self.bluesky_core,
+                operation_mode=self.operation_mode
             )
             self.root.wait_window(post_window.window)
 
@@ -1479,7 +1481,7 @@ YouTube:      {youtube_count} 件 (投稿済み: {youtube_posted})
 class PostSettingsWindow:
     """投稿設定ウィンドウ - 動画の投稿設定を詳細に管理"""
 
-    def __init__(self, parent, video, db, plugin_manager=None, bluesky_core=None):
+    def __init__(self, parent, video, db, plugin_manager=None, bluesky_core=None, operation_mode=None, is_dry_run=False):
         """
         投稿設定ウィンドウを初期化
 
@@ -1489,12 +1491,16 @@ class PostSettingsWindow:
             db: Database インスタンス
             plugin_manager: PluginManager インスタンス
             bluesky_core: Bluesky コア機能インスタンス
+            operation_mode: 動作モード（OperationMode）
+            is_dry_run: dry_run メソッドから呼び出されたか
         """
         self.parent = parent
         self.video = video
         self.db = db
         self.plugin_manager = plugin_manager
         self.bluesky_core = bluesky_core
+        self.operation_mode = operation_mode
+        self.is_dry_run = is_dry_run  # dry_run_post() から呼ばれたフラグ
         self.result = None  # 確定時の設定結果
 
         # ウィンドウを作成
@@ -1627,9 +1633,25 @@ class PostSettingsWindow:
         button_frame = ttk.Frame(self.window)
         button_frame.pack(fill=tk.X, padx=10, pady=10, side=tk.BOTTOM)
 
-        ttk.Button(button_frame, text="✅ 確定して投稿", command=self._confirm_and_post).pack(
-            side=tk.RIGHT, padx=5
+        # 🔧 DRY_RUN モード または dry_run_post() から呼ばれた場合
+        from config import OperationMode
+        is_dry_run_mode = (self.operation_mode == OperationMode.DRY_RUN) or self.is_dry_run
+
+        # 「確定して投稿」ボタンを条件付きで表示・無効化
+        confirm_button = ttk.Button(
+            button_frame,
+            text="✅ 確定して投稿",
+            command=self._confirm_and_post,
+            state=tk.DISABLED if is_dry_run_mode else tk.NORMAL
         )
+        confirm_button.pack(side=tk.RIGHT, padx=5)
+
+        # DRY_RUN モード時のツールチップ
+        if is_dry_run_mode:
+            confirm_button_label = "🧪 DRY_RUN モードまたはドライランモードでは実投稿できません"
+        else:
+            confirm_button_label = "✅ 確定して投稿"
+
         ttk.Button(button_frame, text="❌ キャンセル", command=self.window.destroy).pack(side=tk.RIGHT, padx=5)
         ttk.Button(button_frame, text="🧪 投稿テスト", command=self._dry_run).pack(side=tk.RIGHT, padx=5)
 
