@@ -38,6 +38,7 @@ from logging_config import setup_logging
 from gui_v3 import StreamNotifyGUI
 
 logger = None  # グローバル変数として後で初期化
+gui_instance = None  # GUI インスタンスをグローバルで保持（プラグイン判定後のリロード用）
 
 __author__ = "mayuneco(mayunya)"
 __copyright__ = "Copyright (C) 2025 mayuneco(mayunya)"
@@ -46,8 +47,10 @@ __license__ = "GPLv3"
 
 def run_gui(db, plugin_manager, stop_event, bluesky_core=None):
     """GUI をスレッドで実行 (プラグイン対応)"""
+    global gui_instance
+
     root = tk.Tk()
-    gui = StreamNotifyGUI(root, db, plugin_manager, bluesky_core=bluesky_core)
+    gui_instance = StreamNotifyGUI(root, db, plugin_manager, bluesky_core=bluesky_core)
 
     def on_closing():
         stop_event.set()
@@ -153,6 +156,15 @@ def main():
         plugin_manager.load_plugin("youtube_live_plugin", os.path.join("plugins", "youtube_live_plugin.py"))
         plugin_manager.enable_plugin("youtube_live_plugin")
         asset_manager.deploy_plugin_assets("youtube_live_plugin")
+
+        # ★ プラグイン判定後に GUI を自動リロード
+        if gui_instance:
+            logger.debug("🔄 YouTube Live プラグイン判定後、GUI を再読込します...")
+            try:
+                gui_instance.refresh_data()
+                logger.info("✅ GUI を自動更新しました")
+            except Exception as e:
+                logger.debug(f"⚠️ GUI 自動更新に失敗（無視）: {e}")
     except Exception as e:
         logger.debug(f"YouTubeLive 検出プラグインのロード失敗: {e}")
 
