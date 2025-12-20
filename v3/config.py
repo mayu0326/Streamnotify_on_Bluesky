@@ -233,7 +233,7 @@ class Config:
         self.autopost_include_premiere = autopost_include_premiere in ("true", "1", "yes", "on")
 
         # YouTube Live AUTOPOST モード（新統合環境変数、後方互換性あり）
-        self.youtube_live_autopost_mode = os.getenv("YOUTUBE_LIVE_AUTOPOST_MODE", "").strip().lower()
+        self.youtube_live_autopost_mode = os.getenv("YOUTUBE_LIVE_AUTO_POST_MODE", "").strip().lower()
 
         # 旧環境変数からのマッピング（後方互換性）
         if not self.youtube_live_autopost_mode:
@@ -250,7 +250,7 @@ class Config:
         # バリデーション
         valid_modes = {"all", "schedule", "live", "archive", "off"}
         if self.youtube_live_autopost_mode not in valid_modes:
-            logger.warning(f"YOUTUBE_LIVE_AUTOPOST_MODE が無効です: {self.youtube_live_autopost_mode}。'off' に設定します。")
+            logger.warning(f"YOUTUBE_LIVE_AUTO_POST_MODE が無効です: {self.youtube_live_autopost_mode}。'off' に設定します。")
             self.youtube_live_autopost_mode = "off"
 
 
