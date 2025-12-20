@@ -295,8 +295,8 @@ class YouTubeLivePlugin(NotificationPlugin):
             return content_type in ("video", "live", "archive")
 
         if mode == "schedule":
-            # 予約枠と配信開始のみ
-            return content_type == "video" or (content_type == "live" and live_status in ("upcoming", "live"))
+            # 予約枠のみ
+            return content_type == "live" and live_status == "upcoming"
 
         if mode == "live":
             # 配信開始・配信終了のみ
