@@ -43,6 +43,32 @@
 ## YouTubeAPI 連携プラグイン
 - `YOUTUBE_API_KEY`: UC以外の識別子対応・ライブ詳細取得で使用。未導入時は不要。
 
+## YouTubeLive プラグイン
+YouTube Live 自動投稿モード（all / schedule / live / archive / off、デフォルト: off）
+- 動作モード:`YOUTUBE_LIVE_AUTO_POST_MODE`:
+- `all`: 予約枠・配信・アーカイブすべてを投稿
+- `schedule`: 予約枠と配信開始のみ投稿
+- `live`: 配信開始・配信終了のみ投稿
+- `archive`: アーカイブ公開のみ投稿
+- `off`: YouTube Live 自動投稿を行わない
+
+### YouTube Live ポーリング間隔（分単位、デフォルト: 15）
+ライブ中の動画をこの間隔でチェックし、終了を検知します
+- `YOUTUBE_LIVE_POLL_INTERVAL`=
+- ⚠️ 有効範囲: 最短15分～最長60分（範囲外の値は自動調整されます）
+- 推奨値: 15分（最短）～30分（標準）～60分（最長）
+- 注意: `YOUTUBE_LIVE_AUTOPOST_MODE` が `all` または `live` の場合のみ有効
+
+# ライブ開始時の自動投稿を有効にするか（true/false、デフォルト: true）
+# ⚠️ 廃止予定: YOUTUBE_LIVE_AUTO_POST_MODE を使用してください
+# YouTube RSS または API でライブ開始を検知した時に、自動的に Bluesky へ投稿します
+YOUTUBE_LIVE_AUTO_POST_START=true
+
+# ライブ終了時の自動投稿を有効にするか（true/false、デフォルト: true）
+# ⚠️ 廃止予定: YOUTUBE_LIVE_AUTOPOST_MODE を使用してください
+# API ポーリングでライブ終了を検知した時に、自動的に Bluesky へ投稿します
+YOUTUBE_LIVE_AUTO_POST_END=true
+
 ## 動画投稿通知拡張（未実装）
 - `NOTIFY_ON_*`: Twitch/YouTube/Niconicoの各通知の有効可否。
 - `DISCORD_NOTIFY_ENABLED`: Discord通知の有効化。
