@@ -78,6 +78,11 @@ class YouTubeLivePlugin(NotificationPlugin):
         video_url = video.get("video_url") or f"https://www.youtube.com/watch?v={video_id}"
         thumbnail_url = snippet.get("thumbnails", {}).get("high", {}).get("url", "")
 
+        # AUTOPOST 時の自動投稿判定（仕様 v1.0 セクション 4）
+        should_autopost = self._should_autopost_live(content_type, live_status)
+        if not should_autopost:
+            logger.debug(f"⏭️ YouTube Live: YOUTUBE_LIVE_AUTO_POST_MODE の設定により投稿スキップ（content_type={content_type}, live_status={live_status}）")
+
         return self.db.insert_video(
             video_id=video_id,
             title=title,
@@ -171,6 +176,41 @@ class YouTubeLivePlugin(NotificationPlugin):
             (content_type, live_status, is_premiere)
         """
         return self.api_plugin._classify_video_core(details)
+
+    def _should_autopost_live(self, content_type: str, live_status: Optional[str]) -> bool:
+        """
+        YOUTUBE_LIVE_AUTO_POST_MODE に基づいて自動投稿判定（仕様 v1.0 セクション 4）
+
+        Returns:
+            bool: 投稿すべき場合 True、スキップすべき場合 False
+        """
+        from config import get_config
+        config = get_config("settings.env")
+        mode = config.youtube_live_autopost_mode
+
+        # ★ テーブル仕様 v1.0 セクション 4.2 参照
+        if mode == "off":
+            return False
+
+        if mode == "all":
+            # すべてのイベント投稿
+            return content_type in ("video", "live", "archive")
+
+        if mode == "schedule":
+            # 予約枠と配信開始のみ
+            return content_type == "video" or (content_type == "live" and live_status in ("upcoming", "live"))
+
+        if mode == "live":
+            # 配信開始・配信終了のみ
+            return content_type == "live" and live_status in ("live", "completed")
+
+        if mode == "archive":
+            # アーカイブ公開のみ
+            return content_type == "archive"
+
+        # デフォルト: off
+        logger.warning(f"⚠️ YOUTUBE_LIVE_AUTO_POST_MODE が無効: {mode}。投稿スキップします。")
+        return False
 
     # --- ライブ自動投稿ロジック ---
     def auto_post_live_start(self, video: Dict[str, Any]) -> bool:
@@ -304,12 +344,11 @@ class YouTubeLivePlugin(NotificationPlugin):
                     # DB 更新（キャッシュデータを反映）
                     self.db.update_video_status(video_id, content_type, live_status)
 
-                    # ⑥ 設定に基づき自動投稿（オプション）
-                    auto_post_end = os.getenv("YOUTUBE_LIVE_AUTO_POST_END", "true").lower() == "true"
-                    if auto_post_end:
+                    # ⑥ 設定に基づき自動投稿（新仕様：YOUTUBE_LIVE_AUTO_POST_MODE）
+                    if self._should_autopost_live(content_type, live_status):
                         self.auto_post_live_end(video)
                     else:
-                        logger.info("ℹ️ YOUTUBE_LIVE_AUTO_POST_END=false のため投稿をスキップ")
+                        logger.info(f"ℹ️ YOUTUBE_LIVE_AUTO_POST_MODE の設定により投稿スキップ（content_type={content_type}, live_status={live_status}）")
 
                     # 終了済み動画をキャッシュから削除
                     cache.remove_live_video(video_id)
