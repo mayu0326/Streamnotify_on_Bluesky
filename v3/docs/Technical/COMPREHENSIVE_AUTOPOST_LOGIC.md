@@ -537,7 +537,7 @@ NICONICO_USER_ID=
 NICONICO_USER_NAME=
 
 # ニコニコのポーリング間隔（分、デフォルト: 10）
-NICONICO_LIVE_POLL_INTERVAL=10
+NICONICO_POLL_INTERVAL=10
 
 # ニコニコ新着動画投稿用テンプレート
 TEMPLATE_NICO_NEW_VIDEO_PATH=templates/niconico/nico_new_video_template.txt
