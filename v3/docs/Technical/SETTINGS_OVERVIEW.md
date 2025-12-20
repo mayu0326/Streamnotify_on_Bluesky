@@ -29,7 +29,7 @@
 ## ニコニコ動画　連携プラグイン
 - `NICONICO_USER_ID`: 監視対象のユーザーID（数値）。
 - `NICONICO_USER_NAME`: ニコニコユーザー名（テンプレートで投稿者として表示、省略可）。未設定時は自動取得を試みます（優先順位: RSS > 静画API > ユーザーページ > ユーザーID）。
-- `NICONICO_LIVE_POLL_INTERVAL`: RSS ポーリング間隔（分、デフォルト: 10）。**注記**: RSS は録画済み動画のみ対応。生放送は非対応。
+- `NICONICO_POLL_INTERVAL`: RSS ポーリング間隔（分、デフォルト: 10）。**注記**: RSS は録画済み動画のみ対応。生放送は非対応。
 - `TEMPLATE_NICO_NEW_VIDEO_PATH`: ニコニコ新着動画投稿用テンプレート。
 
 ## 画像自動リサイズ機能（v3.1.0+）
