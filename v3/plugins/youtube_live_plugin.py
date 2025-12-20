@@ -81,7 +81,7 @@ class YouTubeLivePlugin(NotificationPlugin):
         # AUTOPOST 時の自動投稿判定（仕様 v1.0 セクション 4）
         should_autopost = self._should_autopost_live(content_type, live_status)
         if not should_autopost:
-            logger.debug(f"⏭️ YouTube Live: YOUTUBE_LIVE_AUTO_POST_MODE の設定により投稿スキップ（content_type={content_type}, live_status={live_status}）")
+            logger.debug(f"⏭️ YouTube Live: YOUTUBE_LIVE_AUTOPOST_MODE の設定により投稿スキップ（content_type={content_type}, live_status={live_status}）")
 
         return self.db.insert_video(
             video_id=video_id,
@@ -179,7 +179,7 @@ class YouTubeLivePlugin(NotificationPlugin):
 
     def _should_autopost_live(self, content_type: str, live_status: Optional[str]) -> bool:
         """
-        YOUTUBE_LIVE_AUTO_POST_MODE に基づいて自動投稿判定（仕様 v1.0 セクション 4）
+        YOUTUBE_LIVE_AUTOPOST_MODE に基づいて自動投稿判定（仕様 v1.0 セクション 4）
 
         Returns:
             bool: 投稿すべき場合 True、スキップすべき場合 False
@@ -209,7 +209,7 @@ class YouTubeLivePlugin(NotificationPlugin):
             return content_type == "archive"
 
         # デフォルト: off
-        logger.warning(f"⚠️ YOUTUBE_LIVE_AUTO_POST_MODE が無効: {mode}。投稿スキップします。")
+        logger.warning(f"⚠️ YOUTUBE_LIVE_AUTOPOST_MODE が無効: {mode}。投稿スキップします。")
         return False
 
     # --- ライブ自動投稿ロジック ---
@@ -344,11 +344,11 @@ class YouTubeLivePlugin(NotificationPlugin):
                     # DB 更新（キャッシュデータを反映）
                     self.db.update_video_status(video_id, content_type, live_status)
 
-                    # ⑥ 設定に基づき自動投稿（新仕様：YOUTUBE_LIVE_AUTO_POST_MODE）
+                    # ⑥ 設定に基づき自動投稿（新仕様：YOUTUBE_LIVE_AUTOPOST_MODE）
                     if self._should_autopost_live(content_type, live_status):
                         self.auto_post_live_end(video)
                     else:
-                        logger.info(f"ℹ️ YOUTUBE_LIVE_AUTO_POST_MODE の設定により投稿スキップ（content_type={content_type}, live_status={live_status}）")
+                        logger.info(f"ℹ️ YOUTUBE_LIVE_AUTOPOST_MODE の設定により投稿スキップ（content_type={content_type}, live_status={live_status}）")
 
                     # 終了済み動画をキャッシュから削除
                     cache.remove_live_video(video_id)
