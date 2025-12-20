@@ -178,7 +178,20 @@ python main_v3.py
 python main_v2.py
 ```
 
-### 基本的な動き
+### 動作モード（v3）
+
+`settings.env` の `APP_MODE` で動作モードを選択します：
+
+| モード | 説明 | 用途 |
+|:--|:--|:--|
+| `selfpost` | 完全手動投稿 | ユーザーがGUI操作で投稿対象を選択 |
+| `autopost` | 完全自動投稿 | 環境変数とロジックのみで自動投稿 |
+| `dry_run` | テストモード | 投稿をシミュレート（実際には投稿しない） |
+| `collect` | 収集モード | RSS取得・DB保存のみ（投稿機能オフ） |
+
+**注記**: SELFPOST と AUTOPOST は同時に有効にならないため、モード切替時はアプリケーション再起動が必要です。
+
+### 基本的な動き（SELFPOST モード）
 
 1. **RSS 取得**: `POLL_INTERVAL_MINUTES` ごとに YouTube RSS フィードを取得
 2. **新着検出**: DB と比較して新着動画を検出
@@ -187,13 +200,33 @@ python main_v2.py
 5. **手動投稿**: GUI から動画を選択して Bluesky に投稿
 6. **ログ記録**: 投稿結果をログファイルに記録
 
-### GUI の主な機能
+### AUTOPOST モード（自動投稿）
+
+`APP_MODE=autopost` の場合、以下の環境変数で自動投稿を制御：
+
+- **安全弁機構**:
+  - `AUTOPOST_INTERVAL_MINUTES`: 最小投稿間隔（デフォルト: 5分）
+  - `AUTOPOST_LOOKBACK_MINUTES`: 安全チェック時間窓（デフォルト: 30分）
+  - `AUTOPOST_UNPOSTED_THRESHOLD`: 未投稿動画の安全上限（デフォルト: 20件）
+
+- **動画種別フィルタ**:
+  - `AUTOPOST_INCLUDE_NORMAL`: 通常動画を投稿
+  - `AUTOPOST_INCLUDE_SHORTS`: YouTube Shorts を投稿
+  - `AUTOPOST_INCLUDE_MEMBER_ONLY`: メンバー限定動画を投稿
+  - `AUTOPOST_INCLUDE_PREMIERE`: プレミア配信を投稿
+
+詳細は [AUTOPOST機能仕様書](v3/docs/Technical/AUTOPOST_SELFPOST_機能仕様書.md) を参照。
+
+### GUI の主な機能（SELFPOST モード）
 
 - **動画一覧表示**: DB に保存されている動画を Treeview で表示
+- **フィルタリング**: タイトル、投稿状態、配信元で動画を検索
 - **動画選択**: チェックボックスで投稿対象を選択
 - **投稿実行**: 選択動画を Bluesky に投稿
+- **予約投稿**: スケジュール指定で投稿を予約
 - **ドライラン**: 投稿をシミュレート（実際には投稿しない）
 - **統計表示**: 投稿数、未投稿数などを表示
+- **重複投稿防止**: 既投稿動画の自動検知（`PREVENT_DUPLICATE_POSTS=true`）
 - **プラグイン状態**: 導入済みプラグイン一覧を表示
 
 ## ドキュメント
