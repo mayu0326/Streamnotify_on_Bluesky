@@ -1,11 +1,12 @@
-# Autopost Logic Documentation - Quick Reference
+# AUTOPOST Logic Documentation - Quick Reference
 
 **Date:** 2025年12月20日
-**Version:** v3.x
-**Status:** ✅ 完成・検証済み
+**Version:** v3.3.0
+**Status:** ✅ 仕様v1.0対応・検証済み
 
-> **注意**: このドキュメントは簡易版です。詳細な実装ドキュメントは以下を参照してください：
-> - [COMPREHENSIVE_AUTOPOST_LOGIC.md](./COMPREHENSIVE_AUTOPOST_LOGIC.md) - 包括的な解析ドキュメント（推奨）
+> **注意**: このドキュメントは簡易版です。詳細は以下を参照してください：
+> - [AUTOPOST_SELFPOST_機能仕様書.md](./AUTOPOST_SELFPOST_機能仕様書.md) - 仕様v1.0（必読）
+> - [COMPREHENSIVE_AUTOPOST_LOGIC.md](./COMPREHENSIVE_AUTOPOST_LOGIC.md) - 包括的な解析ドキュメント
 
 ---
 
@@ -23,27 +24,36 @@ v3 の Autopost 機能は、複数のプラットフォーム（YouTube、YouTub
 
 ---
 
-## 動作モード（4種類）
+## 動作モード（4種類・仕様v1.0）
 
-### NORMAL（通常モード）
-- 設定: `APP_MODE=normal`
-- 動作: RSS 取得 + **手動投稿**
-- 用途: ユーザーが確認してから投稿
+### SELFPOST（完全手動投稿モード）
+- 設定: `APP_MODE=selfpost`
+- 動作: RSS 取得 + **GUI での手動投稿**
+- 用途: ユーザーが GUI 操作で投稿対象を選択・確認してから投稿
+- 特徴: AUTOPOST ロジックは一切実行されない（完全手動制御）
 
-### AUTO_POST（自動投稿モード）
-- 設定: `APP_MODE=auto_post` + `BLUESKY_POST_ENABLED=true`
-- 動作: RSS 取得 + **自動投稿**（定期実行）
-- 用途: 投稿を自動化したい場合
+### AUTOPOST（完全自動投稿モード）
+- 設定: `APP_MODE=autopost` + AUTOPOST 環境変数設定
+- 動作: RSS 取得 + **自動投稿**（設定ルールのみで制御）
+- 用途: 投稿を完全に自動化したい場合
+- 特徴: 人間の介入なし、安全弁機構による抑止あり
+- 環境変数:
+  - `AUTOPOST_INTERVAL_MINUTES`: 投稿間隔（デフォルト: 5分）
+  - `AUTOPOST_LOOKBACK_MINUTES`: 安全チェック時間窓（デフォルト: 30分）
+  - `AUTOPOST_UNPOSTED_THRESHOLD`: 未投稿動画の安全上限（デフォルト: 20件）
+  - `AUTOPOST_INCLUDE_NORMAL`/`SHORTS`/`MEMBER_ONLY`/`PREMIERE`: 投稿対象フィルタ
 
-### DRY_RUN（デバッグモード）
+### DRY_RUN（テストモード）
 - 設定: `APP_MODE=dry_run`
 - 動作: RSS 取得 + **投稿シミュレーション**（実投稿なし）
 - 用途: 投稿内容確認・動作テスト
+- 特徴: Bluesky に実際には投稿しない
 
 ### COLLECT（収集専用）
 - 設定: `APP_MODE=collect` または DB 未作成
 - 動作: **RSS 取得のみ**（投稿機能完全オフ）
-- 用途: データ収集フェーズ
+- 用途: 動画情報の収集フェーズのみ
+- 特徴: GUI の投稿ボタンがすべて無効化される
 
 ---
 
@@ -56,18 +66,36 @@ v3 の Autopost 機能は、複数のプラットフォーム（YouTube、YouTub
 ### ステージ 2: 開始
 - **検知**: API ポーリングで `live_status="live"` を確認
 - **自動投稿**: `yt_online_template.txt` で投稿
-- **設定**: `YOUTUBE_LIVE_AUTO_POST_START=true`
+- **設定**: `YOUTUBE_LIVE_AUTO_POST_MODE` が "all" または "schedule" の場合に有効
 
 ### ステージ 3: 終了
 - **検知**: API ポーリングで `live_status="completed"` を確認
 - **自動投稿**: `yt_offline_template.txt` で投稿
-- **設定**: `YOUTUBE_LIVE_AUTO_POST_END=true`
+- **設定**: `YOUTUBE_LIVE_AUTO_POST_MODE` が "all" または "live" の場合に有効
 - **ポーリング間隔**: `YOUTUBE_LIVE_POLL_INTERVAL=15` (分、15～60分範囲)
+- **注記**: ポーリングは MODE が "all" または "live" の場合のみ実行
 
 ### ステージ 4: アーカイブ
 - **判定**: 配信終了後、公開されたアーカイブを検知
 - **DB 状態**: `content_type="archive"`, `live_status=null`
-- **投稿**: `yt_archive_template.txt` で投稿（オプション）
+- **投稿**: `yt_archive_template.txt` で投稿
+- **設定**: `YOUTUBE_LIVE_AUTO_POST_MODE` が "all" または "archive" の場合に投稿
+
+---
+
+## YouTube Live 統合MODE制御（仕様v1.0）
+
+`YOUTUBE_LIVE_AUTO_POST_MODE` で5段階制御：
+
+| MODE | 予約枠 | 配信開始 | 配信終了 | アーカイブ | 用途 |
+|:--|:--:|:--:|:--:|:--:|:--|
+| `all` | ✅ | ✅ | ✅ | ✅ | すべてのイベントを投稿 |
+| `schedule` | ✅ | ✅ | ❌ | ❌ | 配信告知・開始のみ投稿 |
+| `live` | ❌ | ✅ | ✅ | ❌ | 配信開始・終了のみ投稿 |
+| `archive` | ❌ | ❌ | ❌ | ✅ | アーカイブ公開のみ投稿 |
+| `off` | ❌ | ❌ | ❌ | ❌ | YouTube Live 投稿を行わない |
+
+**ポーリング有効条件**: MODE が "all" または "live" の場合のみポーリングが実行される
 
 ---
 
@@ -149,20 +177,28 @@ class NotificationPlugin(ABC):
 
 ---
 
-## 環境変数（重要な設定）
+## 環境変数（重要な設定・仕様v1.0準拠）
 
 ```env
-# 動作モード
-APP_MODE=auto_post                      # normal/auto_post/dry_run/collect
+# 動作モード（仕様v1.0）
+APP_MODE=selfpost                       # selfpost/autopost/dry_run/collect
 
 # YouTube
 YOUTUBE_CHANNEL_ID=UC...                # 監視対象チャンネル
 YOUTUBE_API_KEY=...                     # YouTube Data API キー（オプション）
 
-# YouTubeLive
-YOUTUBE_LIVE_AUTO_POST_START=true       # ライブ開始自動投稿
-YOUTUBE_LIVE_AUTO_POST_END=true         # ライブ終了自動投稿
-YOUTUBE_LIVE_POLL_INTERVAL=15           # ポーリング間隔（15～60分）
+# YouTubeLive（仕様v1.0・統合MODE制御）
+YOUTUBE_LIVE_AUTO_POST_MODE=all         # all/schedule/live/archive/off
+YOUTUBE_LIVE_POLL_INTERVAL=15           # ポーリング間隔（15～60分、MODE="all"|"live"時のみ有効）
+
+# AUTOPOST 環境変数（APP_MODE=autopost 時）
+AUTOPOST_INTERVAL_MINUTES=5             # 投稿間隔（分、範囲: 1-60）
+AUTOPOST_LOOKBACK_MINUTES=30            # 安全チェック時間窓（分、範囲: 5-1440）
+AUTOPOST_UNPOSTED_THRESHOLD=20          # 未投稿動画安全上限（件、範囲: 1-1000）
+AUTOPOST_INCLUDE_NORMAL=true            # 通常動画を投稿
+AUTOPOST_INCLUDE_SHORTS=false           # YouTube Shorts を投稿
+AUTOPOST_INCLUDE_MEMBER_ONLY=false      # メンバー限定動画を投稿
+AUTOPOST_INCLUDE_PREMIERE=true          # プレミア配信を投稿
 
 # Niconico
 NICONICO_USER_ID=...                    # 監視対象ユーザーID
@@ -185,12 +221,17 @@ TEMPLATE_NICO_NEW_VIDEO_PATH=...
 
 ## 参考ドキュメント
 
+📚 **AUTOPOST/SELFPOST 仕様**:
+- [AUTOPOST_SELFPOST_機能仕様書.md](./AUTOPOST_SELFPOST_機能仕様書.md) ⭐ **仕様v1.0（必読）**
+
 📚 **詳細な実装ドキュメント**:
 - [COMPREHENSIVE_AUTOPOST_LOGIC.md](./COMPREHENSIVE_AUTOPOST_LOGIC.md) ⭐ **推奨**（詳細な実装解析）
 - [PLUGIN_SYSTEM.md](./PLUGIN_SYSTEM.md)（プラグインシステム）
 - [TEMPLATE_SYSTEM.md](./TEMPLATE_SYSTEM.md)（テンプレートシステム）
+- [SETTINGS_OVERVIEW.md](./SETTINGS_OVERVIEW.md)（設定項目一覧）
 
 ---
 
-**作成日**: 2025年12月20日
-**ステータス**: ✅ 完成・検証済み
+**更新日**: 2025年12月20日
+**仕様版**: v1.0
+**ステータス**: ✅ 仕様v1.0対応・完全準拠
