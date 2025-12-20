@@ -25,6 +25,9 @@ from app_version import get_version_info, get_full_version_info
 # プラグインマネージャ関連
 from plugin_manager import PluginManager
 
+# 設定
+from config import OperationMode
+
 # アセットマネージャ
 from asset_manager import get_asset_manager
 
@@ -240,10 +243,11 @@ def main():
             logger.warning(f"⚠️ YOUTUBE_LIVE_POLL_INTERVAL={poll_interval_minutes} は長すぎます（最長60分）")
             poll_interval_minutes = 60
 
-        auto_post_end = os.getenv("YOUTUBE_LIVE_AUTO_POST_END", "true").lower() == "true"
-
-        if not auto_post_end:
-            logger.info("ℹ️ YOUTUBE_LIVE_AUTO_POST_END=false のためライブ終了検知は無効です")
+        # ★ 修正: 旧フラグではなく新 MODE 変数で判定
+        # YOUTUBE_LIVE_AUTO_POST_MODE が "all" または "live" の場合のみポーリング有効
+        mode = os.getenv("YOUTUBE_LIVE_AUTO_POST_MODE", "off").lower()
+        if mode not in ("all", "live"):
+            logger.info(f"ℹ️ YOUTUBE_LIVE_AUTO_POST_MODE={mode} のためライブ終了検知は無効です")
             return
 
         logger.info(f"📡 YouTubeLive ライブ終了検知ポーリングを開始します（間隔: {poll_interval_minutes} 分）")
@@ -271,7 +275,29 @@ def main():
 
     polling_count = 0
     last_post_time = None
-    POST_INTERVAL_MINUTES = 5
+    autopost_warning_shown = False  # セーフモード警告フラグ
+    safe_mode_enabled = False       # セーフモード有効フラグ（仕様 5.3）
+
+    # ★ 新: セーフモード起動判定（仕様 5.3）
+    # 起動時に posted_to_bluesky=0 かつ posted_at IS NOT NULL の件数をチェック
+    # これは「投稿マーク自体がリセットされた」異常を検知する
+    if config.operation_mode == OperationMode.AUTOPOST:
+        try:
+            import sqlite3
+            conn = sqlite3.connect(db.db_path, timeout=10)
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT COUNT(*) FROM videos WHERE posted_to_bluesky = 0 AND posted_at IS NOT NULL"
+            )
+            reset_count = cursor.fetchone()[0]
+            conn.close()
+
+            if reset_count > 0:
+                safe_mode_enabled = True
+                logger.error(f"❌ セーフモード起動: posted_to_bluesky の大量リセットを検知（{reset_count} 件）")
+                logger.warning(f"⚠️  AUTOPOST は抑止されます。DB の状態を確認して、手動リセットしてください。")
+        except Exception as e:
+            logger.warning(f"セーフモード判定エラー（続行）: {e}")
 
     try:
         while not stop_event.is_set():
@@ -287,28 +313,67 @@ def main():
 
             if config.is_collect_mode:
                 logger.info("[モード] 収集モード のため、投稿処理をスキップします。")
-            else:
+            elif config.operation_mode == OperationMode.SELFPOST:
+                # === SELFPOST モード（手動投稿のみ）===
+                logger.info("[モード] SELFPOST モード。投稿対象を GUI から設定してください。")
+            elif config.operation_mode == OperationMode.AUTOPOST:
+                # === AUTOPOST モード（完全自動投稿）===
+                logger.info("[モード] AUTOPOST モード。自動投稿ロジックを実行します。")
+
+                # ★ セーフモードチェック（仕様 5.3）
+                if safe_mode_enabled:
+                    logger.error("❌ セーフモード中: AUTOPOST は抑止されています。")
+                    continue
+
+                # 安全弁 1: 未投稿大量検知
+                unposted_count = db.count_unposted_in_lookback(config.autopost_lookback_minutes)
+                if unposted_count >= config.autopost_unposted_threshold:
+                    logger.error(f"❌ 安全弁 1 発動: LOOKBACK 時間内に未投稿動画が {unposted_count} 件存在（閾値: {config.autopost_unposted_threshold} 件）")
+                    logger.warning(f"⚠️  設定エラーまたはデバッグ誤爆の可能性があります。AUTOPOST を起動抑止します。")
+                    if not autopost_warning_shown:
+                        # GUI にポップアップで通知（可能な場合）
+                        autopost_warning_shown = True
+                    continue  # このポーリングをスキップ
+
+                # 安全弁解除
+                autopost_warning_shown = False
+
+                # 投稿間隔チェック
                 now = datetime.now()
-                should_post = last_post_time is None or (now - last_post_time).total_seconds() >= POST_INTERVAL_MINUTES * 60
+                should_post = last_post_time is None or \
+                              (now - last_post_time).total_seconds() >= config.autopost_interval_minutes * 60
 
                 if should_post:
-                    selected_video = db.get_selected_videos()
-                    if selected_video:
-                        logger.info(f" 投稿対象を発見: {selected_video['title']}")
+                    # 動画種別フィルタリング付きで候補を取得
+                    candidates = db.get_autopost_candidates(config)
+
+                    if candidates:
+                        # 最初の候補を選択（優先度順）
+                        selected_video = candidates[0]
+                        logger.info(f"🤖 AUTOPOST 対象を発見: {selected_video['title']}")
+
+                        # 重複チェック（念のため）
+                        if db.is_duplicate_post(selected_video['video_id']):
+                            logger.warning(f"⚠️  この動画は既に投稿済みです（{selected_video['title']}）")
+                            continue
+
+                        # プラグイン実行
                         results = plugin_manager.post_video_with_all_enabled(selected_video)
                         success = any(results.values())
+
                         if success:
+                            # DB を投稿済みにマーク
                             db.mark_as_posted(selected_video['video_id'])
                             last_post_time = now
-                            logger.info(f" ✅ 投稿完了。次の投稿は {POST_INTERVAL_MINUTES} 分後です。")
+                            logger.info(f"✅ AUTOPOST 成功。次の投稿は {config.autopost_interval_minutes} 分後です。")
                         else:
-                            logger.warning(f" ❌ 投稿に失敗: {selected_video['title']}")
+                            logger.error(f"❌ AUTOPOST 投稿失敗: {selected_video['title']}")
                     else:
-                        logger.info("投稿対象となる動画が指定されていません。管理画面から設定してください。")
+                        logger.info("🤖 AUTOPOST: 投稿対象動画がありません。")
                 else:
                     elapsed = (now - last_post_time).total_seconds() / 60
-                    remaining = POST_INTERVAL_MINUTES - elapsed
-                    logger.info(f" 投稿間隔制限中。次の投稿まで約 {remaining:.1f} 分待機。")
+                    remaining = config.autopost_interval_minutes - elapsed
+                    logger.info(f"🤖 AUTOPOST: 投稿間隔制限中。次の投稿まで約 {remaining:.1f} 分待機。")
 
             logger.info(f"次のポーリングまで {config.poll_interval_minutes} 分待機中...")
             # 待機中も stop_event をチェック（1秒間隔）
