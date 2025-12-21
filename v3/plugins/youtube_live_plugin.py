@@ -277,7 +277,14 @@ class YouTubeLivePlugin(NotificationPlugin):
 
     def _should_autopost_live(self, content_type: str, live_status: Optional[str]) -> bool:
         """
-        YOUTUBE_LIVE_AUTOPOST_MODE に基づいて自動投稿判定（仕様 v1.0 セクション 4）
+        YouTube Live 自動投稿判定
+
+        YOUTUBE_LIVE_AUTO_POST_MODE（統合モード値）と
+        YOUTUBE_LIVE_AUTO_POST_SCHEDULE/LIVE/ARCHIVE（個別フラグ）の両方に対応
+
+        優先順位:
+        1. モード値が設定されている場合 → モード値の判定ロジックを使用
+        2. モード値が未設定の場合 → 個別フラグで判定（SELFPOST 向け）
 
         Returns:
             bool: 投稿すべき場合 True、スキップすべき場合 False
@@ -286,7 +293,7 @@ class YouTubeLivePlugin(NotificationPlugin):
         config = get_config("settings.env")
         mode = config.youtube_live_autopost_mode
 
-        # ★ テーブル仕様 v1.0 セクション 4.2 参照
+        # ★ テーブル仕様 v1.0 セクション 4.2 参照（モード値による判定）
         if mode == "off":
             return False
 
@@ -305,6 +312,19 @@ class YouTubeLivePlugin(NotificationPlugin):
         if mode == "archive":
             # アーカイブ公開のみ
             return content_type == "archive"
+
+        # モード値が未設定の場合 → 個別フラグで判定（SELFPOST 向け）
+        if not mode or mode == "":
+            if content_type == "live":
+                if live_status == "upcoming":
+                    return config.youtube_live_auto_post_schedule
+                elif live_status in ("live", "completed"):
+                    return config.youtube_live_auto_post_live
+
+            if content_type == "archive":
+                return config.youtube_live_auto_post_archive
+
+            return False
 
         # デフォルト: off
         logger.warning(f"⚠️ YOUTUBE_LIVE_AUTOPOST_MODE が無効: {mode}。投稿スキップします。")
