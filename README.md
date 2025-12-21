@@ -258,7 +258,7 @@ python main_v2.py
 ## 📚 YouTube関連資料
 - [YouTube API キャシュ実装](v3/docs/Technical/YouTube/YOUTUBE_API_CACHING_IMPLEMENTATION.md)
 - [YouTubeLive 終了検出機構](v3/docs/Technical/YouTube/YOUTUBE_LIVE_CACHE_IMPLEMENTATION.md)
-- [YouTube Live プラグイン](v3\docs\Technical\YouTube\YOUTUBE_LIVE_PLUGIN_IMPLEMENTATION.md)
+- [YouTube Live プラグイン](v3/docs/Technical/YouTube/YOUTUBE_LIVE_PLUGIN_IMPLEMENTATION.md)
 
 ### 関連資料
 - [OLD_App 既存実装リファレンス](v3/docs/Technical/OLDAPP_REFERENCE_FOR_V3_PLUGINS.md)
