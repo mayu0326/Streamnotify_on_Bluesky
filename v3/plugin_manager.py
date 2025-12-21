@@ -258,3 +258,19 @@ class PluginManager:
                 results[plugin_name] = False
 
         return results
+
+# グローバルシングルトンマネージャー
+_plugin_manager_instance: Optional[PluginManager] = None
+
+
+def get_plugin_manager() -> PluginManager:
+    """
+    グローバルなプラグインマネージャーを取得（シングルトン）
+
+    Returns:
+        PluginManager: プラグインマネージャーインスタンス
+    """
+    global _plugin_manager_instance
+    if _plugin_manager_instance is None:
+        _plugin_manager_instance = PluginManager()
+    return _plugin_manager_instance

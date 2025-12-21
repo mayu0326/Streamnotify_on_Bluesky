@@ -104,7 +104,7 @@ Streamnotify_on_Bluesky/v3/
 {{ video_url }}
 ```
 
-#### 方法 2: GUI テンプレートエディタ（推奨）
+#### 方法 2: GUI テンプレートエディタ（v4以降対応予定）
 
 アプリケーション起動時に管理画面が表示されます：
 
@@ -120,178 +120,9 @@ Streamnotify_on_Bluesky/v3/
 
 ### 使える変数一覧
 
-テンプレート内では、以下の変数を `{{ 変数名 }}` の形式で使用できます：
+テンプレート内では、 `{{ 変数名 }}` の形式で様々な内容を表示できます：
 
-#### YouTube 新着動画テンプレート（`yt_new_video_template.txt`）
-
-| 変数名 | 説明 | 例 |
-|:--|:--|:--|
-| `{{ title }}` | 動画のタイトル | `新作動画を作成しました！` |
-| `{{ video_id }}` | YouTube 動画 ID | `dQw4w9WgXcQ` |
-| `{{ video_url }}` | 動画への URL | `https://www.youtube.com/watch?v=dQw4w9WgXcQ` |
-| `{{ channel_name }}` | チャンネル名 | `My Channel` |
-| `{{ published_at }}` | 公開日時（ISO 形式） | `2025-12-18T10:30:00` |
-
-#### ニコニコ新着動画テンプレート（`nico_new_video_template.txt`）
-
-| 変数名 | 説明 | 例 |
-|:--|:--|:--|
-| `{{ title }}` | 動画のタイトル | `新作動画を作成しました！` |
-| `{{ video_id }}` | ニコニコ 動画 ID | `sm99999999` |
-| `{{ video_url }}` | 動画への URL | `https://www.nicovideo.jp/watch/sm99999999` |
-| `{{ channel_name }}` | ユーザー名またはチャンネル名（自動取得・優先順位: RSS > 静画API > ユーザーページ > 環境変数 > ユーザーID） | `MyUser` |
-| `{{ published_at }}` | 公開日時（ISO 形式） | `2025-12-18T10:30:00` |
-
-**ご注意**: ニコニコのユーザー名は以下の優先順位で自動取得されます：
-1. RSS フィード（`<dc:creator>`）
-2. ニコニコ静画 API
-3. ユーザーページの og:title
-4. `NICONICO_USER_NAME` 環境変数
-5. ユーザーID（上記全て失敗時）
-
-取得されたユーザー名は `settings.env` に自動保存されるため、2回目以降は環境変数から直接読み込まれます。
-
-### テンプレート内で使える機能
-
-#### 1. 変数挿入
-
-```jinja2
-{{ title }}
-{{ video_url }}
-```
-
-#### 2. フィルター（変数を加工）
-
-```jinja2
-# 日付をフォーマット（従来のフィルター）
-{{ published_at | datetimeformat('%Y年%m月%d日') }}
-# 結果: 2025年12月18日
-
-# 文字列を大文字に
-{{ title | upper }}
-# 結果: NEW VIDEO TITLE
-
-# 文字列を小文字に
-{{ title | lower }}
-# 結果: new video title
-```
-
-#### 2-2. v3.2.0 新規追加フィルター（新機能）
-
-```jinja2
-# 現在日付をフォーマット（v3.2.0+）
-{{ current_date | format_date('%Y年%m月%d日') }}
-# 結果: 2025年12月19日
-
-# 現在日時をフォーマット（v3.2.0+）
-{{ current_datetime | format_datetime('%Y年%m月%d日 %H:%M') }}
-# 結果: 2025年12月19日 14:30
-
-# 曜日を日本語で表示（v3.2.0+）
-{{ published_at | weekday }}
-# 結果: 金曜日
-
-# ランダム絵文字を挿入（v3.2.0+）
-{{ | random_emoji }}
-# 結果: 🎉 または 🚀 など（毎回異なる）
-```
-
-#### 3. 条件分岐
-
-```jinja2
-{% if "特定の単語" in title %}
-このタイトルには「特定の単語」が含まれています
-{% else %}
-他のタイトルです
-{% endif %}
-```
-
-#### 4. ループ処理（高度な用法）
-
-```jinja2
-{% for tag in tags %}
-  #{{ tag }}
-{% endfor %}
-```
-
-### 具体例
-
-#### 例 1: シンプルなテンプレート
-
-```jinja2
-🎬 {{ title }}
-{{ video_url }}
-```
-
-出力:
-```
-🎬 新作動画を作成しました！
-https://www.youtube.com/watch?v=dQw4w9WgXcQ
-```
-
-#### 例 2: 詳細情報を含むテンプレート
-
-```jinja2
-【新着動画】
-
-📹 {{ title }}
-🎤 チャンネル: {{ channel_name }}
-📅 公開日: {{ published_at | datetimeformat('%Y年%m月%d日') }}
-👉 {{ video_url }}
-
-#YouTube #新作動画
-```
-
-出力:
-```
-【新着動画】
-
-📹 新作動画を作成しました！
-🎤 チャンネル: My Channel
-📅 公開日: 2025年12月18日
-👉 https://www.youtube.com/watch?v=dQw4w9WgXcQ
-
-#YouTube #新作動画
-```
-
-#### 例 3: 条件分岐を使ったテンプレート
-
-```jinja2
-{% if "LIVE" in title or "配信" in title %}
-🔴 ライブ配信の告知
-{{ title }}
-📺 {{ video_url }}
-{% else %}
-🎬 通常動画
-【 {{ title }} 】
-📺 {{ video_url }}
-{% endif %}
-```
-
-#### 例 4: v3.2.0 新フィルターを使ったテンプレート
-
-```jinja2
-🎬 新作動画投稿！
-タイトル: {{ title }}
-投稿日: {{ published_at | format_date('%Y年%m月%d日') }} ({{ published_at | weekday }})
-投稿時刻: {{ current_datetime | format_datetime('%H:%M') }}
-{{ | random_emoji }} 是非ご覧ください！
-{{ video_url }}
-
-#新作動画
-```
-
-出力例:
-```
-🎬 新作動画投稿！
-タイトル: 新しい企画に挑戦してみた！
-投稿日: 2025年12月19日 (金曜日)
-投稿時刻: 14:30
-🚀 是非ご覧ください！
-https://www.youtube.com/watch?v=xxxxxx
-
-#新作動画
-```
+- [投稿テンプレート変数リファレンス](v3/docs/Guides/TEMPLATE_GUIDE.md) を参照してください。
 
 ### よくある質問（FAQ）
 
@@ -381,18 +212,6 @@ template_utils.py::render_template_with_utils() で以下を実行：
     ↓
 Bluesky へ投稿
 ```
-
-### テンプレート必須キー
-
-各テンプレート種別は以下の必須キーが `event_context` に含まれている必要があります：
-
-| テンプレート種別 | 必須キー |
-|:--|:--|
-| `youtube_new_video` | `title`, `video_id`, `video_url`, `channel_name` |
-| `nico_new_video` | `title`, `video_id`, `video_url`, `channel_name` |
-| `youtube_online` | `title`, `video_url`, `channel_name`, `live_status` |
-
-必須キーが不足している場合、テンプレート処理はスキップされ、ログに `WARNING` が出力されます。
 
 ### フォールバック機能
 
@@ -596,9 +415,8 @@ def _get_env_var_from_file(file_path: str, env_var_name: str) -> Optional[str]:
 
 ## 関連ドキュメント
 
-- [TEMPLATE_SYSTEM.md](./TEMPLATE_SYSTEM.md) - このドキュメント（テンプレートシステム統合版）
-- [TEMPLATE_IMPLEMENTATION_CHECKLIST.md](../Guides/TEMPLATE_IMPLEMENTATION_CHECKLIST.md) - 実装チェックリスト
-- [設定ファイル例](../settings.env.example) - settings.env の詳細設定
+- [TEMPLATE_SYSTEM.md](TEMPLATE_SYSTEM.md) - このドキュメント（テンプレートシステム統合版）
+- [設定ファイル例](../../settings.env.example) - settings.env の詳細設定
 
 ---
 

@@ -471,8 +471,8 @@ def _execute_post(self, dry_run=False):
 
 ## 関連ドキュメント
 
-- [モジュール一覧](../Technical/ModuleList_v3.md) - GUI フィルタと重複防止の実装詳細
-- [設定概要](../Technical/SETTINGS_OVERVIEW.md) - PREVENT_DUPLICATE_POSTS の詳細
+- [モジュール一覧](../References/ModuleList_v3.md) - GUI フィルタと重複防止の実装詳細
+- [設定概要](../Guides/SETTINGS_OVERVIEW.md) - PREVENT_DUPLICATE_POSTS の詳細
 - [デバッグ・ドライラン](./DEBUG_DRY_RUN_GUIDE.md) - ドライランモードの使い方
 - [将来ロードマップ](../References/FUTURE_ROADMAP_v3.md) - v2.3.0 以降の計画
 
@@ -486,8 +486,8 @@ def _execute_post(self, dry_run=False):
 
 ## 関連ドキュメント
 
-- [GUIの使い方](README_GITHUB_v3.md#gui-の主な機能)
-- [設定ファイル例](../settings.env.example)
+- [GUIの使い方](../Guides/GUI_USER_MANUAL.md)
+- [設定ファイル例](../../settings.env.example)
 - [デバッグ・ドライランガイド](DEBUG_DRY_RUN_GUIDE.md)
 
 ---

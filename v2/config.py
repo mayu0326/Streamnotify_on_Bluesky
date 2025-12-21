@@ -56,7 +56,7 @@ class Config:
 
         self.youtube_api_key = os.getenv("YOUTUBE_API_KEY", "").strip()
         self.youtube_api_plugin_exists = plugin_exists
-        
+
         if plugin_exists:
             if self.youtube_api_key:
                 logger.info("有効なAPIキーが設定されています。")
@@ -159,12 +159,12 @@ class Config:
 
         # ニコニコポーリング間隔（分）
         try:
-            self.niconico_poll_interval_minutes = int(os.getenv("NICONICO_LIVE_POLL_INTERVAL", "10"))
+            self.niconico_poll_interval_minutes = int(os.getenv("NICONICO_POLL_INTERVAL", "10"))
             if self.niconico_poll_interval_minutes < 5 or self.niconico_poll_interval_minutes > 60:
                 logger.warning(f"ニコニコポーリング間隔が範囲外です (5〜60): {self.niconico_poll_interval_minutes}。10分に設定します。")
                 self.niconico_poll_interval_minutes = 10
         except ValueError:
-            logger.warning("NICONICO_LIVE_POLL_INTERVAL が無効です。10分に設定します。")
+            logger.warning("NICONICO_POLL_INTERVAL が無効です。10分に設定します。")
             self.niconico_poll_interval_minutes = 10
 
 

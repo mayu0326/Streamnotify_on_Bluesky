@@ -417,6 +417,21 @@ class YouTubeAPIPlugin(NotificationPlugin):
 
         return None
 
+    def fetch_video_detail(self, video_id: str) -> Optional[Dict[str, Any]]:
+        """
+        単一動画の詳細を取得（キャッシュ優先、1ユニット）
+
+        投稿直前の最新情報確認用 public メソッド
+        キャッシュの有効期限が切れていれば自動的に API で再取得します
+
+        Args:
+            video_id: YouTube 動画 ID
+
+        Returns:
+            動画詳細情報（API レスポンスの item）、取得失敗時は None
+        """
+        return self._fetch_video_detail(video_id)
+
     def fetch_video_details_batch(self, video_ids: List[str]) -> Dict[str, Dict[str, Any]]:
         """
         最大50件の動画詳細をバッチ取得（キャッシュ優先、1ユニット）
@@ -611,6 +626,43 @@ class YouTubeAPIPlugin(NotificationPlugin):
             updated_details = self.fetch_video_details(video_id)
             if updated_details:
                 self.update_video_detail_cache(video_id, updated_details)
+
+    def _extract_video_info(self, details: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        API取得した raw動画詳細情報を video dict 形式へ変換（投稿直前確認用）
+
+        Args:
+            details: API の videos.list レスポンス内の item
+
+        Returns:
+            {published_at, live_status, ...} の辞書
+        """
+        try:
+            snippet = details.get("snippet", {})
+            live_details = details.get("liveStreamingDetails", {})
+
+            # 放送開始予定日時
+            published_at = None
+            if live_details.get("scheduledStartTime"):
+                published_at = live_details["scheduledStartTime"]
+            elif live_details.get("actualStartTime"):
+                published_at = live_details["actualStartTime"]
+            elif snippet.get("publishedAt"):
+                published_at = snippet["publishedAt"]
+
+            # ステータス判定
+            classification_type, live_status, _ = self._classify_video_core(details)
+
+            return {
+                "published_at": published_at,
+                "live_status": live_status,
+                "classification_type": classification_type,
+                "title": snippet.get("title"),
+                "channel_name": snippet.get("channelTitle"),
+            }
+        except Exception as e:
+            logger.error(f"❌ 動画情報抽出エラー: {e}")
+            return {}
 
 
 def get_plugin():

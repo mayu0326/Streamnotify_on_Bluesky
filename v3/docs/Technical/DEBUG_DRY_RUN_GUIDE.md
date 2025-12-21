@@ -430,9 +430,9 @@ IMAGE_RESIZE_TARGET_HEIGHT = 576
 
 ## 📚 関連ドキュメント
 
-- [PLUGIN_SYSTEM.md](../Technical/PLUGIN_SYSTEM.md#4-dry-run投稿テスト機能) - DRY RUN 機能の詳細
-- [PLUGIN_SYSTEM.md](../Technical/PLUGIN_SYSTEM.md#5-gui投稿設定ウィンドウ) - GUI 投稿設定ウィンドウ
-- [IMAGE_RESIZE_IMPLEMENTATION.md](./IMAGE_RESIZE_IMPLEMENTATION.md) - 画像リサイズ詳細
+- [PLUGIN_SYSTEM.md](../Technical/PLUGIN_SYSTEM.md#dry-run機能) - DRY RUN 機能の詳細
+- [PLUGIN_SYSTEM.md](../Technical/PLUGIN_SYSTEM.md#gui投稿設定ウィンドウ) - GUI 投稿設定ウィンドウ
+- [IMAGE_RESIZE_GUIDE.md](./IMAGE_RESIZE_GUIDE.md) - 画像リサイズ詳細
 
 ---
 
@@ -451,4 +451,3 @@ IMAGE_RESIZE_TARGET_HEIGHT = 576
 
 **作成日時:** 2025年12月17日
 **ステータス:** 完全実装 ✅
-

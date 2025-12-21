@@ -135,6 +135,55 @@ class BlueskyImagePlugin(NotificationPlugin):
         この post_video は main_v3.py から呼び出されません。
         プラグインマネージャー経由で実行される場合にのみ使用されます。
         """
+        # ========== YouTube Live 投稿直前の API 確認（v3.3.0+） ==========
+        # Live/Schedule/Archive の場合、投稿直前に API で最新情報を確認
+        source = video.get("source", "youtube").lower()
+        video_id = video.get("video_id")
+        live_status = video.get("live_status")
+
+        if source == "youtube" and video_id and live_status in ("upcoming", "live", "completed"):
+            try:
+                from plugin_manager import get_plugin_manager
+                plugin_mgr = get_plugin_manager()
+                youtube_api_plugin = plugin_mgr.get_plugin("youtube_api_plugin")
+
+                if youtube_api_plugin and youtube_api_plugin.is_available():
+                    # API で最新情報を取得
+                    latest_details = youtube_api_plugin.fetch_video_detail(video_id)
+                    if latest_details:
+                        # 最新情報でビデオ情報を更新
+                        latest_info = youtube_api_plugin._extract_video_info(latest_details)
+
+                        # 放送開始時刻を更新（RSS は古い情報の可能性あり）
+                        if latest_info.get("published_at"):
+                            old_time = video.get("published_at")
+                            new_time = latest_info["published_at"]
+                            if old_time != new_time:
+                                post_logger.info(f"📡 API 確認: 放送時刻が変更されました")
+                                post_logger.info(f"  旧: {old_time}")
+                                post_logger.info(f"  新: {new_time}")
+                                video["published_at"] = new_time
+                            else:
+                                post_logger.debug(f"✅ API 確認: 放送時刻は変更されていません ({new_time})")
+
+                        # ステータスを更新（キャンセルされた可能性もあるため）
+                        if latest_info.get("live_status"):
+                            old_status = video.get("live_status")
+                            new_status = latest_info["live_status"]
+                            if old_status != new_status:
+                                post_logger.warning(f"⚠️ API 確認: ステータスが変更されました: {old_status} → {new_status}")
+                                video["live_status"] = new_status
+
+                                # ステータスが "cancelled" の場合は投稿をスキップ
+                                if new_status == "cancelled":
+                                    post_logger.error(f"❌ API 確認: この放送は キャンセルされています。投稿をスキップします")
+                                    return False
+                    else:
+                        post_logger.warning(f"⚠️ API 確認: {video_id} の詳細情報を取得できませんでした")
+            except Exception as e:
+                post_logger.warning(f"⚠️ API 確認処理でエラー（投稿は続行）: {e}")
+        # ============================================================================
+
         # GUI から use_image フラグが指定されている場合は優先
         use_image = video.get("use_image", True)  # デフォルトは画像添付
         resize_small_images = video.get("resize_small_images", True)  # デフォルトはリサイズ有効
@@ -144,7 +193,6 @@ class BlueskyImagePlugin(NotificationPlugin):
         # DBに画像ファイルが登録されている場合、そのファイルを優先して使用
         image_filename = video.get("image_filename")
         image_mode = video.get("image_mode")
-        source = video.get("source", "YouTube").lower()
         video = dict(video)  # 元の辞書を変更しないようコピー
         embed = None
 
@@ -196,6 +244,7 @@ class BlueskyImagePlugin(NotificationPlugin):
         # YouTube / ニコニコの新着動画投稿時にテンプレートを使用
         source = video.get("source", "youtube").lower()
         classification_type = video.get("classification_type", "video")  # ★ classification_type を優先判定
+        content_type = video.get("content_type", "video")  # ★ content_type をフォールバック判定用に取得
         live_status = video.get("live_status")
         rendered = ""
 
@@ -209,12 +258,28 @@ class BlueskyImagePlugin(NotificationPlugin):
                     post_logger.info(f"✅ テンプレートを使用して本文を生成しました: youtube_online (classification_type='live')")
                 else:
                     post_logger.debug(f"ℹ️ youtube_online テンプレート未使用またはレンダリング失敗（従来フォーマットを使用）")
-            elif classification_type == "archive":
+            elif classification_type == "schedule" or live_status == "upcoming":
+                # 放送枠予約テンプレート
+                rendered = self.render_template_with_utils("youtube_schedule", video)
+                if rendered:
+                    video["text_override"] = rendered
+                    post_logger.info(f"✅ テンプレートを使用して本文を生成しました: youtube_schedule (classification_type='schedule' or live_status='upcoming')")
+                else:
+                    post_logger.debug(f"ℹ️ youtube_schedule テンプレート未使用。youtube_new_video にフォールバック")
+                    rendered = self.render_template_with_utils("youtube_new_video", video)
+                    if rendered:
+                        video["text_override"] = rendered
+                        post_logger.info(f"✅ テンプレートを使用して本文を生成しました: youtube_new_video (フォールバック)")
+                    else:
+                        post_logger.debug(f"ℹ️ youtube_new_video テンプレート未使用またはレンダリング失敗（従来フォーマットを使用）")
+            elif classification_type == "archive" or content_type == "archive":
+                # ★ v3.3.0: classification_type が video のままだが content_type が archive の場合もサポート
                 # アーカイブテンプレート（フォールバック機能付き）
                 rendered = self.render_template_with_utils("youtube_archive", video)
                 if rendered:
                     video["text_override"] = rendered
-                    post_logger.info(f"✅ テンプレートを使用して本文を生成しました: youtube_archive (classification_type='archive')")
+                    archive_trigger = "classification_type='archive'" if classification_type == "archive" else "content_type='archive'"
+                    post_logger.info(f"✅ テンプレートを使用して本文を生成しました: youtube_archive ({archive_trigger})")
                 else:
                     # アーカイブテンプレート未設定時は新着動画テンプレートにフォールバック
                     post_logger.debug(f"ℹ️ youtube_archive テンプレート未使用。youtube_new_video にフォールバック")
