@@ -1,7 +1,7 @@
 ﻿# Streamnotify on Bluesky - 将来実装機能ロードマップ
 
-> **対象バージョン**: v3.3.0 時点
-> **最終更新**: 2025-12-20
+> **対象バージョン**: v3.1.0 時点
+> **最終更新**: 2025-12-18
 
 本ドキュメントは、**v3 の現在の実装設計**と**最初の構想ドキュメント**（`YouTube新着動画app（初期構想案）`）の
 差異を整理し、将来実装すべき機能をロードマップとしてまとめたものです。
@@ -10,22 +10,15 @@
 > - 現在の実装: [ARCHITECTURE_AND_DESIGN.md](../Technical/ARCHITECTURE_AND_DESIGN.md) 参照
 > - テンプレートシステム: [TEMPLATE_SYSTEM.md](../Technical/TEMPLATE_SYSTEM.md) 参照
 > - プラグインシステム: [PLUGIN_SYSTEM.md](../Technical/PLUGIN_SYSTEM.md) 参照
-> - AUTOPOST仕様: [AUTOPOST_SELFPOST_機能仕様書.md](../Technical/AUTOPOST_SELFPOST_機能仕様書.md) 参照（仕様v1.0）
 > - 初期構想: `YouTube新着動画app（初期構想案）` 参照
 >
-> **実装ステータス**: v3.3.0（2025-12-20）時点で以下が実装済み：
-> - ✅ AUTOPOST/SELFPOST モード統合制御（仕様v1.0）
-> - ✅ AUTOPOST 3段階安全弁機構（INTERVAL/LOOKBACK/THRESHOLD）
-> - ✅ YouTube Live 5段階MODE統合制御（all/schedule/live/archive/off）
-> - ✅ 動画種別フィルタ（Normal/Shorts/Member/Premiere）
-> - ✅ セーフモード起動（異常検知自動抑止）
+> **実装ステータス**: v3.1.0（2025-12-19）時点で以下が実装済み：
 > - ✅ マルチテンプレート対応（YouTube Live/Archive/新着、Niconico新着）
 > - ✅ 高度なフィルタリング（タイトル、配信元、投稿状態、コンテンツタイプ）
 > - ✅ YouTube優先度ベースの重複排除
 > - ✅ AssetManager による自動テンプレート配置
 > - ✅ テンプレートフォールバック機能
 > - ✅ バックアップ・復元機能（ZIP形式、API キー除外オプション対応）
-> - ✅ 重複投稿防止オプション（PREVENT_DUPLICATE_POSTS）
 
 ***
 

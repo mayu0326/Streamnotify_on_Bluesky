@@ -35,7 +35,6 @@
 | プラットフォーム | イベント | テンプレート名 | 対応状況 | ファイル |
 |:--|:--|:--|:--:|:--|
 | YouTube | 新着動画投稿 | YouTube 新着動画 | ✅ v3.1.0 | `yt_new_video_template.txt` |
-| YouTube | 放送枠予約 | YouTube Live 予約枠 | ✅ v3.3.0 | `yt_schedule_template.txt` |
 | YouTube | 配信開始 | YouTube Live 開始 | ✅ v3.1.0 | `yt_online_template.txt` |
 | YouTube | 配信終了 | YouTube Live 終了 | 🔜 将来実装 | `yt_offline_template.txt` |
 | YouTube | アーカイブ | YouTube アーカイブ | ✅ v3.1.0 | `yt_archive_template.txt` |
@@ -57,10 +56,9 @@ Streamnotify_on_Bluesky/v3/
 ├── templates/
 │   ├── youtube/                          # YouTube 用テンプレート
 │   │   ├── yt_new_video_template.txt     ← 新着動画投稿用
-│   │   ├── yt_schedule_template.txt      ← 放送枠予約用（新規）
 │   │   ├── yt_online_template.txt        ← 配信開始用
 │   │   ├── yt_offline_template.txt       ← 配信終了用（将来）
-│   │   └── yt_archive_template.txt       ← アーカイブ投稿用
+│   │   └── yt_archive_template.txt       ← アーカイブ投稿用（新規）
 │   │
 │   ├── niconico/                         # ニコニコ用テンプレート
 │   │   └── nico_new_video_template.txt   ← 新着動画投稿用
@@ -133,49 +131,6 @@ Streamnotify_on_Bluesky/v3/
 | `{{ video_url }}` | 動画への URL | `https://www.youtube.com/watch?v=dQw4w9WgXcQ` |
 | `{{ channel_name }}` | チャンネル名 | `My Channel` |
 | `{{ published_at }}` | 公開日時（ISO 形式） | `2025-12-18T10:30:00` |
-
-#### YouTube 放送枠予約テンプレート（`yt_schedule_template.txt`）
-
-| 変数名 | 説明 | 例 |
-|:--|:--|:--|
-| `{{ title }}` | 放送予定のタイトル | `【生放送】新企画発表会` |
-| `{{ video_url }}` | 放送枠の URL | `https://www.youtube.com/watch?v=dQw4w9WgXcQ` |
-| `{{ channel_name }}` | チャンネル名 | `My Channel` |
-| `{{ published_at }}` | 放送予定日時（ISO 形式） | `2025-12-18T10:30:00` |
-| `{{ live_status }}` | ライブ配信ステータス | `upcoming` （放送前） |
-| `{{ platform }}` | プラットフォーム | `YouTube` |
-
-#### YouTube 配信開始テンプレート（`yt_online_template.txt`）
-
-| 変数名 | 説明 | 例 |
-|:--|:--|:--|
-| `{{ title }}` | 配信のタイトル | `【生配信】新企画発表会` |
-| `{{ video_url }}` | 配信の URL | `https://www.youtube.com/watch?v=dQw4w9WgXcQ` |
-| `{{ channel_name }}` | チャンネル名 | `My Channel` |
-| `{{ published_at }}` | 配信開始日時（ISO 形式） | `2025-12-18T10:30:00` |
-| `{{ live_status }}` | ライブ配信ステータス | `live` （配信中） |
-| `{{ platform }}` | プラットフォーム | `YouTube` |
-
-#### YouTube 配信終了テンプレート（`yt_offline_template.txt`）
-
-| 変数名 | 説明 | 例 |
-|:--|:--|:--|
-| `{{ title }}` | 配信のタイトル | `【生配信】新企画発表会` |
-| `{{ video_url }}` | 配信の URL | `https://www.youtube.com/watch?v=dQw4w9WgXcQ` |
-| `{{ channel_name }}` | チャンネル名 | `My Channel` |
-| `{{ live_status }}` | ライブ配信ステータス | `completed` （配信終了） |
-| `{{ platform }}` | プラットフォーム | `YouTube` |
-
-#### YouTube アーカイブテンプレート（`yt_archive_template.txt`）
-
-| 変数名 | 説明 | 例 |
-|:--|:--|:--|
-| `{{ title }}` | アーカイブのタイトル | `【録画公開】新企画発表会` |
-| `{{ video_url }}` | アーカイブの URL | `https://www.youtube.com/watch?v=dQw4w9WgXcQ` |
-| `{{ channel_name }}` | チャンネル名 | `My Channel` |
-| `{{ published_at }}` | 配信日時（ISO 形式） | `2025-12-18T10:30:00` |
-| `{{ live_status }}` | ライブ配信ステータス | `completed` （アーカイブ） |
-| `{{ platform }}` | プラットフォーム | `YouTube` |
 
 #### ニコニコ新着動画テンプレート（`nico_new_video_template.txt`）
 
@@ -434,7 +389,6 @@ Bluesky へ投稿
 | テンプレート種別 | 必須キー |
 |:--|:--|
 | `youtube_new_video` | `title`, `video_id`, `video_url`, `channel_name` |
-| `youtube_schedule` | `title`, `video_url`, `channel_name`, `live_status` |
 | `nico_new_video` | `title`, `video_id`, `video_url`, `channel_name` |
 | `youtube_online` | `title`, `video_url`, `channel_name`, `live_status` |
 

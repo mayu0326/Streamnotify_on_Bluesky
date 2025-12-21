@@ -4,8 +4,8 @@
 
 | ファイル名 | 種類 | 主な用途・役割 | インポート先 |
 |-----------|------|-----------------|---------|
-| `main_v3.py` | コア | アプリ起動・メインループ・GUI統合・プラグイン管理・**SELFPOST/AUTOPOST分岐・安全弁制御** | 単体実行（エントリーポイント） |
-| `config.py` | コア | 設定読み込み・バリデーション・**APP_MODE判定（selfpost/autopost）・AUTOPOST環境変数解析** | main_v3.py |
+| `main_v3.py` | コア | アプリ起動・メインループ・GUI統合・プラグイン管理 | 単体実行（エントリーポイント） |
+| `config.py` | コア | 設定読み込み・バリデーション（**重複投稿防止設定対応**） | main_v3.py |
 | `database.py` | コア | SQLite 操作・動画管理（**重複投稿検知機能**対応） | main_v3.py、youtube_rss.py、bluesky_plugin.py |
 | `youtube_rss.py` | コア | RSS 取得・パース | main_v3.py |
 | `plugin_interface.py` | コア | NotificationPlugin 抽象基底クラス（プラグイン定義） | すべてのプラグイン |
