@@ -270,8 +270,6 @@ python main_v2.py
 - [モジュール一覧](v3/docs/References/ModuleList_v3.md)
 
 
-
-
 ## 設定ファイルについて
 
 設定は `settings.env` で管理されます。テキストエディタで直接編集してください。
@@ -279,8 +277,6 @@ python main_v2.py
 **注意**: `settings.env` には個人の ID・パスワード・API キーを記載するため、Git による公開リポジトリには含めないでください（`.gitignore` で除外済み）。
 
 設定編集後は、アプリケーションを再起動して反映させます。
-
-
 
 ### バージョン選択ガイド
 
@@ -328,7 +324,7 @@ python main_v2.py
 - **error.log**: エラーのみを記録
 - その他のログファイル：プラグイン導入時に自動生成
 
-詳細は [DEBUG ログとドライラン機能 ガイド](v3/docs/Guides/DEBUG_DRY_RUN_GUIDE.md) を参照してください。
+詳細は [DEBUG ログとドライラン機能 ガイド](v3/docs/Technical/DEBUG_DRY_RUN_GUIDE.md) を参照してください。
 
 ## ライセンス
 
