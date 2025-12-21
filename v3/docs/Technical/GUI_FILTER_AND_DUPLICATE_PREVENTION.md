@@ -486,7 +486,7 @@ def _execute_post(self, dry_run=False):
 
 ## 関連ドキュメント
 
-- [GUIの使い方](v3/docs/Guides/GUI_USER_MANUAL.md)
+- [GUIの使い方](../Guides/GUI_USER_MANUAL.md)
 - [設定ファイル例](../../settings.env.example)
 - [デバッグ・ドライランガイド](DEBUG_DRY_RUN_GUIDE.md)
 
