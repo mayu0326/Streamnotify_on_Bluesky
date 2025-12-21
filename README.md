@@ -164,7 +164,7 @@ cp settings.env.example settings.env
 | `BLUESKY_PASSWORD` | Bluesky のアプリパスワード | `xxxx-xxxx-xxxx-xxxx` |
 | `POLL_INTERVAL_MINUTES` | ポーリング間隔（分、最小値 5） | `10` |
 
-その他のオプション設定については、`settings.env` 内のコメント、または [Streamnotify v3 設定項目一覧](v3\docs\Guides\SETTINGS_OVERVIEW.md) を参照してください。
+その他のオプション設定については、 [Streamnotify v3 設定項目一覧](v3/docs/Guides/SETTINGS_OVERVIEW.md) を参照してください。
 
 ## 使用方法
 
