@@ -246,7 +246,7 @@ python main_v2.py
 
 ### 🛠 技術資料
 - [アーキテクチャと設計 ガイド](v3/docs/Technical/ARCHITECTURE_AND_DESIGN.md)
-- [アセットマネージャー ガイド](v3\docs\Technical\ASSET_MANAGER_INTEGRATION_v3.md)
+- [アセットマネージャー ガイド](v3/docs/Technical/ASSET_MANAGER_INTEGRATION_v3.md)
 - [DEBUG ログとドライラン機能 ガイド](v3/docs/Technical/DEBUG_DRY_RUN_GUIDE.md)
 - [削除済み動画除外リスト ガイド](v3/docs/Technical/DELETED_VIDEO_CACHE.md)
 - [GUI フィルタ・重複投稿防止ガイド](v3/docs/Technical/GUI_FILTER_AND_DUPLICATE_PREVENTION.md)
