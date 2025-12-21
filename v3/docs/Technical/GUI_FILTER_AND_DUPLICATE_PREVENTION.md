@@ -487,7 +487,7 @@ def _execute_post(self, dry_run=False):
 ## 関連ドキュメント
 
 - [GUIの使い方](README_GITHUB_v3.md#gui-の主な機能)
-- [設定ファイル例](../settings.env.example)
+- [設定ファイル例](../../settings.env.example)
 - [デバッグ・ドライランガイド](DEBUG_DRY_RUN_GUIDE.md)
 
 ---

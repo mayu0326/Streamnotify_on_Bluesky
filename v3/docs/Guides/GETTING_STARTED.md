@@ -206,7 +206,7 @@ GUI の「動画一覧」に動画が表示されているか？
 - **インストール詳細**: [INSTALLATION_SETUP.md](./INSTALLATION_SETUP.md)
 - **トラブルシューティング**: [FAQ_TROUBLESHOOTING_BASIC.md](./FAQ_TROUBLESHOOTING_BASIC.md)
 - **操作方法**: [GUI_USER_MANUAL.md](./GUI_USER_MANUAL.md)
-- **ドキュメント一覧**: [../DOCUMENTATION_INDEX.md](../DOCUMENTATION_INDEX.md)
+- **ドキュメント一覧**: [README](../../README.md)
 
 ---
 

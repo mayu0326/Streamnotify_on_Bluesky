@@ -241,16 +241,18 @@ python main_v2.py
 - [動作モードガイド](v3/docs/Guides/OPERATION_MODES_GUIDE.md)
 - [設定項目一覧](v3/docs/Guides/SETTINGS_OVERVIEW.md)
 - [YouTube 設定ガイド](v3/docs/Guides/YOUTUBE_SETUP_GUIDE.md)
+- [FAQ/トラブルシューティング](v3/docs/Guides/FAQ_TROUBLESHOOTING.md)
+- [投稿テンプレートガイド](v3/docs/Guides/TEMPLATE_GUIDE.md)
 
 ### 🛠 技術資料
 - [アーキテクチャと設計 ガイド](v3/docs/Technical/ARCHITECTURE_AND_DESIGN.md)
-- [アセットマネージャー ガイド](v3/docs/Technical/ASSET_MANAGER_GUIDE.md)
+- [アセットマネージャー ガイド](v3\docs\Technical\ASSET_MANAGER_INTEGRATION_v3.md)
 - [DEBUG ログとドライラン機能 ガイド](v3/docs/Technical/DEBUG_DRY_RUN_GUIDE.md)
 - [削除済み動画除外リスト ガイド](v3/docs/Technical/DELETED_VIDEO_CACHE.md)
 - [GUI フィルタ・重複投稿防止ガイド](v3/docs/Technical/GUI_FILTER_AND_DUPLICATE_PREVENTION.md)
 - [画像リサイズ機能 ガイド](v3/docs/Technical/IMAGE_RESIZE_GUIDE.md)
 - [プラグインシステム ガイド](v3/docs/Technical/PLUGIN_SYSTEM.md)
-- [Bluesky リッチテキスト ガイド](v3/docs/Technical/BLUESKY_RICH_TEXT_GUIDE.md)
+- [Bluesky リッチテキスト ガイド](v3/docs/Technical/RICHTEXT_FACET_SPECIFICATION.md)
 - [テンプレートシステム ガイド](v3/docs/Technical/TEMPLATE_SYSTEM.md)
 
 ## 📚 YouTube関連資料
@@ -264,7 +266,8 @@ python main_v2.py
 - [開発ガイドライン](v3/docs/References/DEVELOPMENT_GUIDELINES.md)
 - [将来実装機能ロードマップ](v3/docs/References/FUTURE_ROADMAP_v3.md)
 - [初期構想案](v3/docs/References/INITIAL_CONCEPT.md)
-- [バージョン管理ガイド](/v3/Technical/VERSION_MANAGEMENT.md)
+- [バージョン管理ガイド](/v3/docs/Technical/VERSION_MANAGEMENT.md)
+- [モジュール一覧](v3/docs/References/ModuleList_v3.md)
 
 
 ## 設定ファイルについて
