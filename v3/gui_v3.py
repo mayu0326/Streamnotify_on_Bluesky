@@ -45,6 +45,11 @@ class StreamNotifyGUI:
         self.image_manager = get_image_manager()  # 画像管理クラスを初期化
         self.selected_rows = set()
 
+        # 設定を読み込み（AUTOPOST モード判定用）
+        from config import get_config, OperationMode
+        self.config = get_config("settings.env")
+        self.operation_mode = self.config.operation_mode
+
         # フィルタ用の変数
         self.all_videos = []  # フィルタ前のすべての動画
         self.filtered_videos = []  # フィルタ後の動画
@@ -61,6 +66,7 @@ class StreamNotifyGUI:
 
         ttk.Button(toolbar, text="🔄 再読込", command=self.refresh_data).pack(side=tk.LEFT, padx=2)
         ttk.Button(toolbar, text="🌐 RSS更新", command=self.fetch_rss_manually).pack(side=tk.LEFT, padx=2)
+        ttk.Button(toolbar, text="🎬 Live判定", command=self.classify_youtube_live_manually).pack(side=tk.LEFT, padx=2)
         ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=2)
         ttk.Button(toolbar, text="☑️ すべて選択", command=self.select_all).pack(side=tk.LEFT, padx=2)
         ttk.Button(toolbar, text="☐ すべて解除", command=self.deselect_all).pack(side=tk.LEFT, padx=2)
@@ -68,8 +74,19 @@ class StreamNotifyGUI:
         ttk.Button(toolbar, text="💾 選択を保存", command=self.save_selection).pack(side=tk.LEFT, padx=2)
         ttk.Button(toolbar, text="🗑️ 削除", command=self.delete_selected).pack(side=tk.LEFT, padx=2)
         ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=2)
-        ttk.Button(toolbar, text="🧪 投稿テスト", command=self.dry_run_post).pack(side=tk.LEFT, padx=2)
-        ttk.Button(toolbar, text="📤 投稿設定", command=self.execute_post).pack(side=tk.LEFT, padx=2)
+
+        # 投稿ボタン（AUTOPOST モード時は無効化）
+        self.dry_run_button = ttk.Button(toolbar, text="🧪 投稿テスト", command=self.dry_run_post)
+        self.dry_run_button.pack(side=tk.LEFT, padx=2)
+
+        self.execute_post_button = ttk.Button(toolbar, text="📤 投稿設定", command=self.execute_post)
+        self.execute_post_button.pack(side=tk.LEFT, padx=2)
+
+        # AUTOPOST モード時は投稿ボタンを無効化
+        from config import OperationMode
+        if self.operation_mode == OperationMode.AUTOPOST:
+            self.dry_run_button.config(state=tk.DISABLED)
+            self.execute_post_button.config(state=tk.DISABLED)
         ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=2)
         ttk.Button(toolbar, text="ℹ️ 統計", command=self.show_stats).pack(side=tk.LEFT, padx=2)
         ttk.Button(toolbar, text="🔧 プラグイン", command=self.show_plugins).pack(side=tk.LEFT, padx=2)
@@ -182,6 +199,25 @@ class StreamNotifyGUI:
         self.status_label = ttk.Label(status_frame, text="準備完了", relief=tk.SUNKEN)
         self.status_label.pack(fill=tk.X)
 
+    def cleanup(self):
+        """GUI クローズ時のクリーンアップ処理"""
+        try:
+            # tkinter Variable の明示的な破棄
+            for var_name in ['filter_status_var', 'filter_source_var', 'filter_type_var', 'filter_title_entry']:
+                try:
+                    var = getattr(self, var_name, None)
+                    if var and hasattr(var, 'set'):
+                        var.set("")  # 内容をクリア
+                except:
+                    pass
+
+            # その他のオブジェクト参照をクリア
+            self.all_videos = []
+            self.filtered_videos = []
+            self.selected_rows = set()
+        except Exception as e:
+            pass
+
     def refresh_data(self):
         """DB から最新データを取得して表示"""
         # すべての動画をキャッシュ
@@ -259,6 +295,46 @@ DB を再読込みします。
             logger.error(f"❌ RSS更新中にエラー: {e}")
             messagebox.showerror("エラー", f"RSS更新中にエラーが発生しました:\n{e}")
 
+    def classify_youtube_live_manually(self):
+        """YouTube Live 判定を手動で今すぐ実行"""
+        try:
+            # YouTubeLive プラグインを取得
+            youtube_live_plugin = self.plugin_manager.get_plugin("youtube_live_plugin")
+
+            if not youtube_live_plugin:
+                messagebox.showwarning("警告", "YouTube Live プラグインがロードされていません。")
+                logger.warning("⚠️ YouTube Live プラグインが見つかりません")
+                return
+
+            if not youtube_live_plugin.is_available():
+                messagebox.showwarning("警告", "YouTube Live プラグインが利用不可です。\n（YouTube API キーが設定されていない可能性があります）")
+                logger.warning("⚠️ YouTube Live プラグインが利用不可")
+                return
+
+            # 判定開始を通知
+            messagebox.showinfo("YouTube Live判定", "未判定動画のYouTube Live判定を実行中...\n（ウィンドウを閉じないでください）")
+
+            # YouTube Live 判定を実行（on_enable と同じロジック）
+            updated_count = youtube_live_plugin._update_unclassified_videos()
+
+            # 結果をメッセージボックスで表示
+            result_msg = f"""
+✅ YouTube Live判定完了
+
+判定結果: {updated_count} 件更新
+
+DB を再読込みします。
+            """
+            messagebox.showinfo("YouTube Live判定完了", result_msg)
+
+            # DB を再読込して表示更新
+            self.refresh_data()
+            logger.info(f"✅ YouTube Live 手動判定完了: {updated_count} 件更新")
+
+        except Exception as e:
+            logger.error(f"❌ YouTube Live判定中にエラー: {e}")
+            messagebox.showerror("エラー", f"YouTube Live判定中にエラーが発生しました:\n{e}")
+
     def apply_filters(self):
         """現在のフィルタ条件をツリーに適用"""
         # フィルタ条件を取得
@@ -295,13 +371,13 @@ DB を再読込みします。
             # タイプフィルタ（動画/アーカイブ/Live）
             if type_filter != "全て":
                 # 表示用のタイプを計算
-                classification_type = video.get("classification_type", "video")
+                content_type = video.get("content_type", "video")
                 source_for_display = video.get("source", "").lower()
                 if source_for_display == "niconico":
                     display_type = "🎬 動画"
-                elif classification_type == "archive":
+                elif content_type == "archive":
                     display_type = "📹 アーカイブ"
-                elif classification_type == "live":
+                elif content_type == "live":
                     display_type = "🔴 配信"
                 else:
                     display_type = "🎬 動画"
@@ -328,12 +404,12 @@ DB を再読込みします。
             image_filename = video.get("image_filename") or ""
 
             # 分類情報を取得
-            classification_type = video.get("classification_type", "video")
+            content_type = video.get("content_type", "video")
             if source == "Niconico":
                 display_type = "🎬 動画"
-            elif classification_type == "archive":
+            elif content_type == "archive":
                 display_type = "📹 アーカイブ"
-            elif classification_type == "live":
+            elif content_type == "live":
                 display_type = "🔴 配信"
             else:
                 display_type = "🎬 動画"
@@ -978,6 +1054,27 @@ DB を再読込みします。
 
     def dry_run_post(self):
         """ドライラン：投稿設定ウィンドウを表示（ドライランモード）"""
+        # AUTOPOST / COLLECT モード時は実行禁止
+        from config import OperationMode
+        if self.operation_mode == OperationMode.AUTOPOST:
+            messagebox.showerror(
+                "エラー",
+                "🤖 AUTOPOST モード では手動投稿操作は禁止されています。\n\n"
+                "投稿はすべて自動制御されます。\n"
+                "手動投稿を実行するには、settings.env で APP_MODE を\n"
+                "'selfpost' に変更して、アプリを再起動してください。"
+            )
+            return
+
+        if self.operation_mode == OperationMode.COLLECT:
+            messagebox.showerror(
+                "エラー",
+                "📦 COLLECT モード では投稿機能が無効化されています。\n\n"
+                "投稿を実行するには、settings.env で APP_MODE を\n"
+                "'selfpost' に変更して、アプリを再起動してください。"
+            )
+            return
+
         if not self.selected_rows:
             messagebox.showwarning("警告", "投稿対象の動画がありません。\n\n☑️ をクリックして選択してください。")
             return
@@ -1009,12 +1106,40 @@ DB を再読込みします。
         if messagebox.askyesno("確認", msg):
             for video in selected:
                 post_window = PostSettingsWindow(
-                    self.root, video, self.db, self.plugin_manager, self.bluesky_core
+                    self.root, video, self.db, self.plugin_manager, self.bluesky_core,
+                    operation_mode=self.operation_mode, is_dry_run=True
                 )
                 self.root.wait_window(post_window.window)
 
     def execute_post(self):
         """投稿設定：投稿設定ウィンドウを表示"""
+        # AUTOPOST / COLLECT モード時は実行禁止
+        from config import OperationMode
+        if self.operation_mode == OperationMode.AUTOPOST:
+            messagebox.showerror(
+                "エラー",
+                "🤖 AUTOPOST モード では手動投稿操作は禁止されています。\n\n"
+                "投稿はすべて自動制御されます。\n"
+                "手動投稿を実行するには、settings.env で APP_MODE を\n"
+                "'selfpost' に変更して、アプリを再起動してください。"
+            )
+            return
+
+        if self.operation_mode == OperationMode.COLLECT:
+            messagebox.showerror(
+                "エラー",
+                "📦 COLLECT モード では投稿機能が無効化されています。\n\n"
+                "投稿を実行するには、settings.env で APP_MODE を\n"
+                "'selfpost' に変更して、アプリを再起動してください。"
+            )
+            return
+
+        # 🔧 DRY_RUN モード時は自動的にドライランモードに切り替え
+        if self.operation_mode == OperationMode.DRY_RUN:
+            logger.info("🧪 DRY_RUN モード：投稿操作を自動的にドライランモードで実行します")
+            self.dry_run_post()
+            return
+
         if not self.plugin_manager:
             messagebox.showerror("エラー", "プラグインマネージャが初期化されていません。再起動してください。")
             return
@@ -1033,7 +1158,8 @@ DB を再読込みします。
         # 各動画について投稿設定ウィンドウを表示
         for video in selected:
             post_window = PostSettingsWindow(
-                self.root, video, self.db, self.plugin_manager, self.bluesky_core
+                self.root, video, self.db, self.plugin_manager, self.bluesky_core,
+                operation_mode=self.operation_mode
             )
             self.root.wait_window(post_window.window)
 
@@ -1415,7 +1541,7 @@ YouTube:      {youtube_count} 件 (投稿済み: {youtube_posted})
 class PostSettingsWindow:
     """投稿設定ウィンドウ - 動画の投稿設定を詳細に管理"""
 
-    def __init__(self, parent, video, db, plugin_manager=None, bluesky_core=None):
+    def __init__(self, parent, video, db, plugin_manager=None, bluesky_core=None, operation_mode=None, is_dry_run=False):
         """
         投稿設定ウィンドウを初期化
 
@@ -1425,12 +1551,16 @@ class PostSettingsWindow:
             db: Database インスタンス
             plugin_manager: PluginManager インスタンス
             bluesky_core: Bluesky コア機能インスタンス
+            operation_mode: 動作モード（OperationMode）
+            is_dry_run: dry_run メソッドから呼び出されたか
         """
         self.parent = parent
         self.video = video
         self.db = db
         self.plugin_manager = plugin_manager
         self.bluesky_core = bluesky_core
+        self.operation_mode = operation_mode
+        self.is_dry_run = is_dry_run  # dry_run_post() から呼ばれたフラグ
         self.result = None  # 確定時の設定結果
 
         # ウィンドウを作成
@@ -1563,9 +1693,25 @@ class PostSettingsWindow:
         button_frame = ttk.Frame(self.window)
         button_frame.pack(fill=tk.X, padx=10, pady=10, side=tk.BOTTOM)
 
-        ttk.Button(button_frame, text="✅ 確定して投稿", command=self._confirm_and_post).pack(
-            side=tk.RIGHT, padx=5
+        # 🔧 DRY_RUN モード または dry_run_post() から呼ばれた場合
+        from config import OperationMode
+        is_dry_run_mode = (self.operation_mode == OperationMode.DRY_RUN) or self.is_dry_run
+
+        # 「確定して投稿」ボタンを条件付きで表示・無効化
+        confirm_button = ttk.Button(
+            button_frame,
+            text="✅ 確定して投稿",
+            command=self._confirm_and_post,
+            state=tk.DISABLED if is_dry_run_mode else tk.NORMAL
         )
+        confirm_button.pack(side=tk.RIGHT, padx=5)
+
+        # DRY_RUN モード時のツールチップ
+        if is_dry_run_mode:
+            confirm_button_label = "🧪 DRY_RUN モードまたはドライランモードでは実投稿できません"
+        else:
+            confirm_button_label = "✅ 確定して投稿"
+
         ttk.Button(button_frame, text="❌ キャンセル", command=self.window.destroy).pack(side=tk.RIGHT, padx=5)
         ttk.Button(button_frame, text="🧪 投稿テスト", command=self._dry_run).pack(side=tk.RIGHT, padx=5)
 

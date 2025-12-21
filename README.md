@@ -164,7 +164,7 @@ cp settings.env.example settings.env
 | `BLUESKY_PASSWORD` | Bluesky のアプリパスワード | `xxxx-xxxx-xxxx-xxxx` |
 | `POLL_INTERVAL_MINUTES` | ポーリング間隔（分、最小値 5） | `10` |
 
-その他のオプション設定については、`settings.env` 内のコメント、または [Streamnotify v3 設定項目一覧](v3/docs/Technical/SETTINGS_OVERVIEW.md) を参照してください。
+その他のオプション設定については、`settings.env` 内のコメント、または [Streamnotify v3 設定項目一覧](v3\docs\Guides\SETTINGS_OVERVIEW.md) を参照してください。
 
 ## 使用方法
 
@@ -178,7 +178,20 @@ python main_v3.py
 python main_v2.py
 ```
 
-### 基本的な動き
+### 動作モード（v3）
+
+`settings.env` の `APP_MODE` で動作モードを選択します：
+
+| モード | 説明 | 用途 |
+|:--|:--|:--|
+| `selfpost` | 完全手動投稿 | ユーザーがGUI操作で投稿対象を選択 |
+| `autopost` | 完全自動投稿 | 環境変数とロジックのみで自動投稿 |
+| `dry_run` | テストモード | 投稿をシミュレート（実際には投稿しない） |
+| `collect` | 収集モード | RSS取得・DB保存のみ（投稿機能オフ） |
+
+**注記**: SELFPOST と AUTOPOST は同時に有効にならないため、モード切替時はアプリケーション再起動が必要です。
+
+### 基本的な動き（SELFPOST モード）
 
 1. **RSS 取得**: `POLL_INTERVAL_MINUTES` ごとに YouTube RSS フィードを取得
 2. **新着検出**: DB と比較して新着動画を検出
@@ -187,43 +200,72 @@ python main_v2.py
 5. **手動投稿**: GUI から動画を選択して Bluesky に投稿
 6. **ログ記録**: 投稿結果をログファイルに記録
 
-### GUI の主な機能
+### AUTOPOST モード（自動投稿）
+
+`APP_MODE=autopost` の場合、以下の環境変数で自動投稿を制御：
+
+- **安全弁機構**:
+  - `AUTOPOST_INTERVAL_MINUTES`: 最小投稿間隔（デフォルト: 5分）
+  - `AUTOPOST_LOOKBACK_MINUTES`: 安全チェック時間窓（デフォルト: 30分）
+  - `AUTOPOST_UNPOSTED_THRESHOLD`: 未投稿動画の安全上限（デフォルト: 20件）
+
+- **動画種別フィルタ**:
+  - `AUTOPOST_INCLUDE_NORMAL`: 通常動画を投稿
+  - `AUTOPOST_INCLUDE_SHORTS`: YouTube Shorts を投稿
+  - `AUTOPOST_INCLUDE_MEMBER_ONLY`: メンバー限定動画を投稿
+  - `AUTOPOST_INCLUDE_PREMIERE`: プレミア配信を投稿
+
+詳細は [AUTOPOST機能仕様書](v3\docs\References\AUTOPOST_SELFPOST_機能仕様書.md) を参照。
+
+### GUI の主な機能（SELFPOST モード）
 
 - **動画一覧表示**: DB に保存されている動画を Treeview で表示
+- **フィルタリング**: タイトル、投稿状態、配信元で動画を検索
 - **動画選択**: チェックボックスで投稿対象を選択
 - **投稿実行**: 選択動画を Bluesky に投稿
+- **予約投稿**: スケジュール指定で投稿を予約
 - **ドライラン**: 投稿をシミュレート（実際には投稿しない）
 - **統計表示**: 投稿数、未投稿数などを表示
+- **重複投稿防止**: 既投稿動画の自動検知（`PREVENT_DUPLICATE_POSTS=true`）
 - **プラグイン状態**: 導入済みプラグイン一覧を表示
 
 ## ドキュメント
 
 詳細な情報は以下をご覧ください：
 
-### 📚 コア設計・アーキテクチャ
+### 👥 ユーザーガイド
+- [Bluesky 設定ガイド](v3/docs/Guides/BLUESKY_SETUP_GUIDE.md)
+- [クイックスタートガイド](v3/docs/Guides/GETTING_STARTED.md)
+- [GUI ユーザーマニュアル](v3/docs/Guides/GUI_USER_MANUAL.md)
+- [インストール・セットアップガイド](v3/docs/Guides/INSTALLATION_SETUP.md)
+- [動作モードガイド](v3/docs/Guides/OPERATION_MODES_GUIDE.md)
+- [設定項目一覧](v3/docs/Guides/SETTINGS_OVERVIEW.md)
+- [YouTube 設定ガイド](v3/docs/Guides/YOUTUBE_SETUP_GUIDE.md)
 
-- [アーキテクチャと設計方針](v3/docs/Technical/ARCHITECTURE_AND_DESIGN.md) - システム構成とデータベース設計の詳細
-- [モジュール一覧](v3/docs/Technical/ModuleList_v3.md) - 全コンポーネントの説明
-- [設定概要](v3/docs/Technical/SETTINGS_OVERVIEW.md) - 環境変数・設定項目の詳細
-- [プラグインシステム](v3/docs/Technical/PLUGIN_SYSTEM.md) - プラグイン開発方法、Rich Text Facet、画像処理
-- [YouTube API キャッシング](v3/docs/Technical/YOUTUBE_API_CACHING_IMPLEMENTATION.md) - キャッシング機能の技術仕様
+### 🛠 技術資料
+- [アーキテクチャと設計 ガイド](v3/docs/Technical/ARCHITECTURE_AND_DESIGN.md)
+- [アセットマネージャー ガイド](v3/docs/Technical/ASSET_MANAGER_GUIDE.md)
+- [DEBUG ログとドライラン機能 ガイド](v3/docs/Technical/DEBUG_DRY_RUN_GUIDE.md)
+- [削除済み動画除外リスト ガイド](v3/docs/Technical/DELETED_VIDEO_CACHE.md)
+- [GUI フィルタ・重複投稿防止ガイド](v3/docs/Technical/GUI_FILTER_AND_DUPLICATE_PREVENTION.md)
+- [画像リサイズ機能 ガイド](v3/docs/Technical/IMAGE_RESIZE_GUIDE.md)
+- [プラグインシステム ガイド](v3/docs/Technical/PLUGIN_SYSTEM.md)
+- [Bluesky リッチテキスト ガイド](v3/docs/Technical/BLUESKY_RICH_TEXT_GUIDE.md)
+- [テンプレートシステム ガイド](v3/docs/Technical/TEMPLATE_SYSTEM.md)
 
-### 🎨 テンプレート・キャッシュ・デバッグ
+## 📚 YouTube関連資料
+- [YouTube API キャシュ実装](v3/docs/Technical/YouTube/YOUTUBE_API_CACHING_IMPLEMENTATION.md)
+- [YouTubeLive 終了検出機構](v3/docs/Technical/YouTube/YOUTUBE_LIVE_CACHE_IMPLEMENTATION.md)
+- [YouTube Live プラグイン](v3\docs\Technical\YouTube\YOUTUBE_LIVE_PLUGIN_IMPLEMENTATION.md)
 
-- [テンプレートシステム](v3/docs/Technical/TEMPLATE_SYSTEM.md) - テンプレートファイルの仕様・使用方法
-- [削除済み動画除外リスト](v3/docs/Technical/DELETED_VIDEO_CACHE.md) - 除外動画リスト機能、API リファレンス
-- [デバッグ用ユーティリティ](v3/utils/DEBUGGING_UTILITIES.md) - デバッグスクリプト、検証スクリプトの使用方法
+### 関連資料
+- [OLD_App 既存実装リファレンス](v3/docs/Technical/OLDAPP_REFERENCE_FOR_V3_PLUGINS.md)
+- [AUTOPOST_SELFPOST_機能仕様書.md](v3/docs/References/AUTOPOST_SELFPOST_機能仕様書.md)
+- [開発ガイドライン](v3/docs/References/DEVELOPMENT_GUIDELINES.md)
+- [将来実装機能ロードマップ](v3/docs/References/FUTURE_ROADMAP_v3.md)
+- [初期構想案](v3/docs/References/INITIAL_CONCEPT.md)
+- [バージョン管理ガイド](/v3/Technical/VERSION_MANAGEMENT.md)
 
-### 📋 ユーザーガイド・トラブルシューティング
-
-- [デバッグ・ドライラン](v3/docs/Guides/DEBUG_DRY_RUN_GUIDE.md) - トラブルシューティング・操作方法
-- [画像リサイズガイド](v3/docs/Guides/IMAGE_RESIZE_GUIDE.md) - 画像処理の使い方
-
-### 🚀 その他・参考資料
-
-- [将来ロードマップ](v3/docs/References/FUTURE_ROADMAP_v3.md) - v3+ の計画概要
-- [Rich Text Facet 仕様](v3/docs/Technical/RICHTEXT_FACET_SPECIFICATION.md) - URL・ハッシュタグリンク化の技術仕様
-- [AssetManager 統合ガイド](v3/docs/Technical/ASSET_MANAGER_INTEGRATION_v3.md) - Asset 自動配置・プラグイン連携の詳細
 
 ## 設定ファイルについて
 

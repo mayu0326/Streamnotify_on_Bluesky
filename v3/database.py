@@ -122,6 +122,8 @@ class Database:
                     content_type TEXT DEFAULT 'video',
                     live_status TEXT,
                     is_premiere INTEGER DEFAULT 0,
+                    is_short INTEGER DEFAULT 0,
+                    is_members_only INTEGER DEFAULT 0,
                     image_mode TEXT,
                     image_filename TEXT,
                     source TEXT DEFAULT 'youtube',
@@ -145,6 +147,15 @@ class Database:
 
             cursor.execute("PRAGMA table_info(videos)")
             columns = {row[1] for row in cursor.fetchall()}
+
+            # AUTOPOST 動画種別フラグ（仕様 v1.0）
+            if "is_short" not in columns:
+                logger.info("🔄 カラムを追加します: is_short")
+                cursor.execute("ALTER TABLE videos ADD COLUMN is_short INTEGER DEFAULT 0")
+
+            if "is_members_only" not in columns:
+                logger.info("🔄 カラムを追加します: is_members_only")
+                cursor.execute("ALTER TABLE videos ADD COLUMN is_members_only INTEGER DEFAULT 0")
 
             if "classification_type" not in columns:
                 logger.info("🔄 カラムを追加します: classification_type")
@@ -365,6 +376,105 @@ class Database:
 
         except Exception as e:
             logger.error(f"全動画の取得に失敗しました: {e}")
+            return []
+
+    def count_unposted_in_lookback(self, lookback_minutes: int) -> int:
+        """
+        LOOKBACK 時間窓内の未投稿動画数をカウント（AUTOPOST 起動抑止判定用）
+
+        Args:
+            lookback_minutes: 何分さかのぼるか
+
+        Returns:
+            int: 件数
+        """
+        try:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+
+            # published_at >= now - lookback_minutes AND posted_to_bluesky = 0
+            cursor.execute("""
+                SELECT COUNT(*) FROM videos
+                WHERE posted_to_bluesky = 0
+                  AND published_at >= datetime('now', ? || ' minutes')
+            """, (f"-{lookback_minutes}",))
+
+            count = cursor.fetchone()[0]
+            conn.close()
+            return count
+
+        except Exception as e:
+            logger.error(f"未投稿動画カウント に失敗しました: {e}")
+            return 0
+
+    def get_autopost_candidates(self, config) -> list:
+        """
+        AUTOPOST の投稿対象となる動画をフィルタリングして取得
+
+        Args:
+            config: Config オブジェクト（AUTOPOST 環境変数を含む）
+
+        Returns:
+            List[Dict]: 条件を満たす動画リスト
+        """
+        try:
+            conn = self._get_connection()
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+
+            # 基本 WHERE 条件
+            where_clauses = [
+                "posted_to_bluesky = 0",
+                f"published_at >= datetime('now', '-{config.autopost_lookback_minutes} minutes')"
+            ]
+
+            # 動画種別フィルタ（仕様 v1.0 セクション 3）
+            type_conditions = []
+
+            if config.autopost_include_normal:
+                type_conditions.append("(is_short = 0 AND is_members_only = 0 AND is_premiere = 0)")
+
+            if config.autopost_include_shorts:
+                type_conditions.append("(is_short = 1)")
+
+            if config.autopost_include_member_only:
+                type_conditions.append("(is_members_only = 1)")
+
+            if config.autopost_include_premiere:
+                type_conditions.append("(is_premiere = 1)")
+
+            # どの種別も有効でない場合は空リスト
+            if not type_conditions:
+                return []
+
+            type_filter = " OR ".join(type_conditions)
+            where_clauses.append(f"({type_filter})")
+
+            # DELETE された動画を除外
+            from deleted_video_cache import get_deleted_video_cache
+            try:
+                deleted_cache = get_deleted_video_cache()
+                deleted_ids = deleted_cache.get_deleted_video_ids()
+                if deleted_ids:
+                    placeholders = ",".join("?" * len(deleted_ids))
+                    where_clauses.append(f"video_id NOT IN ({placeholders})")
+            except ImportError:
+                pass  # モジュールなければスキップ
+
+            where_clause = " AND ".join(where_clauses)
+
+            cursor.execute(f"""
+                SELECT * FROM videos
+                WHERE {where_clause}
+                ORDER BY published_at DESC
+            """, deleted_ids if 'deleted_ids' in locals() else [])
+
+            videos = [dict(row) for row in cursor.fetchall()]
+            conn.close()
+            return videos
+
+        except Exception as e:
+            logger.error(f"AUTOPOST 対象取得に失敗: {e}")
             return []
 
     def get_videos_by_live_status(self, live_status: str):
