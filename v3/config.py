@@ -253,6 +253,15 @@ class Config:
             logger.warning(f"YOUTUBE_LIVE_AUTO_POST_MODE が無効です: {self.youtube_live_autopost_mode}。'off' に設定します。")
             self.youtube_live_autopost_mode = "off"
 
+        # YouTube Live 個別フラグ（SELFPOST モード向け、モード値と併用可能）
+        youtube_live_auto_post_schedule = os.getenv("YOUTUBE_LIVE_AUTO_POST_SCHEDULE", "true").strip().lower()
+        self.youtube_live_auto_post_schedule = youtube_live_auto_post_schedule in ("true", "1", "yes", "on")
+
+        youtube_live_auto_post_live = os.getenv("YOUTUBE_LIVE_AUTO_POST_LIVE", "true").strip().lower()
+        self.youtube_live_auto_post_live = youtube_live_auto_post_live in ("true", "1", "yes", "on")
+
+        youtube_live_auto_post_archive = os.getenv("YOUTUBE_LIVE_AUTO_POST_ARCHIVE", "true").strip().lower()
+        self.youtube_live_auto_post_archive = youtube_live_auto_post_archive in ("true", "1", "yes", "on")
 
     def _log_operation_mode(self):
         """現在の動作モードをログに出力"""
