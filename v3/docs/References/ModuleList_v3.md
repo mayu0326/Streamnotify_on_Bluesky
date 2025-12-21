@@ -79,6 +79,8 @@
 | `niconico_plugin.py` | サイト連携プラグイン | ニコニコ動画 RSS 監視・新着通知・テンプレート対応（自動ロード） | v3.0.0+ |
 | `logging_plugin.py` | 機能拡張プラグイン | ロギング統合管理・環境変数によるログレベル制御（自動ロード） | v3.0.0+ |
 
+---
+
 ## サムネイル・画像処理モジュール（thumbnails/）
 
 | ファイル名 | 説明 |
@@ -92,13 +94,20 @@
 
 ---
 
-## ユーティリティ・ ログレベル制御 モジュール（logging/）
+## ユーティリティ・ログ・その他モジュール
 | ファイル名 | 説明 | ログレベル |
 |-----|------|---------|
 | `data/video_list.db` | SQLite データベース（YouTube 優先度・重複投稿フラグ対応） | - |
 | `data/deleted_videos.json` | 削除済み動画除外リスト（サービス別） | - |
 | `logs/app.log` | アプリケーション一般ログ | `LOG_LEVEL_APP` |
 | `logs/error.log` | エラー詳細ログ | `LOG_LEVEL_APP` |
+
+---
+
+## プラグイン導入時の追加データ・ログディレクトリ
+
+| ファイル名 | 説明 | ログレベル |
+|-----|------|---------|
 | `logs/post.log` | Bluesky 投稿ログ（プラグイン導入時） | `LOG_LEVEL_POST` |
 | `logs/post_error.log` | 投稿エラーログ（プラグイン導入時） | `LOG_LEVEL_POST_ERROR` |
 | `logs/niconico.log` | ニコニコ動画監視ログ（プラグイン導入時） | `LOG_LEVEL_NICONICO` |
@@ -107,6 +116,11 @@
 | `logs/thumbnails.log` | サムネイル処理ログ（プラグイン導入時） | `LOG_LEVEL_THUMBNAILS` |
 | `logs/gui.log` | GUI 操作ログ（プラグイン導入時） | `LOG_LEVEL_GUI` |
 | `logs/tunnel.log` | トンネル接続ログ（プラグイン導入時） | `LOG_LEVEL_TUNNEL` |
+
+---
+
+## テンプレート・画像・Asset ディレクトリ構成（プラグイン導入時）
+
 | `images/` | 投稿用画像ディレクトリ (Asset から自動配置) | - |
 | `images/YouTube/` | YouTube サムネイル キャッシュ | - |
 | `images/Niconico/` | ニコニコ OGP キャッシュ | - |
@@ -114,7 +128,12 @@
 | `templates/youtube/` | YouTube テンプレート実行時コピー | - |
 | `templates/niconico/` | ニコニコテンプレート実行時コピー | - |
 | `templates/.templates/` | デフォルト・フォールバック用テンプレート | -
-|-----------|------|
+
+---
+
+## Asset 管理モジュール（v3.0.0+）
+| ファイル名 | 説明 |
+|-----|------|
 | `asset_manager.py` | Asset から実行時ディレクトリへのテンプレート・画像自動配置（プラグイン導入時） |
 | `Asset/templates/default/` | デフォルトテンプレート配布元 |
 | `Asset/templates/youtube/` | YouTube プラグイン用テンプレート配布元 |
@@ -124,20 +143,9 @@
 | `Asset/images/Niconico/` | ニコニコ画像配布元 |
 | `Asset/README.md` | Asset 管理ガイド |
 
-## データ・ログディレクトリ
+---
 
-| パス | 説明 |
-|-----|------|
-| `data/video_list.db` | SQLite データベース（拡張カラム対応）|
-| `logs/app.log` | アプリケーション一般ログ（AppLogger、バニラ）|
-| `logs/error.log` | エラーログ（AppLogger、バニラ）|
-| `logs/post.log` | Bluesky 投稿ログ（PostLogger、プラグイン導入時）|
-| `logs/post_error.log` | Bluesky 投稿エラーログ（PostErrorLogger、プラグイン導入時）|
-| `logs/niconico.log` | ニコニコ動画監視ログ（NiconicoLogger、プラグイン導入時）|
-| `logs/youtube.log` | YouTube 監視ログ（YouTubeLogger、プラグイン導入時）|
-| `logs/audit.log` | 監査ログ（AuditLogger、プラグイン導入時）|
-| `logs/thumbnails.log` | サムネイル処理ログ（ThumbnailsLogger、プラグイン導入時）|
-| `logs/gui.log` | GUI 操作ログ（GUILogger、プラグイン導入時）|
+## 主要サードパーティライブラリ一覧
 | `logs/tuバージョン | 用途 |
 |-----------|-----------|------|
 | `python-dotenv` | 1.0+ | settings.env ファイル読み込み |
