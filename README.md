@@ -266,7 +266,7 @@ python main_v2.py
 - [開発ガイドライン](v3/docs/References/DEVELOPMENT_GUIDELINES.md)
 - [将来実装機能ロードマップ](v3/docs/References/FUTURE_ROADMAP_v3.md)
 - [初期構想案](v3/docs/References/INITIAL_CONCEPT.md)
-- [バージョン管理ガイド](v3\docs\Technical\VERSION_MANAGEMENT.md)
+- [バージョン管理ガイド](v3/docs/Technical/VERSION_MANAGEMENT.md)
 - [モジュール一覧](v3/docs/References/ModuleList_v3.md)
 
 
