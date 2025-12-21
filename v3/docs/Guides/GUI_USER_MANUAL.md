@@ -469,7 +469,7 @@ settings.env で PREVENT_DUPLICATE_POSTS=true に設定
 | **テンプレート編集** | [TEMPLATE_SYSTEM.md](../Technical/TEMPLATE_SYSTEM.md) |
 | **フィルタ詳細** | [GUI_FILTER_AND_DUPLICATE_PREVENTION.md](../Technical/GUI_FILTER_AND_DUPLICATE_PREVENTION.md) |
 | **トラブルシューティング** | [FAQ_TROUBLESHOOTING_BASIC.md](./FAQ_TROUBLESHOOTING_BASIC.md) |
-| **デバッグ・ログ** | [DEBUG_DRY_RUN_GUIDE.md](./DEBUG_DRY_RUN_GUIDE.md) |
+| **デバッグ・ログ** | [DEBUG_DRY_RUN_GUIDE.md](../Technical/DEBUG_DRY_RUN_GUIDE.md) |
 
 ---
 

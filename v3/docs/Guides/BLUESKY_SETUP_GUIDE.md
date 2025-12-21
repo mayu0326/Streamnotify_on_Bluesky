@@ -374,7 +374,7 @@ Bluesky 設定が完了したか確認：
 より詳しいトラブルシューティングは：
 
 - [FAQ_TROUBLESHOOTING_BASIC.md](./FAQ_TROUBLESHOOTING_BASIC.md) - 基本的なトラブルシューティング
-- [DEBUG_DRY_RUN_GUIDE.md](./DEBUG_DRY_RUN_GUIDE.md) - ログの確認方法
+- [DEBUG_DRY_RUN_GUIDE.md](../Technical/DEBUG_DRY_RUN_GUIDE.md) - ログの確認方法
 
 ---
 

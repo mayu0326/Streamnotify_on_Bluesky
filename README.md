@@ -241,12 +241,12 @@ python main_v2.py
 - [動作モードガイド](v3/docs/Guides/OPERATION_MODES_GUIDE.md)
 - [設定項目一覧](v3/docs/Guides/SETTINGS_OVERVIEW.md)
 - [YouTube 設定ガイド](v3/docs/Guides/YOUTUBE_SETUP_GUIDE.md)
-- [FAQ/トラブルシューティング](v3/docs/Guides/FAQ_TROUBLESHOOTING.md)
+- [FAQ/トラブルシューティング](v3/docs/Guides/FAQ_TROUBLESHOOTING_BASIC.md)
 - [投稿テンプレートガイド](v3/docs/Guides/TEMPLATE_GUIDE.md)
 
 ### 🛠 技術資料
 - [アーキテクチャと設計 ガイド](v3/docs/Technical/ARCHITECTURE_AND_DESIGN.md)
-- [アセットマネージャー ガイド](v3\docs\Technical\ASSET_MANAGER_INTEGRATION_v3.md)
+- [アセットマネージャー ガイド](v3/docs/Technical/ASSET_MANAGER_INTEGRATION_v3.md)
 - [DEBUG ログとドライラン機能 ガイド](v3/docs/Technical/DEBUG_DRY_RUN_GUIDE.md)
 - [削除済み動画除外リスト ガイド](v3/docs/Technical/DELETED_VIDEO_CACHE.md)
 - [GUI フィルタ・重複投稿防止ガイド](v3/docs/Technical/GUI_FILTER_AND_DUPLICATE_PREVENTION.md)
@@ -258,7 +258,7 @@ python main_v2.py
 ## 📚 YouTube関連資料
 - [YouTube API キャシュ実装](v3/docs/Technical/YouTube/YOUTUBE_API_CACHING_IMPLEMENTATION.md)
 - [YouTubeLive 終了検出機構](v3/docs/Technical/YouTube/YOUTUBE_LIVE_CACHE_IMPLEMENTATION.md)
-- [YouTube Live プラグイン](v3\docs\Technical\YouTube\YOUTUBE_LIVE_PLUGIN_IMPLEMENTATION.md)
+- [YouTube Live プラグイン](v3/docs/Technical/YouTube/YOUTUBE_LIVE_PLUGIN_IMPLEMENTATION.md)
 
 ### 関連資料
 - [OLD_App 既存実装リファレンス](v3/docs/Technical/OLDAPP_REFERENCE_FOR_V3_PLUGINS.md)
@@ -266,7 +266,7 @@ python main_v2.py
 - [開発ガイドライン](v3/docs/References/DEVELOPMENT_GUIDELINES.md)
 - [将来実装機能ロードマップ](v3/docs/References/FUTURE_ROADMAP_v3.md)
 - [初期構想案](v3/docs/References/INITIAL_CONCEPT.md)
-- [バージョン管理ガイド](/v3/docs/Technical/VERSION_MANAGEMENT.md)
+- [バージョン管理ガイド](v3/docs/Technical/VERSION_MANAGEMENT.md)
 - [モジュール一覧](v3/docs/References/ModuleList_v3.md)
 
 
@@ -277,8 +277,6 @@ python main_v2.py
 **注意**: `settings.env` には個人の ID・パスワード・API キーを記載するため、Git による公開リポジトリには含めないでください（`.gitignore` で除外済み）。
 
 設定編集後は、アプリケーションを再起動して反映させます。
-
-
 
 ### バージョン選択ガイド
 
@@ -326,7 +324,7 @@ python main_v2.py
 - **error.log**: エラーのみを記録
 - その他のログファイル：プラグイン導入時に自動生成
 
-詳細は [DEBUG ログとドライラン機能 ガイド](v3/docs/Guides/DEBUG_DRY_RUN_GUIDE.md) を参照してください。
+詳細は [DEBUG ログとドライラン機能 ガイド](v3/docs/Technical/DEBUG_DRY_RUN_GUIDE.md) を参照してください。
 
 ## ライセンス
 
