@@ -241,7 +241,7 @@ python main_v2.py
 - [動作モードガイド](v3/docs/Guides/OPERATION_MODES_GUIDE.md)
 - [設定項目一覧](v3/docs/Guides/SETTINGS_OVERVIEW.md)
 - [YouTube 設定ガイド](v3/docs/Guides/YOUTUBE_SETUP_GUIDE.md)
-- [FAQ/トラブルシューティング](v3/docs/Guides/FAQ_TROUBLESHOOTING.md)
+- [FAQ/トラブルシューティング](v3/docs/Guides/FAQ_TROUBLESHOOTING_BASIC.md)
 - [投稿テンプレートガイド](v3/docs/Guides/TEMPLATE_GUIDE.md)
 
 ### 🛠 技術資料
