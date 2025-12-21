@@ -306,6 +306,37 @@ python main_v2.py
 
 詳細は [v3/utils/DEBUGGING_UTILITIES.md](v3/utils/DEBUGGING_UTILITIES.md) を参照してください。
 
+## 既知の不具合・仕様
+
+### ✅ LIVE とアーカイブの再登録（仕様）
+
+**状況**: GUI で LIVE と判定された動画がアーカイブに変わるなど、コンテンツ種別が変わった場合、別エントリとして DB に再登録されます。
+
+**影響**: 同じ動画の以前のエントリにあった以下の情報が失われます：
+- サムネイル画像の登録情報
+- 投稿記録（Bluesky への投稿済みフラグ）
+- 予約投稿時間
+- 投稿日時
+
+**これは仕様です** - ユーザーが LIVE と Archive の両方に投稿したい場合に対応するための設計です。
+
+**復旧方法**:
+- **サムネイル再登録**: アプリ再起動 → YouTube API データ取得 → 自動更新
+- **手動で急ぐ場合**: YouTubeデータAPI の手動取得またはサムネイル手動再登録機能を使用
+
+詳細は [GUI フィルタ・重複投稿防止ガイド](v3/docs/Technical/GUI_FILTER_AND_DUPLICATE_PREVENTION.md) を参照してください。
+
+### ⚠️ YouTube API レート制限
+
+**状況**: YouTube Data API のクォータ消費により、RSS 取得が失敗する場合があります。
+
+**対応方法**:
+- `settings.env` で `POLL_INTERVAL_MINUTES` を増やしてください（デフォルト: 5分 → 推奨: 10分以上）
+- 複数チャンネルを監視する場合は、さらに間隔を広げることをお勧めします
+- API キーが無い場合は、RSS フィードのみの監視でレート制限の影響を回避できます
+
+詳細は [YOUTUBE_API_CACHING_IMPLEMENTATION.md](v3/docs/Technical/YouTube/YOUTUBE_API_CACHING_IMPLEMENTATION.md) を参照してください。
+
 ## トラブルシューティング
 
 ### YouTube RSS が取得できない
