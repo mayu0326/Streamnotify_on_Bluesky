@@ -172,7 +172,7 @@ VIDEO_DETAIL_CACHE_FILE = str(_SCRIPT_DIR / "data" / "youtube_video_detail_cache
 
 ## ファイル修正一覧
 
-- [v3/plugins/youtube_api_plugin.py](../v3/plugins/youtube_api_plugin.py): キャッシング機構の実装
+- [v3/plugins/youtube_api_plugin.py](../../plugins/youtube_api_plugin.py): キャッシング機構の実装
 - テストスクリプト追加:
   - `test_scripts/test_video_cache.py`
   - `test_scripts/build_video_cache.py`
