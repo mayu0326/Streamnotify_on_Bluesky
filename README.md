@@ -215,7 +215,7 @@ python main_v2.py
   - `AUTOPOST_INCLUDE_MEMBER_ONLY`: メンバー限定動画を投稿
   - `AUTOPOST_INCLUDE_PREMIERE`: プレミア配信を投稿
 
-詳細は [AUTOPOST機能仕様書](v3\docs\References\AUTOPOST_SELFPOST_機能仕様書.md) を参照。
+詳細は [AUTOPOST機能仕様書](v3/docs/References/AUTOPOST_SELFPOST_機能仕様書.md) を参照。
 
 ### GUI の主な機能（SELFPOST モード）
 
