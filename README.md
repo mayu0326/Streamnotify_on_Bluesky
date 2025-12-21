@@ -164,7 +164,7 @@ cp settings.env.example settings.env
 | `BLUESKY_PASSWORD` | Bluesky のアプリパスワード | `xxxx-xxxx-xxxx-xxxx` |
 | `POLL_INTERVAL_MINUTES` | ポーリング間隔（分、最小値 5） | `10` |
 
-その他のオプション設定については、`settings.env` 内のコメント、または [Streamnotify v3 設定項目一覧](v3\docs\Guides\SETTINGS_OVERVIEW.md) を参照してください。
+その他のオプション設定については、 [Streamnotify v3 設定項目一覧](v3/docs/Guides/SETTINGS_OVERVIEW.md) を参照してください。
 
 ## 使用方法
 
@@ -215,7 +215,7 @@ python main_v2.py
   - `AUTOPOST_INCLUDE_MEMBER_ONLY`: メンバー限定動画を投稿
   - `AUTOPOST_INCLUDE_PREMIERE`: プレミア配信を投稿
 
-詳細は [AUTOPOST機能仕様書](v3\docs\References\AUTOPOST_SELFPOST_機能仕様書.md) を参照。
+詳細は [AUTOPOST機能仕様書](v3/docs/References/AUTOPOST_SELFPOST_機能仕様書.md) を参照。
 
 ### GUI の主な機能（SELFPOST モード）
 
@@ -241,16 +241,18 @@ python main_v2.py
 - [動作モードガイド](v3/docs/Guides/OPERATION_MODES_GUIDE.md)
 - [設定項目一覧](v3/docs/Guides/SETTINGS_OVERVIEW.md)
 - [YouTube 設定ガイド](v3/docs/Guides/YOUTUBE_SETUP_GUIDE.md)
+- [FAQ/トラブルシューティング](v3/docs/Guides/FAQ_TROUBLESHOOTING.md)
+- [投稿テンプレートガイド](v3/docs/Guides/TEMPLATE_GUIDE.md)
 
 ### 🛠 技術資料
 - [アーキテクチャと設計 ガイド](v3/docs/Technical/ARCHITECTURE_AND_DESIGN.md)
-- [アセットマネージャー ガイド](v3/docs/Technical/ASSET_MANAGER_GUIDE.md)
+- [アセットマネージャー ガイド](v3\docs\Technical\ASSET_MANAGER_INTEGRATION_v3.md)
 - [DEBUG ログとドライラン機能 ガイド](v3/docs/Technical/DEBUG_DRY_RUN_GUIDE.md)
 - [削除済み動画除外リスト ガイド](v3/docs/Technical/DELETED_VIDEO_CACHE.md)
 - [GUI フィルタ・重複投稿防止ガイド](v3/docs/Technical/GUI_FILTER_AND_DUPLICATE_PREVENTION.md)
 - [画像リサイズ機能 ガイド](v3/docs/Technical/IMAGE_RESIZE_GUIDE.md)
 - [プラグインシステム ガイド](v3/docs/Technical/PLUGIN_SYSTEM.md)
-- [Bluesky リッチテキスト ガイド](v3/docs/Technical/BLUESKY_RICH_TEXT_GUIDE.md)
+- [Bluesky リッチテキスト ガイド](v3/docs/Technical/RICHTEXT_FACET_SPECIFICATION.md)
 - [テンプレートシステム ガイド](v3/docs/Technical/TEMPLATE_SYSTEM.md)
 
 ## 📚 YouTube関連資料
@@ -264,7 +266,8 @@ python main_v2.py
 - [開発ガイドライン](v3/docs/References/DEVELOPMENT_GUIDELINES.md)
 - [将来実装機能ロードマップ](v3/docs/References/FUTURE_ROADMAP_v3.md)
 - [初期構想案](v3/docs/References/INITIAL_CONCEPT.md)
-- [バージョン管理ガイド](/v3/Technical/VERSION_MANAGEMENT.md)
+- [バージョン管理ガイド](/v3/docs/Technical/VERSION_MANAGEMENT.md)
+- [モジュール一覧](v3/docs/References/ModuleList_v3.md)
 
 
 ## 設定ファイルについて
@@ -302,6 +305,37 @@ python main_v2.py
 - ✅ **DEBUGGING_UTILITIES.md**: 包括的ドキュメント（200+ 行）
 
 詳細は [v3/utils/DEBUGGING_UTILITIES.md](v3/utils/DEBUGGING_UTILITIES.md) を参照してください。
+
+## 既知の不具合・仕様
+
+### ✅ LIVE とアーカイブの再登録（仕様）
+
+**状況**: GUI で LIVE と判定された動画がアーカイブに変わるなど、コンテンツ種別が変わった場合、別エントリとして DB に再登録されます。
+
+**影響**: 同じ動画の以前のエントリにあった以下の情報が失われます：
+- サムネイル画像の登録情報
+- 投稿記録（Bluesky への投稿済みフラグ）
+- 予約投稿時間
+- 投稿日時
+
+**これは仕様です** - ユーザーが LIVE と Archive の両方に投稿したい場合に対応するための設計です。
+
+**復旧方法**:
+- **サムネイル再登録**: アプリ再起動 → YouTube API データ取得 → 自動更新
+- **手動で急ぐ場合**: YouTubeデータAPI の手動取得またはサムネイル手動再登録機能を使用
+
+詳細は [GUI フィルタ・重複投稿防止ガイド](v3/docs/Technical/GUI_FILTER_AND_DUPLICATE_PREVENTION.md) を参照してください。
+
+### ⚠️ YouTube API レート制限
+
+**状況**: YouTube Data API のクォータ消費により、RSS 取得が失敗する場合があります。
+
+**対応方法**:
+- `settings.env` で `POLL_INTERVAL_MINUTES` を増やしてください（デフォルト: 5分 → 推奨: 10分以上）
+- 複数チャンネルを監視する場合は、さらに間隔を広げることをお勧めします
+- API キーが無い場合は、RSS フィードのみの監視でレート制限の影響を回避できます
+
+詳細は [YOUTUBE_API_CACHING_IMPLEMENTATION.md](v3/docs/Technical/YouTube/YOUTUBE_API_CACHING_IMPLEMENTATION.md) を参照してください。
 
 ## トラブルシューティング
 

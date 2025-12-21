@@ -143,6 +143,8 @@ YOUTUBE_CHANNEL_ID=UC開始の24文字コード
 ```
 
 **チャンネル ID の形式**:
+- プラグイン未導入時: `UCxxxxxxxxxxxxxxxxxxxxxx`（24文字の英数字）
+- プラグイン導入時: `@handle` 使用可能
 ```
 ✅ 正しい: UCdQqdoHimaWf8VL-kqEtNiw
 ❌ 間違い: mayuneco
@@ -804,13 +806,12 @@ kill -9 <PID>
 | 問題の種類 | 参照ドキュメント |
 |:--|:--|
 | **インストール・セットアップ** | [GETTING_STARTED.md](./GETTING_STARTED.md), [INSTALLATION_SETUP.md](./INSTALLATION_SETUP.md) |
-| **ログの詳細確認** | [DEBUG_DRY_RUN_GUIDE.md](./DEBUG_DRY_RUN_GUIDE.md) |
+| **ログの詳細確認** | [DEBUG_DRY_RUN_GUIDE.md](../Technical/DEBUG_DRY_RUN_GUIDE.md) |
 | **GUI 操作** | [GUI_USER_MANUAL.md](./GUI_USER_MANUAL.md) |
 | **テンプレート問題** | [TEMPLATE_SYSTEM.md](../Technical/TEMPLATE_SYSTEM.md) |
 | **YouTube 設定** | [YOUTUBE_SETUP_GUIDE.md](./YOUTUBE_SETUP_GUIDE.md) |
 | **Bluesky 認証** | [BLUESKY_SETUP_GUIDE.md](./BLUESKY_SETUP_GUIDE.md) |
-| **画像処理** | [IMAGE_RESIZE_GUIDE.md](./IMAGE_RESIZE_GUIDE.md) |
-| **ドキュメント一覧** | [../DOCUMENTATION_INDEX.md](../DOCUMENTATION_INDEX.md) |
+| **画像処理** | [IMAGE_RESIZE_GUIDE.md](../Technical/IMAGE_RESIZE_GUIDE.md) |
 
 ---
 

@@ -314,7 +314,7 @@
    - render_template_with_utils() を呼び出し
 
 3. **ニコニコ Live は非対応** - ニコニコ RSS が生放送情報を提供しないため実装不可
-   - ⚠️ 詳細は [Niconico Live 制約事項](../Local/youtube_live_classification_plan.md#niconico-live-制約事項) を参照
+   - ⚠️ 詳細は [Niconico Live 制約事項](./youtube_live_classification_plan.md#niconico-live-制約事項) を参照
 
 ### 中期（v3+）
 

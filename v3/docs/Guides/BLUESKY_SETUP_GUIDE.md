@@ -85,15 +85,16 @@ https://bsky.app にアクセス
 #### 3️⃣ アプリパスワード管理ページを開く
 
 ```
-左メニューの「Advanced」をクリック
+左メニューの「プライバシーとセキュリティ」をクリック
   ↓
-「App Passwords」をクリック
+「アプリパスワード」をクリック
 ```
 
 #### 4️⃣ アプリパスワードを生成
+- アプリパスワードは一度しか表示されません。
 
 ```
-「Create App Password」をクリック
+「アプリパスワードを追加」をクリック
   ↓
 アプリ名を入力: 「StreamNotify」（推奨）
   ↓
@@ -133,30 +134,33 @@ Bluesky アプリを開く
 #### 3️⃣ アプリパスワード管理ページを開く
 
 ```
-「Advanced」をタップ
+左メニューの「プライバシーとセキュリティ」をクリック
   ↓
-「App Passwords」をタップ
+「アプリパスワード」をクリック
 ```
 
 #### 4️⃣ アプリパスワードを生成
+- アプリパスワードは一度しか表示されません。
 
 ```
-「Create App Password」をタップ
+「アプリパスワードを追加」をクリック
   ↓
-アプリ名を入力: 「StreamNotify」
+アプリ名を入力: 「StreamNotify」（推奨）
   ↓
-「Create」をタップ
+「Create」をクリック
 ```
 
-#### 5️⃣ パスワードを保存
+#### 5️⃣ パスワードを確認・保存
 
 ```
-表示されたパスワードをコピー
+表示されたパスワード（例: xxxx-xxxx-xxxx-xxxx）をコピー
   ↓
-メモアプリなどに保存
+メモアプリに一時保存
   ↓
-settings.env に入力
+settings.env に貼り付け
+
 ```
+✅ **アプリパスワード生成完了**
 
 ---
 
@@ -370,7 +374,7 @@ Bluesky 設定が完了したか確認：
 より詳しいトラブルシューティングは：
 
 - [FAQ_TROUBLESHOOTING_BASIC.md](./FAQ_TROUBLESHOOTING_BASIC.md) - 基本的なトラブルシューティング
-- [DEBUG_DRY_RUN_GUIDE.md](./DEBUG_DRY_RUN_GUIDE.md) - ログの確認方法
+- [DEBUG_DRY_RUN_GUIDE.md](../Technical/DEBUG_DRY_RUN_GUIDE.md) - ログの確認方法
 
 ---
 

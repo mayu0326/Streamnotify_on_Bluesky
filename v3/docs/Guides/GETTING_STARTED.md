@@ -149,7 +149,7 @@ GUI の「動画一覧」に動画が表示されているか？
 **対応**:
 1. チャンネル ID が `UC` で始まっているか確認 ([YOUTUBE_SETUP_GUIDE.md](./YOUTUBE_SETUP_GUIDE.md) 参照)
 2. 5分待ってから再度試す
-3. ログで詳細を確認 → [DEBUG_DRY_RUN_GUIDE.md](./DEBUG_DRY_RUN_GUIDE.md)
+3. ログで詳細を確認 → [DEBUG_DRY_RUN_GUIDE.md](../Technical/DEBUG_DRY_RUN_GUIDE.md)
 
 ### ❌ 「Bluesky に投稿できない」
 
@@ -192,7 +192,7 @@ GUI の「動画一覧」に動画が表示されているか？
 
 | 機能 | 説明 | ドキュメント |
 |:--|:--|:--|
-| **投稿テスト（DRY RUN）** | 投稿をシミュレーション（実際には投稿しない） | [DEBUG_DRY_RUN_GUIDE.md](./DEBUG_DRY_RUN_GUIDE.md) |
+| **投稿テスト（DRY RUN）** | 投稿をシミュレーション（実際には投稿しない） | [DEBUG_DRY_RUN_GUIDE.md](..//Technical/DEBUG_DRY_RUN_GUIDE.md) |
 | **フィルタ検索** | 大量の動画から素早く見つける | [GUI_USER_MANUAL.md](./GUI_USER_MANUAL.md) |
 | **重複投稿防止** | 誤った再投稿を防止 | [GUI_USER_MANUAL.md](./GUI_USER_MANUAL.md) |
 | **テンプレート** | 投稿フォーマットをカスタマイズ | [TEMPLATE_SYSTEM.md](../Technical/TEMPLATE_SYSTEM.md) |
@@ -206,7 +206,7 @@ GUI の「動画一覧」に動画が表示されているか？
 - **インストール詳細**: [INSTALLATION_SETUP.md](./INSTALLATION_SETUP.md)
 - **トラブルシューティング**: [FAQ_TROUBLESHOOTING_BASIC.md](./FAQ_TROUBLESHOOTING_BASIC.md)
 - **操作方法**: [GUI_USER_MANUAL.md](./GUI_USER_MANUAL.md)
-- **ドキュメント一覧**: [../DOCUMENTATION_INDEX.md](../DOCUMENTATION_INDEX.md)
+- **ドキュメント一覧**: [README](../../../README.md)
 
 ---
 

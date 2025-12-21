@@ -31,26 +31,30 @@ UC9_abcdefghij-KLMNOPQRSTUv
 ```
 
 ### チャンネル名との違い
+- **チャンネル ID**（必須）: 固有の識別子。`UC` で始まる24文字の英数字。
+- **チャンネル名**: ユーザーが設定する名前。例: `My Channel`。
 
-混同しやすいので注意：
+### カスタム URL との違い
+- **カスタム URL**: `@` で始まるユーザー名形式。例: `@MyYouTubeChannel`
+- **ニックネーム**: `@` で始まるユーザー名形式。例: `@MyYouTubeChannel`
+- **チャンネル ID** は `カスタム URL` や`ニックネーム`とは異なるものです。
 
-| 項目 | 形式 | 例 |
-|:--|:--|:--|
-| **チャンネル ID**（必須） | `UC` + 22文字 | `UC1234567890ABCDEFGHIJKLmn` |
-| **カスタム URL**（使える場合） | `@` + ユーザー名 | `@MyYouTubeChannel` |
-| **チャンネル名** | 日本語など | `My Cool Channel` |
+### 注意点
+- プラグイン未導入時はチャンネル ID のみ対応します。  \
+プラグイン導入時はハンドル名、カスタムIDが使用可能ですが、APIリクエストによる変換が必要なので  \
+基本的にはチャンネル ID の使用を推奨します。
 
 ---
 
-## 🔴 方法 1: YouTube Studio で確認（最も簡単）
+## 🔴 方法 1: YouTube で確認（最も簡単）
 
 ### 手順
 
-**Step 1: YouTube Studio にアクセス**
+**Step 1: YouTube にアクセス**
 
 ```
-1. YouTube Studio を開く
-   https://studio.youtube.com/
+1. YouTube を開く
+   https://youtube.com/
 
 2. Google アカウントでログイン（チャンネル所有者のアカウント）
 ```
@@ -59,97 +63,20 @@ UC9_abcdefghij-KLMNOPQRSTUv
 
 ```
 1. 左上の「ユーザーアイコン」をクリック
-2. 「チャンネルを表示」をクリック
+2. 「設定」をクリック
+3.　「アカウントタブ」YouTube チャンネル項目のチャンネル欄を見つける
+4. 「詳細設定を表示」をクリック
+5. チャンネル ID が表示される
 ```
-
-**Step 3: URL からチャンネル ID を抽出**
-
-```
-アドレスバーに表示される URL を確認：
-
-https://www.youtube.com/channel/UC1234567890ABCDEFGHIJKLmn
-                              ↑↑↑ ここがチャンネル ID
-
-UC1234567890ABCDEFGHIJKLmn をコピー
-```
-
-### スクリーンショット（テキスト版）
-
-```
-┌─ YouTube Studio ──────────────────────────────┐
-│                                               │
-│ ┌─ ユーザーメニュー                           │
-│ │ ☐ アカウント                               │
-│ │ ☐ 作成ツール                               │
-│ │ ✓ チャンネルを表示              ← クリック │
-│ │ ☐ チャンネル設定                           │
-│ │ ☐ ログアウト                               │
-│ │                                             │
-│ └─────────────────────────────────────────────┘
-│                                               │
-│ ページ遷移:                                   │
-│ アドレスバー:                                 │
-│ https://www.youtube.com/channel/UC1234...   │
-│                              ↓               │
-│ チャンネル ID: UC1234567890ABCDEFGHIJKLmn   │
-│                                               │
-└───────────────────────────────────────────────┘
-```
-
 ---
 
-## 🟠 方法 2: YouTube チャンネルページから確認
-
-### 手順
-
-**Step 1: チャンネルページを開く**
-
-```
-1. YouTube にアクセス
-   https://www.youtube.com/
-
-2. 「ユーザーアイコン」をクリック
-
-3. 「チャンネルを表示」をクリック
-```
-
-**Step 2: ページソースを表示**
-
-```
-1. ブラウザの右クリックメニューを開く
-   → 「ページのソースを表示」（または F12）
-
-2. Ctrl+F（Windows）/ Cmd+F（Mac）で検索
-   → 「"channelId":"」 で検索
-
-3. 検索結果から チャンネル ID を抽出
-
-例）
-"channelId":"UC1234567890ABCDEFGHIJKLmn"
-```
-
-### トラブル時の代替方法
-
-ページソースが複雑な場合：
-
-```
-1. YouTube チャンネルページを開く
-2. アドレスバーの URL を確認
-   https://www.youtube.com/channel/UC1234...
-
-3. /channel/ の後の部分がチャンネル ID
-   UC1234567890ABCDEFGHIJKLmn
-```
-
----
-
-## 🟡 方法 3: YouTube Data API から確認
+# 🟡 方法 2: YouTube Data API から確認
 
 ### 概要
 
 YouTube Data API を使用して、チャンネル情報を取得することもできます。
 
-⚠️ **注意**: この方法は上級ユーザー向けです。通常は方法 1 または 2 で十分です。
+⚠️ **注意**: この方法は上級ユーザー向けです。通常は方法 1 で取得できます。
 
 ### 手順
 
@@ -202,49 +129,6 @@ if data["items"]:
 
 ---
 
-## 🟢 方法 4: オンラインツールを使用
-
-### サイト 1: CJSchedule
-
-```
-1. https://www.cjschedule.com/ を開く
-
-2. 「YouTube Channel ID」セクションを探す
-
-3. チャンネル URL または チャンネル名を入力
-   例: https://www.youtube.com/c/MyChannel
-
-4. 「Get Channel ID」をクリック
-
-5. チャンネル ID が表示される
-```
-
-### サイト 2: YouTube Channel ID Finder
-
-```
-1. オンラインで「YouTube Channel ID Finder」を検索
-
-2. チャンネル URL を入力
-   例: https://www.youtube.com/MyChannel
-
-3. チャンネル ID が取得される
-```
-
----
-
-## ✅ チャンネル ID を設定
-
-チャンネル ID が判明したら、settings.env に入力します。
-
-### settings.env の編集
-
-```bash
-# テキストエディタで開く
-# Windows: notepad settings.env
-# macOS: nano settings.env
-# Linux: vi settings.env
-```
-
 ### 必須設定項目
 
 ```env
@@ -262,7 +146,7 @@ YOUTUBE_CHANNEL_ID=UC1234567890ABCDEFGHIJKLmn
 POLL_INTERVAL_MINUTES=10
 ```
 
-### 入力例
+### 入力例(プラグイン無しの場合)
 
 ```env
 # ✅ 正しい例
@@ -330,11 +214,11 @@ cat settings.env | grep YOUTUBE_CHANNEL_ID
 
 ### 注意
 
-**現在のバージョン（v3.1.0）では、1つのチャンネルのみ対応**です。
+**現在のバージョン（v3.3.0）では、1つのチャンネルのみ対応**です。
 
 複数チャンネルを監視したい場合は、以下の方法があります：
 
-#### 方法 A: アプリを複数起動（推奨）
+#### アプリを複数起動（推奨）
 
 ```
 1. 別の フォルダで settings.env を分ける
@@ -350,10 +234,6 @@ Terminal 1: cd folder_a && python main_v3.py
 Terminal 2: cd folder_b && python main_v3.py
 ```
 
-#### 方法 B: 将来のバージョンを待つ
-
-複数チャンネル対応は [FUTURE_ROADMAP_v3.md](../References/FUTURE_ROADMAP_v3.md) で計画中です。
-
 ---
 
 ## 🎯 YouTube API キーの設定（オプション）
@@ -366,7 +246,7 @@ YouTube API キーを設定すると、以下が可能になります：
 ✅ @ で始まるカスタム URL でチャンネルを指定
 ✅ チャンネル情報の詳細取得
 ✅ ライブ配信の自動判定精度向上
-✅ API リクエストの削減（キャッシング）
+✅ API リクエストの削減（情報のキャッシュ）
 ```
 
 ### API キーの設定方法
@@ -453,25 +333,21 @@ YOUTUBE_API_KEY=AIzaSyDxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 【方法】
 1. YouTube にログイン
-2. チャンネル設定 → 基本情報
+2. 設定 → アカウント → 詳細設定
 3. チャンネル URL をコピー
-   例: https://www.youtube.com/channel/UC1234...
-4. /channel/ の後を抽出
 ```
 
-### チャンネルがカスタム URL を使用している場合
+### チャンネルがカスタム URL やハンドルを使用している場合
+- プラグインを導入するか、上記の方法でチャンネル ID を取得してください。
 
 ```
 例: https://www.youtube.com/@MyChannel
 
 この場合:
 ✗ @MyChannel は使用できません
+✗ @handle も使用できません
 ✓ 必ず /channel/UC... の形式に変換してください
 
-変換方法:
-1. 上記 URL にアクセス
-2. ページソースから channelId を抽出
-3. または YouTube Studio で確認
 ```
 
 ---
