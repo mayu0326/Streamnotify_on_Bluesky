@@ -172,7 +172,7 @@ VIDEO_DETAIL_CACHE_FILE = str(_SCRIPT_DIR / "data" / "youtube_video_detail_cache
 
 ## ファイル修正一覧
 
-- [v3/plugins/youtube_api_plugin.py](v3/plugins/youtube_api_plugin.py): キャッシング機構の実装
+- [v3/plugins/youtube_api_plugin.py](../../../plugins/youtube_api_plugin.py): キャッシング機構の実装
 - テストスクリプト追加:
   - `test_scripts/test_video_cache.py`
   - `test_scripts/build_video_cache.py`
@@ -181,15 +181,14 @@ VIDEO_DETAIL_CACHE_FILE = str(_SCRIPT_DIR / "data" / "youtube_video_detail_cache
 
 ## 実装完了状況
 
-✅ **キャッシング機能**: 完全に実装・テスト完了
-✅ **ファイル保存**: JSON 形式で自動保存
-✅ **有効期限管理**: 7 日ごとの自動更新
-✅ **API コスト削減**: 初期テストで 214 ユニット削減確認
-✅ **本番 DB 統合**: 214 件の動画詳細をキャッシュに保存完了
+-  **キャッシング機能**: 完全に実装・テスト完了
+-  **ファイル保存**: JSON 形式で自動保存
+-  **有効期限管理**: 7 日ごとの自動更新
+-  **API コスト削減**: 初期テストで 214 ユニット削減確認
+-  **本番 DB 統合**: 214 件の動画詳細をキャッシュに保存完了
 
 ---
 
 **実装日**: 2025-12-18
 **キャッシュサイズ**: 1.9 MB（214 件の動画データ）
 **想定削減効果**: 年間 77,590 ユニット以上
-

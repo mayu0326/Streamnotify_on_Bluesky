@@ -251,5 +251,5 @@ if auto_post_end:
 
 ## 🔗 参考資料
 
-- [YouTubeLive プラグイン実装](../Technical/YOUTUBE_LIVE_PLUGIN_IMPLEMENTATION.md)
-- [YouTube API プラグイン実装](../Technical/PLUGIN_SYSTEM.md)
+- [YouTubeLive プラグイン実装](YOUTUBE_LIVE_PLUGIN_IMPLEMENTATION.md)
+- [YouTube API プラグイン実装](../PLUGIN_SYSTEM.md)

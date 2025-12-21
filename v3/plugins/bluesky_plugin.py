@@ -244,6 +244,7 @@ class BlueskyImagePlugin(NotificationPlugin):
         # YouTube / ニコニコの新着動画投稿時にテンプレートを使用
         source = video.get("source", "youtube").lower()
         classification_type = video.get("classification_type", "video")  # ★ classification_type を優先判定
+        content_type = video.get("content_type", "video")  # ★ content_type をフォールバック判定用に取得
         live_status = video.get("live_status")
         rendered = ""
 
@@ -271,12 +272,14 @@ class BlueskyImagePlugin(NotificationPlugin):
                         post_logger.info(f"✅ テンプレートを使用して本文を生成しました: youtube_new_video (フォールバック)")
                     else:
                         post_logger.debug(f"ℹ️ youtube_new_video テンプレート未使用またはレンダリング失敗（従来フォーマットを使用）")
-            elif classification_type == "archive":
+            elif classification_type == "archive" or content_type == "archive":
+                # ★ v3.3.0: classification_type が video のままだが content_type が archive の場合もサポート
                 # アーカイブテンプレート（フォールバック機能付き）
                 rendered = self.render_template_with_utils("youtube_archive", video)
                 if rendered:
                     video["text_override"] = rendered
-                    post_logger.info(f"✅ テンプレートを使用して本文を生成しました: youtube_archive (classification_type='archive')")
+                    archive_trigger = "classification_type='archive'" if classification_type == "archive" else "content_type='archive'"
+                    post_logger.info(f"✅ テンプレートを使用して本文を生成しました: youtube_archive ({archive_trigger})")
                 else:
                     # アーカイブテンプレート未設定時は新着動画テンプレートにフォールバック
                     post_logger.debug(f"ℹ️ youtube_archive テンプレート未使用。youtube_new_video にフォールバック")
