@@ -146,8 +146,8 @@ class YouTubeLivePlugin(NotificationPlugin):
             # ★ 新: 判定後、自動投稿対象を検査して投稿を実行
             # APP_MODE に応じて、AUTOPOST 時は YOUTUBE_LIVE_AUTO_POST_MODE で、
             # SELFPOST 時は個別フラグで投稿判定を行う
-            # 注: updated_count > 0 でなくても、既に判定済みの未投稿 live/archive 動画を自動投稿対象にする
-            if True:  # 常に投稿判定を実行（updated_count と無関係）
+            # 注: 新規判定があった場合（updated_count > 0）のみ自動投稿処理を実行
+            if updated_count > 0:  # 新規判定があった場合のみ投稿判定を実行
                 logger.info(f"🚀 YouTube Live 自動投稿処理を開始します（更新件数: {updated_count}）")
                 try:
                     from config import get_config
