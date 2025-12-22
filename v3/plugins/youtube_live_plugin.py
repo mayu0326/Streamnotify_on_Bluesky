@@ -180,8 +180,8 @@ class YouTubeLivePlugin(NotificationPlugin):
                         content_type = video.get("content_type")
                         live_status = video.get("live_status")
 
+                        # ★ 「今回の判定で更新された動画のみ」処理対象
                         # live または archive のみ対象
-                        # 注: updated_count が 0 でも、既に判定済みの live/archive 動画を処理する
                         if content_type not in ("live", "archive"):
                             logger.debug(f"⏭️ スキップ（content_type={content_type}）: {video_id}")
                             continue
@@ -210,7 +210,7 @@ class YouTubeLivePlugin(NotificationPlugin):
                 except Exception as e:
                     logger.exception(f"❌ YouTube Live 自動投稿エラー（判定は完了）: {e}")
             else:
-                logger.debug(f"ℹ️ 自動投稿スキップ: updated_count={updated_count}")
+                logger.debug(f"ℹ️ 自動投稿スキップ: updated_count={updated_count} (新規判定がなかったため)")
 
 
             return updated_count
