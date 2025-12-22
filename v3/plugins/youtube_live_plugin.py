@@ -576,11 +576,21 @@ class YouTubeLivePlugin(NotificationPlugin):
                     else:
                         logger.info(f"ℹ️ YOUTUBE_LIVE_AUTOPOST_MODE の設定により投稿スキップ（content_type={content_type}, live_status={live_status}）")
 
-                    # 終了済み動画をキャッシュから削除
-                    cache.remove_live_video(video_id)
+                    # ファイルに保存してキャッシュを維持
+                    # （ローンチ後のIssue対策：ファイルとして常に残す）
+                    cache._save_cache()
 
         except Exception as e:
             logger.error(f"❌ ライブ終了チェックエラー: {e}")
+
+        finally:
+            # ポーリング完了時、キャッシュをファイルに保存
+            # （youtube_live_cache.json を永続化）
+            try:
+                cache = get_youtube_live_cache()
+                cache._save_cache()
+            except Exception as e:
+                logger.debug(f"⚠️ キャッシュの永続化に失敗: {e}")
 
 
 def get_plugin():
