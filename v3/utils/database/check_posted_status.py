@@ -13,8 +13,8 @@ cursor = conn.cursor()
 
 # テスト動画を確認
 cursor.execute("""
-    SELECT video_id, title, posted_to_bluesky, posted_at 
-    FROM videos 
+    SELECT video_id, title, posted_to_bluesky, posted_at
+    FROM videos
     WHERE video_id=?
 """, ("TEST_LIVE_20251223",))
 
@@ -30,7 +30,7 @@ else:
 
 # live/archive で投稿済みの動画数
 cursor.execute("""
-    SELECT COUNT(*) FROM videos 
+    SELECT COUNT(*) FROM videos
     WHERE content_type IN ('live', 'archive') AND posted_to_bluesky=1
 """)
 count = cursor.fetchone()[0]

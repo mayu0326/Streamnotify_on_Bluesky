@@ -26,20 +26,20 @@ logger = logging.getLogger("AppLogger")
 
 def test_should_autopost_live():
     """_should_autopost_live() メソッドをテスト"""
-    
+
     # 設定を読み込み
     config = Config("settings.env")
     db = get_database()
-    
+
     # YouTube Live プラグインを初期化
     plugin = YouTubeLivePlugin()
     plugin_manager = PluginManager()
     plugin_manager.load_plugin("bluesky_plugin", os.path.join("plugins", "bluesky_plugin.py"))
     plugin_manager.enable_plugin("bluesky_plugin")
-    
+
     # plugin_manager を注入
     plugin.set_plugin_manager(plugin_manager)
-    
+
     # テスト動画を DB から取得
     all_videos = db.get_all_videos()
     test_video = None
@@ -47,30 +47,30 @@ def test_should_autopost_live():
         if v["video_id"] == "TEST_LIVE_20251223":
             test_video = v
             break
-    
+
     if not test_video:
         logger.error("❌ テスト動画が見つかりません: TEST_LIVE_20251223")
         return
-    
+
     logger.info(f"📋 テスト動画情報:")
     logger.info(f"   video_id: {test_video['video_id']}")
     logger.info(f"   content_type: {test_video['content_type']}")
     logger.info(f"   live_status: {test_video['live_status']}")
     logger.info(f"   posted_to_bluesky: {test_video['posted_to_bluesky']}")
-    
+
     # _should_autopost_live() をテスト
     logger.info(f"\n🧪 _should_autopost_live() をテスト中...")
     should_post = plugin._should_autopost_live(test_video)
-    
+
     if should_post:
         logger.info(f"✅ テスト PASSED: 自動投稿対象となります")
         logger.info(f"\n📝 投稿処理をシミュレート:")
-        
+
         # 実際に投稿してみる
         if plugin.plugin_manager:
             results = plugin.plugin_manager.post_video_with_all_enabled(test_video)
             logger.info(f"   Bluesky プラグイン: {results.get('bluesky_plugin', False)}")
-            
+
             if any(results.values()):
                 logger.info(f"✅ 投稿成功")
                 # 投稿済みフラグを立てる

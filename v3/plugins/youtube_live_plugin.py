@@ -189,7 +189,7 @@ class YouTubeLivePlugin(NotificationPlugin):
                         # 自動投稿判定（APP_MODE に応じて自動切り替え）
                         should_post = self._should_autopost_live(content_type, live_status, config)
                         logger.debug(f"📋 投稿判定: {video_id} → should_post={should_post}, content_type={content_type}, live_status={live_status}")
-                        
+
                         if should_post:
                             logger.info(f"📤 YouTube Live 自動投稿: {video['title']} (content_type={content_type}, live_status={live_status})")
                             results = self.plugin_manager.post_video_with_all_enabled(video)

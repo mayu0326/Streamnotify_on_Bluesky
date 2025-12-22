@@ -32,7 +32,7 @@ for row in rows:
     live_status = r["live_status"]
     posted = "✅ 投稿済み" if r["posted_to_bluesky"] else "❌ 未投稿"
     posted_at = r["posted_at"] if r["posted_at"] else "N/A"
-    
+
     print(f"{video_id}")
     print(f"  タイトル: {title}")
     print(f"  状態: content_type={content_type}, live_status={live_status}")

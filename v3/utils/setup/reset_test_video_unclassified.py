@@ -17,16 +17,16 @@ cursor = conn.cursor()
 
 # テスト動画を「新規判定状態」に戻す（投稿フラグをリセット）
 cursor.execute("""
-    UPDATE videos 
-    SET posted_to_bluesky=0, content_type=NULL, live_status=NULL 
+    UPDATE videos
+    SET posted_to_bluesky=0, content_type=NULL, live_status=NULL
     WHERE video_id=?
 """, ("TEST_LIVE_20251223",))
 conn.commit()
 
 # 確認
 cursor.execute("""
-    SELECT video_id, title, content_type, live_status, posted_to_bluesky 
-    FROM videos 
+    SELECT video_id, title, content_type, live_status, posted_to_bluesky
+    FROM videos
     WHERE video_id=?
 """, ("TEST_LIVE_20251223",))
 
