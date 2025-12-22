@@ -51,7 +51,7 @@ class YouTubeThumbManager:
             # image_manager と database のロガーを一時的に YouTubeLogger に変更
             import image_manager as im_module
             import database as db_module
-            
+
             original_im_logger = im_module.logger
             original_db_logger = db_module.logger
             im_module.logger = youtube_logger
@@ -93,6 +93,9 @@ class YouTubeThumbManager:
         YouTube チャンネルの RSS をフェッチして DB に保存し、
         新規動画の画像を自動ダウンロード・保存する。
 
+        また、RSS から取得した新規動画に対して、YouTube Live プラグインで
+        配信予定枠（upcoming）の自動分類を実行する。
+
         Args:
             channel_id: YouTube チャンネル ID
 
@@ -108,32 +111,52 @@ class YouTubeThumbManager:
             yt_rss = YouTubeRSS(channel_id)
             saved_count = yt_rss.save_to_db(self.db)
 
+            # ★ 新: YouTube Live プラグインで RSS新規追加動画を自動分類
+            # 配信予定枠（upcoming）などの詳細情報を API から取得して DB を更新
+            if saved_count > 0:
+                try:
+                    from plugin_manager import PluginManager
+                    pm = PluginManager()
+                    live_plugin = pm.get_plugin("youtube_live_plugin")
+                    if live_plugin and live_plugin.is_available():
+                        youtube_logger.debug(f"🔍 YouTube Live プラグイン: RSS新規追加 {saved_count} 件を自動分類中...")
+                        updated = live_plugin._update_unclassified_videos()
+                        if updated > 0:
+                            youtube_logger.info(f"✅ YouTube Live 自動分類: {updated} 件更新（配信予定枠など検出）")
+                        else:
+                            youtube_logger.debug(f"ℹ️ YouTube Live 自動分類: ライブ関連の動画なし")
+                except ImportError:
+                    youtube_logger.debug("YouTube Live プラグインモジュールが見つかりません")
+                except Exception as e:
+                    youtube_logger.warning(f"⚠️ YouTube Live プラグインでの自動分類に失敗: {e}")
+                    # エラーでも処理を続行
+
             # 新規動画の画像をダウンロード・保存
             if saved_count > 0:
                 # DB から全動画を取得して、新規追加分のみ処理
                 all_videos = self.db.get_all_videos()
-                
+
                 # RSS から取得した動画 ID のセットを作成
                 rss_videos = yt_rss.fetch_feed()
                 rss_video_ids = {v["video_id"] for v in rss_videos}
-                
+
                 # DB の動画の中で、RSS に含まれ、YouTube かつ画像なしの動画を処理
                 for video in all_videos:
                     if video["video_id"] not in rss_video_ids:
                         continue  # RSS に含まれていない
-                    
+
                     if (video.get("source") or "").lower() != "youtube":
                         continue  # YouTube ではない
-                    
+
                     thumbnail_url = video.get("thumbnail_url", "")
                     image_filename = video.get("image_filename", "")
-                    
+
                     youtube_logger.debug(
                         f"[自動画像処理] {video['video_id']}: "
                         f"thumbnail_url={'あり' if thumbnail_url else 'なし'}, "
                         f"image_filename={'あり' if image_filename else 'なし'}"
                     )
-                    
+
                     # サムネイル URL があり、画像ファイルがない場合のみダウンロード
                     if thumbnail_url and not image_filename:
                         self.ensure_image_download(video["video_id"], thumbnail_url)
