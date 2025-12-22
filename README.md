@@ -336,7 +336,6 @@ Git による公開リポジトリには含めないでください（`.gitignor
 
 **対応方法**:
 - `settings.env` で `POLL_INTERVAL_MINUTES` を増やしてください（デフォルト: 5分 → 推奨: 10分以上）
-- 複数チャンネルを監視する場合は、さらに間隔を広げることをお勧めします
 - API キーが無い場合は、RSS フィードのみの監視でレート制限の影響を回避できます
 
 詳細は [YOUTUBE_API_CACHING_IMPLEMENTATION.md](v3/docs/Technical/YouTube/YOUTUBE_API_CACHING_IMPLEMENTATION.md) を参照してください。
