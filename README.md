@@ -282,17 +282,21 @@ python main_v2.py
 - [プラグインシステム ガイド](v3/docs/Technical/PLUGIN_SYSTEM.md)
 - [Bluesky リッチテキスト ガイド](v3/docs/Technical/RICHTEXT_FACET_SPECIFICATION.md)
 - [テンプレートシステム ガイド](v3/docs/Technical/TEMPLATE_SYSTEM.md)
+- [**Twitch API ポーリング実装ガイド**](v3/docs/Technical/TWITCH_POLLING_IMPLEMENTATION.md)（Twitch 対応設計・実装予定）
 
 ## 📚 YouTube関連資料
 - [YouTube API キャシュ実装](v3/docs/Technical/YouTube/YOUTUBE_API_CACHING_IMPLEMENTATION.md)
 - [YouTubeLive 終了検出機構](v3/docs/Technical/YouTube/YOUTUBE_LIVE_CACHE_IMPLEMENTATION.md)
 - [YouTube Live プラグイン](v3/docs/Technical/YouTube/YOUTUBE_LIVE_PLUGIN_IMPLEMENTATION.md)
 
-### 関連資料
+### 💡 設計思想・アーキテクチャ
+- [**Streamnotify 設計思想とアーキテクチャ哲学**](v3/docs/References/DESIGN_PHILOSOPHY.md)（⭐ 必読：ローカル完結・リアルタイム性についての判断基準）
 - [OLD_App 既存実装リファレンス](v3/docs/Technical/OLDAPP_REFERENCE_FOR_V3_PLUGINS.md)
+
+### 関連資料
 - [AUTOPOST_SELFPOST_機能仕様書.md](v3/docs/References/AUTOPOST_SELFPOST_機能仕様書.md)
 - [開発ガイドライン](v3/docs/References/DEVELOPMENT_GUIDELINES.md)
-- [将来実装機能ロードマップ](v3/docs/References/FUTURE_ROADMAP_v3.md)
+- [**将来実装機能ロードマップ**](v3/docs/References/FUTURE_ROADMAP_v3.md)（⭐ 更新：v3.1.0以降の方針確定版）
 - [初期構想案](v3/docs/References/INITIAL_CONCEPT.md)
 - [バージョン管理ガイド](v3/docs/Technical/VERSION_MANAGEMENT.md)
 - [モジュール一覧](v3/docs/References/ModuleList_v3.md)
