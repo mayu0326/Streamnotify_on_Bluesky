@@ -129,7 +129,7 @@ Bluesky に自動投稿する常駐ボットです。
 ### 1. リポジトリをクローン
 
 ```bash
-git clone https://git.neco-server.net/mayuneco/Streamnotify_on_Bluesky.git
+git clone https://github.com/mayu0326/Streamnotify_on_Bluesky.git
 cd Streamnotify_on_Bluesky/v3    # v3（推奨）または v2（安定版）
 ```
 
