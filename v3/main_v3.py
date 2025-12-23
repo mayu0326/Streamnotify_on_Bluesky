@@ -183,8 +183,16 @@ def main():
     # YouTubeLive 検出プラグインを手動でロード・有効化
     try:
         plugin_manager.load_plugin("youtube_live_plugin", os.path.join("plugins", "youtube_live_plugin.py"))
-        plugin_manager.enable_plugin("youtube_live_plugin")
         asset_manager.deploy_plugin_assets("youtube_live_plugin")
+
+        # ★ YouTube Live プラグインに plugin_manager を注入（自動投稿用）
+        # ★ IMPORTANT: enable_plugin() より前に注入する必要がある（on_enable で自動投稿ロジックが実行されるため）
+        live_plugin = plugin_manager.get_plugin("youtube_live_plugin")
+        if live_plugin:
+            live_plugin.set_plugin_manager(plugin_manager)
+
+        # ★ 注入完了後に有効化（on_enable() が呼ばれる）
+        plugin_manager.enable_plugin("youtube_live_plugin")
 
         # ★ プラグイン判定後に GUI を自動リロード
         if gui_instance:
@@ -351,6 +359,19 @@ def main():
             from thumbnails.youtube_thumb_utils import get_youtube_thumb_manager
             thumb_mgr = get_youtube_thumb_manager()
             saved_count = thumb_mgr.fetch_and_ensure_images(config.youtube_channel_id)
+
+            # ★ 新: YouTube RSS 取得後、YouTube Live プラグインで自動分類を実行
+            # 配信予定枠などが正しく content_type="live", live_status="upcoming" として分類される
+            if saved_count > 0 or polling_count == 1:  # 新規動画があるか初回ポーリング時に実行
+                try:
+                    live_plugin = plugin_manager.get_plugin("youtube_live_plugin")
+                    if live_plugin and live_plugin.is_available():
+                        logger.info(f"🔍 YouTube Live プラグイン: 未判定動画を自動分類中...")
+                        updated = live_plugin._update_unclassified_videos()
+                        if updated > 0:
+                            logger.info(f"✅ YouTube Live 自動分類: {updated} 件更新（配信予定枠など検出）")
+                except Exception as e:
+                    logger.debug(f"⚠️ YouTube Live プラグインの自動分類エラー: {e}")
 
             if config.is_collect_mode:
                 logger.info("[モード] 収集モード のため、投稿処理をスキップします。")

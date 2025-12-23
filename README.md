@@ -233,6 +233,33 @@ python main_v2.py
 - **重複投稿防止**: 既投稿動画の自動検知（`PREVENT_DUPLICATE_POSTS=true`）
 - **プラグイン状態**: 導入済みプラグイン一覧を表示
 
+## 設計方針と制限事項
+
+- このアプリケーションは、\
+**ユーザーの環境だけで完結する・難しいサーバ設定を不要にする** ことを設計方針としています。  \
+そのため、外部からの通信やサーバー設置、ドメイン、固定IP が必要な WebSub/Webhook ではなく、\
+**RSS + API 方式** を採用しています。
+
+### ⚠️ リアルタイム性に関する制限
+
+この設計により、以下の制限があります：
+
+- **ラグの発生**: YouTube への動画投稿、配信枠作成から実際にこのアプリで検知され投稿されるまで、  \
+**数分～数十分程度ラグが発生する場合があります**。\
+これは **YouTube 側の RSS 更新タイミング** によるもので、  \
+アプリ側では制御できません。
+
+- **リアルタイム性の目安**: 通常は数分以内に検知されますが、状況により **10分程度遅れる可能性があります**。
+
+### ✅ この設計のメリット
+
+- サーバー設置が不要
+- ドメイン取得が不要
+- 固定 IP が不要
+- ファイアウォール設定が不要
+- あなたの環境のみで完結
+- **シンプルで保守しやすい**
+
 ## ドキュメント
 
 詳細な情報は以下をご覧ください：
@@ -258,17 +285,21 @@ python main_v2.py
 - [プラグインシステム ガイド](v3/docs/Technical/PLUGIN_SYSTEM.md)
 - [Bluesky リッチテキスト ガイド](v3/docs/Technical/RICHTEXT_FACET_SPECIFICATION.md)
 - [テンプレートシステム ガイド](v3/docs/Technical/TEMPLATE_SYSTEM.md)
+- [**Twitch API ポーリング実装ガイド**](v3/docs/Technical/TWITCH_POLLING_IMPLEMENTATION.md)（Twitch 対応設計・実装予定）
 
 ## 📚 YouTube関連資料
 - [YouTube API キャシュ実装](v3/docs/Technical/YouTube/YOUTUBE_API_CACHING_IMPLEMENTATION.md)
 - [YouTubeLive 終了検出機構](v3/docs/Technical/YouTube/YOUTUBE_LIVE_CACHE_IMPLEMENTATION.md)
 - [YouTube Live プラグイン](v3/docs/Technical/YouTube/YOUTUBE_LIVE_PLUGIN_IMPLEMENTATION.md)
 
-### 関連資料
+### 💡 設計思想・アーキテクチャ
+- [**Streamnotify 設計思想とアーキテクチャ哲学**](v3/docs/References/DESIGN_PHILOSOPHY.md)（⭐ 必読：ローカル完結・リアルタイム性についての判断基準）
 - [OLD_App 既存実装リファレンス](v3/docs/Technical/OLDAPP_REFERENCE_FOR_V3_PLUGINS.md)
+
+### 関連資料
 - [AUTOPOST_SELFPOST_機能仕様書.md](v3/docs/References/AUTOPOST_SELFPOST_機能仕様書.md)
 - [開発ガイドライン](v3/docs/References/DEVELOPMENT_GUIDELINES.md)
-- [将来実装機能ロードマップ](v3/docs/References/FUTURE_ROADMAP_v3.md)
+- [**将来実装機能ロードマップ**](v3/docs/References/FUTURE_ROADMAP_v3.md)（⭐ 更新：v3.1.0以降の方針確定版）
 - [初期構想案](v3/docs/References/INITIAL_CONCEPT.md)
 - [バージョン管理ガイド](v3/docs/Technical/VERSION_MANAGEMENT.md)
 - [モジュール一覧](v3/docs/References/ModuleList_v3.md)
@@ -336,7 +367,6 @@ Git による公開リポジトリには含めないでください（`.gitignor
 
 **対応方法**:
 - `settings.env` で `POLL_INTERVAL_MINUTES` を増やしてください（デフォルト: 5分 → 推奨: 10分以上）
-- 複数チャンネルを監視する場合は、さらに間隔を広げることをお勧めします
 - API キーが無い場合は、RSS フィードのみの監視でレート制限の影響を回避できます
 
 詳細は [YOUTUBE_API_CACHING_IMPLEMENTATION.md](v3/docs/Technical/YouTube/YOUTUBE_API_CACHING_IMPLEMENTATION.md) を参照してください。
