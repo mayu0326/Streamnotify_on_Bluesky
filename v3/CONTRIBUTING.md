@@ -26,7 +26,7 @@
 1. **リポジトリをクローン**
 
 ```bash
-git clone https://git.neco-server.net/mayuneco/Streamnotify_on_Bluesky.git
+git clone https://github.com/mayu0326/Streamnotify_on_Bluesky.git
 cd Streamnotify_on_Bluesky/v3
 ```
 
@@ -102,7 +102,7 @@ python main_v3.py --version
 1. **フォークして、ローカルにクローン**
 
 ```bash
-git clone https://git.neco-server.net/mayuneco/Streamnotify_on_Bluesky.git
+git clone https://github.com/mayu0326/Streamnotify_on_Bluesky.git
 cd Streamnotify_on_Bluesky/v3
 ```
 
