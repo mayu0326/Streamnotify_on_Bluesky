@@ -32,6 +32,7 @@ class YouTubeLivePlugin(NotificationPlugin):
         self.channel_id = self.api_plugin.channel_id
         self.db: Database = self.api_plugin.db
         self.session = requests.Session()
+        self.plugin_manager = None  # ★ main_v3.py から注入される
 
     def is_available(self) -> bool:
         return bool(self.api_key and self.channel_id)
@@ -44,6 +45,10 @@ class YouTubeLivePlugin(NotificationPlugin):
 
     def get_description(self) -> str:
         return "YouTubeライブ/アーカイブ判定を行いDBに格納するプラグイン（クォータ対応）"
+
+    def set_plugin_manager(self, pm) -> None:
+        """plugin_manager を注入（自動投稿用）"""
+        self.plugin_manager = pm
 
     def on_enable(self) -> None:
         """
@@ -137,10 +142,81 @@ class YouTubeLivePlugin(NotificationPlugin):
                     skipped_no_live += 1
 
             logger.info(f"✅ 自動判定完了: 更新 {updated_count} 件、キャッシュなし {skipped_no_cache} 件、非ライブ {skipped_no_live} 件")
+
+            # ★ 新: 判定後、自動投稿対象を検査して投稿を実行
+            # APP_MODE に応じて、AUTOPOST 時は YOUTUBE_LIVE_AUTO_POST_MODE で、
+            # SELFPOST 時は個別フラグで投稿判定を行う
+            # 注: 新規判定があった場合（updated_count > 0）のみ自動投稿処理を実行
+            if updated_count > 0:  # 新規判定があった場合のみ投稿判定を実行
+                logger.info(f"🚀 YouTube Live 自動投稿処理を開始します（更新件数: {updated_count}）")
+                try:
+                    from config import get_config
+                    config = get_config("settings.env")
+
+                    # ★ plugin_manager が注入されていることを確認
+                    if not hasattr(self, 'plugin_manager') or not self.plugin_manager:
+                        logger.warning("⚠️ YouTube Live 自動投稿: plugin_manager が未初期化です（スキップ）")
+                        logger.warning(f"   hasattr(self, 'plugin_manager')={hasattr(self, 'plugin_manager')}")
+                        logger.warning(f"   self.plugin_manager={getattr(self, 'plugin_manager', None)}")
+                        return updated_count
+
+                    logger.debug(f"✅ plugin_manager 初期化確認: {self.plugin_manager}")
+
+                    # ★ 判定後、DB から fresh に全動画を取得（更新された content_type/live_status を反映）
+                    all_videos_fresh = self.db.get_all_videos()
+                    logger.debug(f"📊 fresh 取得動画数: {len(all_videos_fresh)}")
+                    autopost_count = 0
+
+                    for video in all_videos_fresh:
+                        video_id = video.get("video_id")
+                        if not video_id:
+                            continue
+
+                        # 既投稿はスキップ
+                        if video.get("posted_to_bluesky"):
+                            logger.debug(f"⏭️ スキップ（既投稿）: {video_id}")
+                            continue
+
+                        content_type = video.get("content_type")
+                        live_status = video.get("live_status")
+
+                        # ★ 「今回の判定で更新された動画のみ」処理対象
+                        # live または archive のみ対象
+                        if content_type not in ("live", "archive"):
+                            logger.debug(f"⏭️ スキップ（content_type={content_type}）: {video_id}")
+                            continue
+
+                        # 自動投稿判定（APP_MODE に応じて自動切り替え）
+                        should_post = self._should_autopost_live(content_type, live_status, config)
+                        logger.debug(f"📋 投稿判定: {video_id} → should_post={should_post}, content_type={content_type}, live_status={live_status}")
+
+                        if should_post:
+                            logger.info(f"📤 YouTube Live 自動投稿: {video['title']} (content_type={content_type}, live_status={live_status})")
+                            results = self.plugin_manager.post_video_with_all_enabled(video)
+                            logger.debug(f"   投稿結果: {results}")
+                            if any(results.values()):
+                                self.db.mark_as_posted(video_id)
+                                autopost_count += 1
+                                logger.info(f"✅ YouTube Live 自動投稿成功: {video['title']}")
+                            else:
+                                logger.warning(f"⚠️ YouTube Live 自動投稿失敗: {video['title']}")
+                        else:
+                            logger.debug(f"⏭️ 投稿判定NG（フラグ未設定か APP_MODE が合致）: {video_id}")
+
+                    if autopost_count > 0:
+                        logger.info(f"✅ YouTube Live 自動投稿完了: {autopost_count} 件を投稿しました")
+                    else:
+                        logger.info(f"ℹ️ YouTube Live 自動投稿完了: 投稿対象なし")
+                except Exception as e:
+                    logger.exception(f"❌ YouTube Live 自動投稿エラー（判定は完了）: {e}")
+            else:
+                logger.debug(f"ℹ️ 自動投稿スキップ: updated_count={updated_count} (新規判定がなかったため)")
+
+
             return updated_count
 
         except Exception as e:
-            logger.error(f"❌ 未判定動画の自動判定に失敗: {e}")
+            logger.error(f"❌ YouTube Live 分類処理エラー: {e}")
             return 0
 
     def post_video(self, video: Dict[str, Any]) -> bool:
@@ -151,7 +227,6 @@ class YouTubeLivePlugin(NotificationPlugin):
 
         注：API プラグインを共有利用するため、クォータ管理は api_plugin に委譲
         """
-        video_id = video.get("video_id") or video.get("id")
         if not video_id:
             logger.error("❌ YouTube Live: video_id が指定されていません")
             return False
@@ -177,7 +252,9 @@ class YouTubeLivePlugin(NotificationPlugin):
         thumbnail_url = snippet.get("thumbnails", {}).get("high", {}).get("url", "")
 
         # AUTOPOST 時の自動投稿判定（仕様 v1.0 セクション 4）
-        should_autopost = self._should_autopost_live(content_type, live_status)
+        from config import get_config
+        config = get_config("settings.env")
+        should_autopost = self._should_autopost_live(content_type, live_status, config)
         if not should_autopost:
             logger.debug(f"⏭️ YouTube Live: YOUTUBE_LIVE_AUTOPOST_MODE の設定により投稿スキップ（content_type={content_type}, live_status={live_status}）")
 
@@ -275,55 +352,84 @@ class YouTubeLivePlugin(NotificationPlugin):
         """
         return self.api_plugin._classify_video_core(details)
 
-    def _should_autopost_live(self, content_type: str, live_status: Optional[str]) -> bool:
+    def _should_autopost_live(self, content_type: str, live_status: Optional[str], config=None) -> bool:
         """
         YouTube Live 自動投稿判定
 
-        YOUTUBE_LIVE_AUTO_POST_MODE（統合モード値）と
-        YOUTUBE_LIVE_AUTO_POST_SCHEDULE/LIVE/ARCHIVE（個別フラグ）の両方に対応
+        APP_MODE に応じて自動的に判定ロジックを切り替える:
+        - AUTOPOST モード: YOUTUBE_LIVE_AUTO_POST_MODE（統合モード値）で判定
+        - SELFPOST モード: YOUTUBE_LIVE_AUTO_POST_SCHEDULE/LIVE/ARCHIVE（個別フラグ）で判定
 
-        優先順位:
-        1. モード値が設定されている場合 → モード値の判定ロジックを使用
-        2. モード値が未設定の場合 → 個別フラグで判定（SELFPOST 向け）
+        Args:
+            content_type: コンテンツ種別（"video", "live", "archive"）
+            live_status: ライブ配信状態（None, "upcoming", "live", "completed"）
+            config: Config オブジェクト（省略時は読み込み）
 
         Returns:
             bool: 投稿すべき場合 True、スキップすべき場合 False
         """
-        from config import get_config
-        config = get_config("settings.env")
-        mode = config.youtube_live_autopost_mode
+        if config is None:
+            from config import get_config
+            config = get_config("settings.env")
+
+        # ★ APP_MODE に基づいて自動的に使用するフラグを決定
+        # AUTOPOST モード時のみ YOUTUBE_LIVE_AUTO_POST_MODE を使用
+        if config.operation_mode == "autopost":
+            mode = config.youtube_live_autopost_mode
+            logger.debug(f"🔄 AUTOPOST モード: mode={mode}")
+        else:
+            # SELFPOST・DRY_RUN・COLLECT モード: 個別フラグを使用
+            mode = ""
+            logger.debug(f"🔄 SELFPOST/DRY_RUN/COLLECT モード: 個別フラグを使用")
 
         # ★ テーブル仕様 v1.0 セクション 4.2 参照（モード値による判定）
         if mode == "off":
+            logger.debug(f"⏭️ mode='off': 投稿スキップ")
             return False
 
         if mode == "all":
             # すべてのイベント投稿
-            return content_type in ("video", "live", "archive")
+            result = content_type in ("video", "live", "archive")
+            logger.debug(f"🔍 mode='all': content_type={content_type} → {result}")
+            return result
 
         if mode == "schedule":
             # 予約枠のみ
-            return content_type == "live" and live_status == "upcoming"
+            result = content_type == "live" and live_status == "upcoming"
+            logger.debug(f"🔍 mode='schedule': content_type={content_type}, live_status={live_status} → {result}")
+            return result
 
         if mode == "live":
             # 配信開始・配信終了のみ
-            return content_type == "live" and live_status in ("live", "completed")
+            result = content_type == "live" and live_status in ("live", "completed")
+            logger.debug(f"🔍 mode='live': content_type={content_type}, live_status={live_status} → {result}")
+            return result
 
         if mode == "archive":
             # アーカイブ公開のみ
-            return content_type == "archive"
+            result = content_type == "archive"
+            logger.debug(f"🔍 mode='archive': content_type={content_type} → {result}")
+            return result
 
         # モード値が未設定の場合 → 個別フラグで判定（SELFPOST 向け）
         if not mode or mode == "":
+            logger.debug(f"🔍 個別フラグで判定: content_type={content_type}, live_status={live_status}")
             if content_type == "live":
                 if live_status == "upcoming":
-                    return config.youtube_live_auto_post_schedule
+                    result = config.youtube_live_auto_post_schedule
+                    logger.debug(f"   upcoming: youtube_live_auto_post_schedule={result}")
+                    return result
                 elif live_status in ("live", "completed"):
-                    return config.youtube_live_auto_post_live
+                    result = config.youtube_live_auto_post_live
+                    logger.debug(f"   live/completed: youtube_live_auto_post_live={result}")
+                    return result
 
             if content_type == "archive":
-                return config.youtube_live_auto_post_archive
+                result = config.youtube_live_auto_post_archive
+                logger.debug(f"   archive: youtube_live_auto_post_archive={result}")
+                return result
 
+            logger.debug(f"⏭️ デフォルト判定: False")
             return False
 
         # デフォルト: off
@@ -463,16 +569,28 @@ class YouTubeLivePlugin(NotificationPlugin):
                     self.db.update_video_status(video_id, content_type, live_status)
 
                     # ⑥ 設定に基づき自動投稿（新仕様：YOUTUBE_LIVE_AUTOPOST_MODE）
-                    if self._should_autopost_live(content_type, live_status):
+                    from config import get_config
+                    config = get_config("settings.env")
+                    if self._should_autopost_live(content_type, live_status, config):
                         self.auto_post_live_end(video)
                     else:
                         logger.info(f"ℹ️ YOUTUBE_LIVE_AUTOPOST_MODE の設定により投稿スキップ（content_type={content_type}, live_status={live_status}）")
 
-                    # 終了済み動画をキャッシュから削除
-                    cache.remove_live_video(video_id)
+                    # ファイルに保存してキャッシュを維持
+                    # （ローンチ後のIssue対策：ファイルとして常に残す）
+                    cache._save_cache()
 
         except Exception as e:
             logger.error(f"❌ ライブ終了チェックエラー: {e}")
+
+        finally:
+            # ポーリング完了時、キャッシュをファイルに保存
+            # （youtube_live_cache.json を永続化）
+            try:
+                cache = get_youtube_live_cache()
+                cache._save_cache()
+            except Exception as e:
+                logger.debug(f"⚠️ キャッシュの永続化に失敗: {e}")
 
 
 def get_plugin():

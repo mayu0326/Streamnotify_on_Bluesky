@@ -240,6 +240,7 @@ class StreamNotifyGUI:
         try:
             from youtube_rss import YouTubeRSS
             from config import Config
+            from plugin_manager import PluginManager
 
             config = Config("settings.env")
             channel_id = config.youtube_channel_id
@@ -272,6 +273,20 @@ class StreamNotifyGUI:
                 ):
                     added_count += 1
 
+            # ★ 新: YouTube Live プラグインで自動分類を実行
+            # RSS取得後、新規追加動画（content_type="video"）をYouTube Liveプラグインで分類
+            if added_count > 0:
+                try:
+                    pm = PluginManager()
+                    live_plugin = pm.get_plugin("youtube_live_plugin")
+                    if live_plugin and live_plugin.is_available():
+                        logger.info(f"🔍 YouTube Live プラグイン: RSS新規追加動画 {added_count} 件を自動分類します...")
+                        updated = live_plugin._update_unclassified_videos()
+                        logger.info(f"✅ YouTube Live 自動分類完了: {updated} 件更新")
+                except Exception as e:
+                    logger.warning(f"⚠️ YouTube Live プラグインでの自動分類に失敗: {e}")
+                    # エラーでも処理を続行
+
             # 結果をメッセージボックスで表示
             result_msg = f"""
 ✅ RSS更新完了
@@ -279,13 +294,14 @@ class StreamNotifyGUI:
 取得件数: {len(new_videos)}
 新規追加: {added_count}
 
+🔍 YouTube Live自動分類を実行しました。
 DB を再読込みします。
             """
             messagebox.showinfo("RSS更新完了", result_msg)
 
             # DB を再読込して表示更新
             self.refresh_data()
-            logger.info(f"✅ RSS手動更新完了: {added_count} 件追加")
+            logger.info(f"✅ RSS手動更新完了: {added_count} 件追加（YouTube Live自動分類実行）")
 
         except ImportError as e:
             logger.error(f"❌ インポートエラー: {e}")
