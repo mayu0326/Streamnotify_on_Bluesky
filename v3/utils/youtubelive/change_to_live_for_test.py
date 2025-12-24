@@ -8,10 +8,10 @@
 
 import sqlite3
 
-DB_PATH = "data/video_list.db"
+DB_PATH = Path(__file__).parent.parent.parent / "data" / "video_list.db"
 
 try:
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(str(DB_PATH))
     cursor = conn.cursor()
 
     # 1つの archive 動画を live に変更（テスト用）

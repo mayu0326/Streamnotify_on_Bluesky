@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 from collections import Counter
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "v3"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from database import get_database
 from plugins.youtube_api_plugin import YouTubeAPIPlugin

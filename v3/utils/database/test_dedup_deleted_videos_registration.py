@@ -12,9 +12,9 @@ import os
 # プロジェクトルートを検索パスに追加
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
-from v3.database import Database
-from v3.deleted_video_cache import get_deleted_video_cache
-from v3.youtube_dedup_priority import get_video_priority
+from database import Database
+from deleted_video_cache import get_deleted_video_cache
+from youtube_dedup_priority import get_video_priority
 
 def test_dedup_registration():
     """優先度ロジックで削除された動画が deleted_videos.json に登録されるか検証"""
@@ -106,7 +106,7 @@ def test_dedup_registration():
 
     # deleted_videos.json をチェック
     print("\n2️⃣ deleted_videos.json に登録された動画:")
-    deleted_videos_file = Path(__file__).parent.parent / "v3" / "data" / "deleted_videos.json"
+    deleted_videos_file = Path(__file__).parent.parent.parent / "data" / "deleted_videos.json"
     if deleted_videos_file.exists():
         with open(deleted_videos_file, 'r', encoding='utf-8') as f:
             deleted_data = json.load(f)

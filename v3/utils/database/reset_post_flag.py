@@ -31,7 +31,11 @@ import sys
 from pathlib import Path
 
 # v3 ディレクトリをパスに追加
-v3_path = Path(__file__).parent.parent.parent / "v3"
+# __file__ = v3/utils/database/reset_post_flag.py
+# parent = v3/utils/database
+# parent.parent = v3/utils
+# parent.parent.parent = v3
+v3_path = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(v3_path))
 
 import sqlite3

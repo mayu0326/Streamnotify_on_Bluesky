@@ -362,7 +362,10 @@ def main():
 
             # ★ 新: YouTube RSS 取得後、YouTube Live プラグインで自動分類を実行
             # 配信予定枠などが正しく content_type="live", live_status="upcoming" として分類される
-            if saved_count > 0 or polling_count == 1:  # 新規動画があるか初回ポーリング時に実行
+            # ★ 重要: collect モード時は判定処理をスキップ（collect は投稿機能を一切実行しない）
+            if config.is_collect_mode:
+                logger.info("[モード] 収集モード のため、判定・投稿処理をスキップします。")
+            elif saved_count > 0 or polling_count == 1:  # 新規動画があるか初回ポーリング時に実行
                 try:
                     live_plugin = plugin_manager.get_plugin("youtube_live_plugin")
                     if live_plugin and live_plugin.is_available():
@@ -375,6 +378,9 @@ def main():
 
             if config.is_collect_mode:
                 logger.info("[モード] 収集モード のため、投稿処理をスキップします。")
+                # ★ collect モード: 初回ポーリング後に自動終了
+                logger.info("✅ 初回ポーリング完了。collect モードのため、アプリケーションを自動終了します。")
+                raise KeyboardInterrupt()
             elif config.operation_mode == OperationMode.SELFPOST:
                 # === SELFPOST モード（手動投稿のみ）===
                 logger.info("[モード] SELFPOST モード。投稿対象を GUI から設定してください。")

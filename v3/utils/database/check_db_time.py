@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from v3.database import get_database
+from database import get_database
 
 db = get_database()
 videos = db.get_all_videos()

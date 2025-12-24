@@ -1,0 +1,9 @@
+📺 YouTube Live 放送予定のお知らせ！
+
+チャンネル: {{ channel_name }}
+タイトル: 【 {{ title }} 】
+開始日時: {{ format_extended_datetime_range(extended_display_date, extended_hour | int) }}
+視聴URL: {{ video_url }}
+みなさんの視聴をお待ちしています！
+
+#YouTube #配信予定

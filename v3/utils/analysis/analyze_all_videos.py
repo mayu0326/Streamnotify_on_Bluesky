@@ -10,9 +10,9 @@ import os
 from pathlib import Path
 from collections import Counter
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "v3"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from v3.database import get_database
+from database import get_database
 
 def analyze_all_videos():
     """全動画の分類状態を集計"""

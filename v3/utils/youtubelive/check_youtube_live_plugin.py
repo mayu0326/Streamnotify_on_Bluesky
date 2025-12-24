@@ -11,9 +11,9 @@ import sys
 import os
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "v3"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from v3.config import get_config
+from config import get_config
 
 print("=" * 70)
 print("📺 YouTube Live プラグイン機能確認")

@@ -9,9 +9,9 @@ import os
 from pathlib import Path
 
 # v3ディレクトリをパスに追加
-sys.path.insert(0, str(Path(__file__).parent.parent / "v3"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from v3.database import get_database
+from database import get_database
 
 def test_template_selection():
     """DBから YouTube Live の動画を取得して、テンプレート選択ロジックをシミュレート"""

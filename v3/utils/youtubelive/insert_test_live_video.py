@@ -9,7 +9,7 @@
 import sqlite3
 from datetime import datetime
 
-DB_PATH = "data/video_list.db"
+DB_PATH = Path(__file__).parent.parent.parent / "data" / "video_list.db"
 
 TEST_VIDEO = {
     "video_id": "TEST_LIVE_ONGOING_20251223",
@@ -23,7 +23,7 @@ TEST_VIDEO = {
 }
 
 try:
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(str(DB_PATH))
     cursor = conn.cursor()
 
     cursor.execute("""

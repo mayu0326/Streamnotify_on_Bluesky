@@ -2,10 +2,11 @@
 # -*- coding: utf-8 -*-
 
 import sqlite3
+from pathlib import Path
 
-DB_PATH = "data/video_list.db"
+DB_PATH = Path(__file__).parent.parent.parent / "data" / "video_list.db"
 
-conn = sqlite3.connect(DB_PATH)
+conn = sqlite3.connect(str(DB_PATH))
 cursor = conn.cursor()
 
 # live_status の分布を確認

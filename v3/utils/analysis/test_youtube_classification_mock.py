@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 # v2 パスを追加
-sys.path.insert(0, str(Path(__file__).parent.parent / "v2"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from plugins.youtube_api_plugin import YouTubeAPIPlugin
 

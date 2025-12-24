@@ -16,7 +16,7 @@ print("📦 キャッシュ状態確認")
 print("=" * 70)
 
 # キャッシュファイルパス
-cache_file = Path(__file__).parent.parent / "v3" / "youtube_video_detail_cache.json"
+cache_file = Path(__file__).parent.parent.parent / "youtube_video_detail_cache.json"
 
 print(f"\n📍 キャッシュファイル: {cache_file}")
 print("-" * 70)
