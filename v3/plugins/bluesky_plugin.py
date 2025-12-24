@@ -166,6 +166,15 @@ class BlueskyImagePlugin(NotificationPlugin):
                             else:
                                 post_logger.debug(f"✅ API 確認: 放送時刻は変更されていません ({new_time})")
 
+                        # ★ テンプレート用の日付・時間フィールドを更新
+                        # （schedule テンプレートで使用）
+                        if latest_info.get("scheduled_start_date"):
+                            video["scheduled_start_date"] = latest_info["scheduled_start_date"]
+                        if latest_info.get("scheduled_start_time_hhmm"):
+                            video["scheduled_start_time_hhmm"] = latest_info["scheduled_start_time_hhmm"]
+                        if latest_info.get("scheduled_start_time"):
+                            video["scheduled_start_time"] = latest_info["scheduled_start_time"]
+
                         # ステータスを更新（キャンセルされた可能性もあるため）
                         if latest_info.get("live_status"):
                             old_status = video.get("live_status")
@@ -259,7 +268,11 @@ class BlueskyImagePlugin(NotificationPlugin):
                 else:
                     post_logger.debug(f"ℹ️ youtube_online テンプレート未使用またはレンダリング失敗（従来フォーマットを使用）")
             elif classification_type == "schedule" or live_status == "upcoming":
-                # 放送枠予約テンプレート
+                # ★ 放送枠予約テンプレート: 拡張時刻を計算
+                # 朝早い時刻（03:00 など）を前日の 27 時として解釈
+                from template_utils import calculate_extended_time_for_event
+                calculate_extended_time_for_event(video)
+
                 rendered = self.render_template_with_utils("youtube_schedule", video)
                 if rendered:
                     video["text_override"] = rendered

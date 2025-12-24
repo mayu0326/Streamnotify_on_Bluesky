@@ -12,10 +12,10 @@ from dotenv import load_dotenv
 import json
 
 # v2 パスを追加
-sys.path.insert(0, str(Path(__file__).parent.parent / "v2"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 # settings.env から環境変数を読み込み
-env_path = Path(__file__).parent.parent / "v2" / "settings.env"
+env_path = Path(__file__).parent.parent.parent / "settings.env"
 load_dotenv(env_path)
 
 from plugins.youtube_api_plugin import YouTubeAPIPlugin

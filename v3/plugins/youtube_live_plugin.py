@@ -11,6 +11,7 @@ import os
 import logging
 from typing import Dict, Any, List, Optional, Tuple
 import requests
+from datetime import datetime, timedelta, timezone
 
 from plugin_interface import NotificationPlugin
 from database import Database
@@ -45,6 +46,26 @@ class YouTubeLivePlugin(NotificationPlugin):
 
     def get_description(self) -> str:
         return "YouTubeライブ/アーカイブ判定を行いDBに格納するプラグイン（クォータ対応）"
+
+    def _convert_utc_to_jst(self, utc_datetime_str: str) -> str:
+        """
+        UTC ISO 8601 形式の日時を JST に変換
+
+        Args:
+            utc_datetime_str: UTC 日時文字列（例: "2025-12-28T18:00:00Z"）
+
+        Returns:
+            JST 日時文字列（例: "2025-12-29 03:00:00"）
+        """
+        try:
+            # UTC 日時をパース
+            utc_time = datetime.fromisoformat(utc_datetime_str.replace('Z', '+00:00'))
+            # JST（UTC+9）に変換して tzinfo を削除
+            jst_time = utc_time.astimezone(timezone(timedelta(hours=9))).replace(tzinfo=None)
+            return jst_time.strftime('%Y-%m-%d %H:%M:%S')
+        except Exception as e:
+            logger.warning(f"⚠️ UTC→JST 変換失敗、元の値を使用: {utc_datetime_str} - {e}")
+            return utc_datetime_str
 
     def set_plugin_manager(self, pm) -> None:
         """plugin_manager を注入（自動投稿用）"""
@@ -128,6 +149,80 @@ class YouTubeLivePlugin(NotificationPlugin):
                 # 分類
                 content_type, live_status, is_premiere = self._classify_live(details)
                 logger.debug(f"📋 分類結果: {video_id} → content_type={content_type}, live_status={live_status}")
+
+                # ★ 重要: API から取得した日時を DB に反映
+                # アーカイブの場合: actualEndTime と publishedAt のうち、現在時刻に近い方を優先
+                # その他の場合: scheduledStartTime > actualStartTime > publishedAt の優先度で設定
+                api_published_at = None
+                live_details = details.get("liveStreamingDetails", {})
+                snippet = details.get("snippet", {})
+
+                # アーカイブの場合は特別な判定ロジックを適用
+                if content_type == "archive":
+                    actual_end_time = live_details.get("actualEndTime")
+                    published_at = snippet.get("publishedAt")
+
+                    if actual_end_time and published_at:
+                        # 現在時刻に最も近い方を採用
+                        try:
+                            now = datetime.now(timezone.utc)
+                            end_time_dt = datetime.fromisoformat(actual_end_time.replace('Z', '+00:00'))
+                            pub_time_dt = datetime.fromisoformat(published_at.replace('Z', '+00:00'))
+
+                            end_delta = abs((end_time_dt - now).total_seconds())
+                            pub_delta = abs((pub_time_dt - now).total_seconds())
+
+                            if pub_delta < end_delta:
+                                api_published_at = published_at
+                                logger.debug(f"📡 アーカイブ判定: publishedAt を採用（pub_delta={pub_delta}秒 < end_delta={end_delta}秒）")
+                            else:
+                                api_published_at = actual_end_time
+                                logger.debug(f"📡 アーカイブ判定: actualEndTime を採用（end_delta={end_delta}秒 <= pub_delta={pub_delta}秒）")
+                        except Exception as e:
+                            logger.debug(f"⚠️ 時刻差分計算エラー: {e}、publishedAt にフォールバック")
+                            api_published_at = published_at or actual_end_time
+                    elif published_at:
+                        api_published_at = published_at
+                        logger.debug(f"📡 アーカイブ判定: publishedAt を使用（actualEndTime なし）")
+                    elif actual_end_time:
+                        api_published_at = actual_end_time
+                        logger.debug(f"📡 アーカイブ判定: actualEndTime を使用（publishedAt なし）")
+                else:
+                    # ライブ・その他の場合は従来通りの優先度で判定
+                    if live_details.get("scheduledStartTime"):
+                        api_published_at = live_details["scheduledStartTime"]
+                        logger.debug(f"📡 API優先: scheduledStartTime を使用 → {api_published_at}")
+                    elif live_details.get("actualStartTime"):
+                        api_published_at = live_details["actualStartTime"]
+                        logger.debug(f"📡 API優先: actualStartTime を使用 → {api_published_at}")
+                    elif snippet.get("publishedAt"):
+                        api_published_at = snippet["publishedAt"]
+                        logger.debug(f"📡 API優先: publishedAt を使用 → {api_published_at}")
+
+                if api_published_at:
+                    # ★ 新: UTC → JST 変換
+                    api_published_at_jst = self._convert_utc_to_jst(api_published_at)
+                    logger.debug(f"📡 UTC→JST変換: {api_published_at} → {api_published_at_jst}")
+
+                    try:
+                        # DB の既存値と比較
+                        from database import get_database
+                        db = get_database()
+                        conn = db._get_connection()
+                        conn.row_factory = __import__('sqlite3').Row
+                        cursor = conn.cursor()
+                        cursor.execute("SELECT published_at FROM videos WHERE video_id = ?", (video_id,))
+                        row = cursor.fetchone()
+                        conn.close()
+
+                        if row:
+                            db_published_at = row[0] if isinstance(row, tuple) else row["published_at"]
+                            if api_published_at_jst != db_published_at:
+                                db.update_published_at(video_id, api_published_at_jst)
+                                logger.info(f"✅ [★重要] published_at を API データで更新（JST変換済み）: {video_id}")
+                                logger.info(f"   旧: {db_published_at} → 新: {api_published_at_jst}")
+                    except Exception as e:
+                        logger.warning(f"⚠️ API 日時の DB 反映に失敗: {video_id} - {e}")
 
                 # ライブ or アーカイブの場合のみ更新
                 if content_type in ("live", "archive"):
@@ -227,6 +322,7 @@ class YouTubeLivePlugin(NotificationPlugin):
 
         注：API プラグインを共有利用するため、クォータ管理は api_plugin に委譲
         """
+        video_id = video.get("video_id")
         if not video_id:
             logger.error("❌ YouTube Live: video_id が指定されていません")
             return False

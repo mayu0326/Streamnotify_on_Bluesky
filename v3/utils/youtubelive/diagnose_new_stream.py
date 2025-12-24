@@ -12,12 +12,17 @@ import os
 from pathlib import Path
 
 # v3 モジュールを import
-sys.path.insert(0, str(Path(__file__).parent.parent / "v3"))
+# __file__ = v3/utils/youtubelive/diagnose_new_stream.py
+# parent = v3/utils/youtubelive
+# parent.parent = v3/utils
+# parent.parent.parent = v3
+# parent.parent.parent = v3 ← これを PATH に追加
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 import sqlite3
 import feedparser
 from datetime import datetime, timezone
-from v3.config import get_config
+from config import get_config
 
 print("=" * 60)
 print("🔍 YouTube 配信枠検出診断")
@@ -27,7 +32,9 @@ print("=" * 60)
 print("\n📋 [ステップ1] 設定確認")
 print("-" * 60)
 try:
-    config = get_config("v3/settings.env")
+    # settings.env の絶対パスを指定
+    settings_path = Path(__file__).parent.parent.parent / "settings.env"
+    config = get_config(str(settings_path))
     youtube_channel_id = config.youtube_channel_id
     poll_interval = config.poll_interval_minutes
 
@@ -78,7 +85,7 @@ except Exception as e:
 print("\n🗄️  [ステップ3] データベース確認")
 print("-" * 60)
 try:
-    db_path = Path(__file__).parent.parent / "v3" / "data" / "video_list.db"
+    db_path = Path(__file__).parent.parent.parent / "data" / "video_list.db"
 
     if not db_path.exists():
         print(f"❌ データベースが見つかりません: {db_path}")
@@ -120,7 +127,7 @@ except Exception as e:
 print("\n🔌 [ステップ4] YouTube Live プラグイン状態確認")
 print("-" * 60)
 try:
-    plugin_path = Path(__file__).parent.parent / "v3" / "plugins" / "youtube_live_plugin.py"
+    plugin_path = Path(__file__).parent.parent.parent / "plugins" / "youtube_live_plugin.py"
 
     if plugin_path.exists():
         print(f"✅ YouTube Live プラグイン存在: {plugin_path}")
@@ -142,7 +149,7 @@ except Exception as e:
 print("\n📝 [ステップ5] 最新ログ確認")
 print("-" * 60)
 try:
-    log_dir = Path(__file__).parent.parent / "v3" / "logs"
+    log_dir = Path(__file__).parent.parent.parent / "logs"
 
     if log_dir.exists():
         log_files = sorted(log_dir.glob("app.log"), key=lambda x: x.stat().st_mtime, reverse=True)

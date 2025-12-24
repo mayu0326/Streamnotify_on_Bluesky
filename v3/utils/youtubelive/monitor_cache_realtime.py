@@ -46,7 +46,7 @@ def monitor_cache():
 
 # アプリ起動
 print("APP: Starting...")
-process = subprocess.Popen(["python", "main_v3.py"])
+process = subprocess.Popen(["python", "main_py"])
 
 # 監視スレッド開始
 monitor_thread = threading.Thread(target=monitor_cache, daemon=True)

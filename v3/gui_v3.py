@@ -67,6 +67,7 @@ class StreamNotifyGUI:
         ttk.Button(toolbar, text="🔄 再読込", command=self.refresh_data).pack(side=tk.LEFT, padx=2)
         ttk.Button(toolbar, text="🌐 RSS更新", command=self.fetch_rss_manually).pack(side=tk.LEFT, padx=2)
         ttk.Button(toolbar, text="🎬 Live判定", command=self.classify_youtube_live_manually).pack(side=tk.LEFT, padx=2)
+        ttk.Button(toolbar, text="➕ 動画追加", command=self.add_video_dialog).pack(side=tk.LEFT, padx=2)
         ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=2)
         ttk.Button(toolbar, text="☑️ すべて選択", command=self.select_all).pack(side=tk.LEFT, padx=2)
         ttk.Button(toolbar, text="☐ すべて解除", command=self.deselect_all).pack(side=tk.LEFT, padx=2)
@@ -154,7 +155,7 @@ class StreamNotifyGUI:
 
         self.tree.column("Select", width=50, anchor=tk.CENTER)
         self.tree.column("Video ID", width=110)
-        self.tree.column("Published", width=130)
+        self.tree.column("Published", width=150)
         self.tree.column("Source", width=100, anchor=tk.CENTER)
         self.tree.column("Type", width=80, anchor=tk.CENTER)
         self.tree.column("Title", width=350)
@@ -433,7 +434,7 @@ DB を再読込みします。
             self.tree.insert("", tk.END, values=(
                 checked,                         # Select
                 video["video_id"],              # Video ID
-                video["published_at"][:10],     # Published
+                video["published_at"][:16].replace("T", " "),     # Published (with time)
                 source,                          # Source
                 display_type,                    # Type (video/live/archive)
                 video["title"][:100],           # Title
@@ -773,7 +774,13 @@ DB を再読込みします。
             filetypes = [("画像ファイル", "*.png;*.jpg;*.jpeg;*.gif;*.webp"), ("すべて", "*")]
             path = filedialog.askopenfilename(title="画像を選択", initialdir=initialdir, filetypes=filetypes)
             if path and os.path.commonpath([initialdir, os.path.abspath(path)]) == initialdir:
-                image_path_var.set(os.path.basename(path))
+                filename = os.path.basename(path)
+                image_path_var.set(filename)
+                # ★ ファイル選択直後に自動的に DB に登録
+                self.db.update_image_info(item_id, image_mode="import", image_filename=filename)
+                logger.info(f"✅ DB に画像ファイルを登録しました: {item_id} → {filename}")
+                messagebox.showinfo("成功", f"画像ファイルを登録しました。\n{filename}")
+                image_window.destroy()  # 自動的にダイアログを閉じる
             elif path:
                 messagebox.showerror("エラー", f"{site}/importディレクトリ内の画像のみ指定できます")
 
@@ -1552,6 +1559,423 @@ YouTube:      {youtube_count} 件 (投稿済み: {youtube_posted})
         else:
             logger.error(f"❌ 動画削除に失敗: {item_id}")
             messagebox.showerror("エラー", "動画の削除に失敗しました。")
+
+    def add_video_dialog(self):
+        """動画追加ダイアログを表示"""
+        dialog = tk.Toplevel(self.root)
+        dialog.title("➕ 動画を追加")
+        dialog.geometry("450x300")
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        # === タイトル ===
+        ttk.Label(dialog, text="YouTube 動画IDを指定して追加", font=("", 12, "bold")).pack(padx=10, pady=10)
+
+        # === 説明 ===
+        description = ttk.Label(
+            dialog,
+            text="YouTubeの動画URLまたは動画IDを入力してください。\n\n例：dQw4w9WgXcQ\nまたは：https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            justify=tk.LEFT,
+            foreground="gray"
+        )
+        description.pack(padx=10, pady=5)
+
+        # === 入力フィールド ===
+        ttk.Label(dialog, text="動画URL / 動画ID:").pack(padx=10, pady=(10, 5), anchor=tk.W)
+        video_id_entry = ttk.Entry(dialog, width=50)
+        video_id_entry.pack(padx=10, pady=5, fill=tk.X)
+        video_id_entry.focus()
+
+        # === ボタンフレーム ===
+        button_frame = ttk.Frame(dialog)
+        button_frame.pack(padx=10, pady=15, fill=tk.X)
+
+        def on_add():
+            """追加処理"""
+            input_value = video_id_entry.get().strip()
+            if not input_value:
+                messagebox.showwarning("警告", "動画IDまたは URLを入力してください")
+                return
+
+            dialog.destroy()
+            self._add_video_from_id(input_value)
+
+        ttk.Button(button_frame, text="✅ 追加", command=on_add).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="✖️ キャンセル", command=dialog.destroy).pack(side=tk.LEFT, padx=5)
+
+    def _add_video_from_id(self, input_value: str):
+        """動画IDから動画を追加"""
+        logger.info(f"🔍 動画追加を開始: {input_value}")
+
+        # 動画ID を抽出
+        video_id = self._extract_video_id(input_value)
+        if not video_id:
+            messagebox.showerror("エラー", "有効な YouTube 動画IDが見つかりませんでした")
+            logger.error(f"❌ 動画ID抽出失敗: {input_value}")
+            return
+
+        logger.info(f"✅ 抽出された動画ID: {video_id}")
+
+        # YouTube API プラグインから動画情報を取得
+        if not self.plugin_manager:
+            messagebox.showerror("エラー", "プラグインマネージャーが初期化されていません")
+            return
+
+        # YouTube API プラグインを取得
+        youtube_api_plugin = None
+        try:
+            # プラグイン一覧から youtube_api_plugin を探す
+            plugins = self.plugin_manager.get_enabled_plugins()
+            for plugin_name, plugin_instance in plugins.items():
+                if "youtube_api" in plugin_name.lower():
+                    youtube_api_plugin = plugin_instance
+                    break
+
+            if not youtube_api_plugin:
+                logger.warning("⚠️ YouTube API プラグインが有効化されていません")
+                messagebox.showwarning("警告", "YouTube API プラグインが有効化されていません\n\n手動で動画情報を入力してください")
+                self._add_video_manual(video_id)
+                return
+
+            # 動画情報を取得
+            logger.info(f"🌐 YouTube API から動画情報を取得: {video_id}")
+
+            # YouTube API プラグインの _fetch_video_detail メソッドを使用
+            video_details = youtube_api_plugin._fetch_video_detail(video_id)
+
+            if not video_details:
+                logger.warning(f"⚠️ YouTube API での取得に失敗しました: {video_id}")
+                messagebox.showinfo("情報", "YouTube API での取得に失敗しました\n\n手動で動画情報を入力してください")
+                self._add_video_manual(video_id)
+                return
+
+            # 動画情報から video dict を構築
+            snippet = video_details.get("snippet", {})
+
+            # ★ ライブ判定を実行（API データから）
+            from plugins.youtube_live_plugin import YouTubeLivePlugin
+            live_plugin = YouTubeLivePlugin()
+            content_type, live_status, is_premiere = live_plugin._classify_live(video_details)
+
+            # サムネイル URL を取得
+            thumbnail_url = snippet.get("thumbnails", {}).get("high", {}).get("url", "")
+
+            # 公開日時を取得・変換
+            published_at = snippet.get("publishedAt", datetime.now().isoformat())
+            try:
+                dt = datetime.fromisoformat(published_at.replace('Z', '+00:00'))
+                published_at = dt.strftime("%Y-%m-%d %H:%M:%S")
+            except:
+                pass
+
+            video_dict = {
+                "video_id": video_id,
+                "title": snippet.get("title", "【新着動画】"),
+                "video_url": f"https://www.youtube.com/watch?v={video_id}",
+                "published_at": published_at,
+                "channel_name": snippet.get("channelTitle", ""),
+                "thumbnail_url": thumbnail_url,
+                "content_type": content_type,      # ★ LIVE判定結果
+                "live_status": live_status,        # ★ LIVE判定結果
+                "is_premiere": is_premiere,        # ★ LIVE判定結果
+                "source": "youtube"
+            }
+
+            # ★ 直接 DB に保存（プラグインではなく）
+            # ★ skip_dedup=True: 手動追加なので重複排除をスキップして強制挿入
+            success = self.db.insert_video(
+                video_id=video_dict["video_id"],
+                title=video_dict["title"],
+                video_url=video_dict["video_url"],
+                published_at=video_dict["published_at"],
+                channel_name=video_dict["channel_name"],
+                thumbnail_url=thumbnail_url,
+                content_type=content_type,
+                live_status=live_status,
+                is_premiere=is_premiere,
+                source=video_dict["source"],
+                skip_dedup=True  # ★ 手動追加は重複排除をスキップ
+            )
+
+            if success:
+                # ★ 手動追加後にサムネイルをダウンロード
+                if thumbnail_url and self.image_manager:
+                    try:
+                        logger.info(f"📥 手動追加後、サムネイル画像をダウンロード中: {video_id}")
+                        image_filename = self.image_manager.download_and_save_thumbnail(
+                            thumbnail_url=thumbnail_url,
+                            site="YouTube",
+                            video_id=video_id,
+                            mode="autopost"
+                        )
+                        # ★ ダウンロード成功時、DB に画像情報を登録
+                        if image_filename:
+                            self.db.update_image_info(
+                                video_id=video_id,
+                                image_mode="autopost",
+                                image_filename=image_filename
+                            )
+                            logger.info(f"✅ DB に画像情報を登録しました: {video_id} → {image_filename}")
+                    except Exception as e:
+                        logger.warning(f"⚠️ サムネイルダウンロード失敗（継続）: {e}")
+
+                logger.info(f"✅ 動画情報を取得・保存しました: {video_id} (content_type={content_type}, live_status={live_status})")
+                messagebox.showinfo("成功", f"✅ 動画を追加しました\n\n{video_dict['title'][:60]}...\n\nコンテンツ種別: {content_type}\n配信状態: {live_status or 'なし'}")
+                self.refresh_data()
+            else:
+                logger.warning(f"⚠️ 動画をDBに保存できませんでした: {video_id}")
+                messagebox.showinfo("情報", "動画情報を取得しましたが、DB 保存に失敗しました\n\n手動で動画情報を入力してください")
+                self._add_video_manual(video_id)
+
+        except Exception as e:
+            logger.error(f"❌ 動画追加エラー: {e}", exc_info=True)
+            messagebox.showerror("エラー", f"動画追加に失敗しました:\n{str(e)}\n\n手動で動画情報を入力してください")
+            self._add_video_manual(video_id)
+
+    def _video_exists(self, video_id: str) -> bool:
+        """動画がDBに存在するか確認"""
+        try:
+            all_videos = self.db.get_all_videos()
+            for video in all_videos:
+                if video.get("video_id") == video_id:
+                    return True
+            return False
+        except Exception:
+            return False
+
+    def _extract_video_id(self, input_value: str) -> str:
+        """URLまたは ID から YouTube 動画IDを抽出"""
+        input_value = input_value.strip()
+
+        # パターンマッチング（複数の URL 形式に対応）
+        import re
+
+        # youtube.com/watch?v=XXXXX
+        match = re.search(r'watch\?v=([a-zA-Z0-9_-]{11})', input_value)
+        if match:
+            return match.group(1)
+
+        # youtu.be/XXXXX
+        match = re.search(r'youtu\.be/([a-zA-Z0-9_-]{11})', input_value)
+        if match:
+            return match.group(1)
+
+        # www.youtube.com/embed/XXXXX
+        match = re.search(r'/embed/([a-zA-Z0-9_-]{11})', input_value)
+        if match:
+            return match.group(1)
+
+        # 11文字の動画ID の場合はそのまま
+        if len(input_value) == 11 and re.match(r'^[a-zA-Z0-9_-]{11}$', input_value):
+            return input_value
+
+        return None
+
+    def _add_video_manual(self, video_id: str):
+        """手動で動画情報を入力するダイアログを表示"""
+        dialog = tk.Toplevel(self.root)
+        dialog.title("✏️ 動画情報を手動入力")
+        dialog.geometry("600x500")
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        # === 動画情報入力フォーム ===
+        header_frame = ttk.Frame(dialog)
+        header_frame.pack(padx=10, pady=10, fill=tk.X)
+        ttk.Label(header_frame, text="動画情報を入力してください", font=("", 12, "bold")).pack(side=tk.LEFT)
+
+        # API から自動取得ボタン
+        def on_fetch_from_api():
+            """API からメタデータを取得して自動入力"""
+            try:
+                from plugins.youtube_api_plugin import YouTubeAPIPlugin
+                from plugins.youtube_live_plugin import YouTubeLivePlugin
+
+                api_plugin = YouTubeAPIPlugin()
+                if not api_plugin.is_available():
+                    messagebox.showwarning("警告", "YouTube API が利用不可です。手動入力してください。")
+                    return
+
+                # API から詳細取得
+                details = api_plugin._fetch_video_detail(video_id)
+                if not details:
+                    messagebox.showerror("エラー", f"API から動画詳細を取得できませんでした: {video_id}")
+                    return
+
+                # 詳細から必要情報を抽出
+                snippet = details.get("snippet", {})
+                title = snippet.get("title", "")
+                channel = snippet.get("channelTitle", "")
+                published_at = snippet.get("publishedAt", "")
+
+                # ISO 8601 → YYYY-MM-DD HH:MM:SS に変換
+                try:
+                    from datetime import datetime
+                    if published_at:
+                        dt = datetime.fromisoformat(published_at.replace('Z', '+00:00'))
+                        published_at = dt.strftime("%Y-%m-%d %H:%M:%S")
+                except:
+                    pass
+
+                # ライブ判定
+                live_plugin = YouTubeLivePlugin()
+                content_type, live_status, is_premiere = live_plugin._classify_live(details)
+
+                # サムネイル URL
+                thumbnail_url = snippet.get("thumbnails", {}).get("high", {}).get("url", "")
+
+                # UI に設定
+                title_entry.delete(0, tk.END)
+                title_entry.insert(0, title)
+
+                channel_entry.delete(0, tk.END)
+                channel_entry.insert(0, channel)
+
+                published_entry.delete(0, tk.END)
+                published_entry.insert(0, published_at)
+
+                content_type_var.set(content_type)
+
+                live_status_var.set(live_status or "none")
+
+                thumbnail_url_entry.delete(0, tk.END)
+                thumbnail_url_entry.insert(0, thumbnail_url)
+
+                is_premiere_var.set(1 if is_premiere else 0)
+
+                logger.info(f"✅ API からメタデータを取得しました: {video_id} (content_type={content_type}, live_status={live_status})")
+                messagebox.showinfo("成功", "✅ API からメタデータを取得しました")
+
+            except Exception as e:
+                logger.error(f"❌ API 取得エラー: {e}", exc_info=True)
+                messagebox.showerror("エラー", f"API 取得に失敗しました:\n{str(e)}")
+
+        ttk.Button(header_frame, text="🔍 API から自動取得", command=on_fetch_from_api).pack(side=tk.RIGHT, padx=5)
+
+        # フォーム
+        form_frame = ttk.Frame(dialog)
+        form_frame.pack(padx=10, pady=10, fill=tk.BOTH, expand=True)
+
+        # 動画ID（読み取り専用）
+        ttk.Label(form_frame, text="動画ID:").grid(row=0, column=0, sticky=tk.W, pady=5)
+        id_entry = ttk.Entry(form_frame, width=50)
+        id_entry.grid(row=0, column=1, sticky=tk.EW, padx=5, pady=5)
+        id_entry.insert(0, video_id)
+        id_entry.config(state=tk.DISABLED)
+
+        # タイトル
+        ttk.Label(form_frame, text="タイトル*:").grid(row=1, column=0, sticky=tk.W, pady=5)
+        title_entry = ttk.Entry(form_frame, width=50)
+        title_entry.grid(row=1, column=1, sticky=tk.EW, padx=5, pady=5)
+
+        # チャンネル名
+        ttk.Label(form_frame, text="チャンネル名:").grid(row=2, column=0, sticky=tk.W, pady=5)
+        channel_entry = ttk.Entry(form_frame, width=50)
+        channel_entry.grid(row=2, column=1, sticky=tk.EW, padx=5, pady=5)
+
+        # 公開日時
+        ttk.Label(form_frame, text="公開日時*:").grid(row=3, column=0, sticky=tk.W, pady=5)
+        published_entry = ttk.Entry(form_frame, width=50)
+        published_entry.grid(row=3, column=1, sticky=tk.EW, padx=5, pady=5)
+        published_entry.insert(0, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+
+        # コンテンツタイプ
+        ttk.Label(form_frame, text="コンテンツ種別:").grid(row=4, column=0, sticky=tk.W, pady=5)
+        content_type_var = tk.StringVar(value="video")
+        content_combo = ttk.Combobox(form_frame, textvariable=content_type_var, state="readonly", width=47)
+        content_combo['values'] = ("video", "live", "archive", "none")
+        content_combo.grid(row=4, column=1, sticky=tk.EW, padx=5, pady=5)
+
+        # ライブ配信状態
+        ttk.Label(form_frame, text="配信状態:").grid(row=5, column=0, sticky=tk.W, pady=5)
+        live_status_var = tk.StringVar(value="none")
+        live_status_combo = ttk.Combobox(form_frame, textvariable=live_status_var, state="readonly", width=47)
+        live_status_combo['values'] = ("none", "upcoming", "live", "completed")
+        live_status_combo.grid(row=5, column=1, sticky=tk.EW, padx=5, pady=5)
+
+        # サムネイル URL
+        ttk.Label(form_frame, text="サムネイルURL:").grid(row=6, column=0, sticky=tk.W, pady=5)
+        thumbnail_url_entry = ttk.Entry(form_frame, width=50)
+        thumbnail_url_entry.grid(row=6, column=1, sticky=tk.EW, padx=5, pady=5)
+
+        # プレミア配信フラグ
+        ttk.Label(form_frame, text="プレミア配信:").grid(row=7, column=0, sticky=tk.W, pady=5)
+        is_premiere_var = tk.IntVar(value=0)
+        ttk.Checkbutton(form_frame, variable=is_premiere_var).grid(row=7, column=1, sticky=tk.W, padx=5, pady=5)
+
+        form_frame.columnconfigure(1, weight=1)
+
+        # === ボタン ===
+        button_frame = ttk.Frame(dialog)
+        button_frame.pack(padx=10, pady=10, fill=tk.X)
+
+        def on_save():
+            """保存処理"""
+            title = title_entry.get().strip()
+            channel = channel_entry.get().strip()
+            published_at = published_entry.get().strip()
+            content_type = content_type_var.get()
+            live_status = live_status_var.get()
+            thumbnail_url = thumbnail_url_entry.get().strip()
+            is_premiere = bool(is_premiere_var.get())
+
+            if not title or not published_at:
+                messagebox.showwarning("警告", "タイトルと公開日時は必須です")
+                return
+
+            # DB に保存
+            try:
+                video_url = f"https://www.youtube.com/watch?v={video_id}"
+                success = self.db.insert_video(
+                    video_id=video_id,
+                    title=title,
+                    video_url=video_url,
+                    published_at=published_at,
+                    channel_name=channel,
+                    thumbnail_url=thumbnail_url,
+                    content_type=content_type,
+                    live_status=live_status if live_status != "none" else None,
+                    is_premiere=is_premiere,
+                    source="youtube",
+                    skip_dedup=True  # ★ 手動追加は重複排除をスキップ
+                )
+
+                if success:
+                    # ★ 手動追加後にサムネイルをダウンロード
+                    if thumbnail_url and self.image_manager:
+                        try:
+                            logger.info(f"📥 手動追加後、サムネイル画像をダウンロード中: {video_id}")
+                            image_filename = self.image_manager.download_and_save_thumbnail(
+                                thumbnail_url=thumbnail_url,
+                                site="YouTube",
+                                video_id=video_id,
+                                mode="autopost"
+                            )
+                            # ★ ダウンロード成功時、DB に画像情報を登録
+                            if image_filename:
+                                self.db.update_image_info(
+                                    video_id=video_id,
+                                    image_mode="autopost",
+                                    image_filename=image_filename
+                                )
+                                logger.info(f"✅ DB に画像情報を登録しました: {video_id} → {image_filename}")
+                        except Exception as e:
+                            logger.warning(f"⚠️ サムネイルダウンロード失敗（継続）: {e}")
+
+                    logger.info(f"✅ 動画を手動追加しました: {video_id} (content_type={content_type}, live_status={live_status})")
+                    messagebox.showinfo("成功", f"✅ 動画を追加しました\n\n{title[:60]}...")
+                    dialog.destroy()
+                    self.refresh_data()
+                else:
+                    logger.warning(f"⚠️ 動画は既に存在します: {video_id}")
+                    messagebox.showwarning("警告", f"この動画は既に登録されています")
+
+            except Exception as e:
+                logger.error(f"❌ 手動追加エラー: {e}", exc_info=True)
+                messagebox.showerror("エラー", f"保存に失敗しました:\n{str(e)}")
+
+        ttk.Button(button_frame, text="💾 保存", command=on_save).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="✖️ キャンセル", command=dialog.destroy).pack(side=tk.LEFT, padx=5)
 
 
 class PostSettingsWindow:

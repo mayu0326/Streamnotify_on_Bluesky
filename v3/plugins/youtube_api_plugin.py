@@ -127,10 +127,28 @@ class YouTubeAPIPlugin(NotificationPlugin):
         content_type, live_status, is_premiere = self._classify_video(details)
 
         snippet = details.get("snippet", {})
+        live_details = details.get("liveStreamingDetails", {})
+        
         title = video.get("title") or snippet.get("title", "【新着動画】")
         channel_name = video.get("channel_name") or snippet.get("channelTitle", "")
-        published_at = video.get("published_at") or snippet.get("publishedAt", "")
         video_url = video.get("video_url") or f"https://www.youtube.com/watch?v={video_id}"
+
+        # ★ 重要修正: published_at を YouTube API から取得
+        # Live/Schedule の場合は scheduledStartTime を優先
+        # その次に actualStartTime、最後に publishedAt（RSS日時）
+        published_at = None
+        if live_details.get("scheduledStartTime"):
+            published_at = live_details["scheduledStartTime"]
+            logger.debug(f"✅ scheduledStartTime を使用: {published_at}")
+        elif live_details.get("actualStartTime"):
+            published_at = live_details["actualStartTime"]
+            logger.debug(f"✅ actualStartTime を使用: {published_at}")
+        elif snippet.get("publishedAt"):
+            published_at = snippet["publishedAt"]
+            logger.debug(f"✅ publishedAt (RSS/API) を使用: {published_at}")
+        else:
+            published_at = video.get("published_at", "")
+            logger.debug(f"⚠️ video.published_at を使用（フォールバック）: {published_at}")
 
         # サムネイル URL を取得（複数品質から最適なものを選択）
         thumbnail_url = get_youtube_thumbnail_url(video_id)
@@ -653,12 +671,35 @@ class YouTubeAPIPlugin(NotificationPlugin):
             # ステータス判定
             classification_type, live_status, _ = self._classify_video_core(details)
 
+            # テンプレート用：日付と時間を抽出
+            scheduled_start_date = ""
+            scheduled_start_time = ""
+            scheduled_start_iso = live_details.get("scheduledStartTime")
+            
+            if scheduled_start_iso:
+                try:
+                    # ISO 8601 形式から日付と時間を抽出
+                    # 例: "2025-12-29T27:00:00Z" → date="2025-12-29", time="27:00"
+                    dt_part = scheduled_start_iso.split("T")[0]  # "2025-12-29"
+                    time_part = scheduled_start_iso.split("T")[1] if "T" in scheduled_start_iso else ""
+                    
+                    if time_part:
+                        time_part = time_part.split(":")[0] + ":" + time_part.split(":")[1]  # "27:00"
+                    
+                    scheduled_start_date = dt_part
+                    scheduled_start_time = time_part
+                except Exception as e:
+                    logger.warning(f"⚠️ 日付時刻抽出エラー: {scheduled_start_iso} - {e}")
+
             return {
                 "published_at": published_at,
                 "live_status": live_status,
                 "classification_type": classification_type,
                 "title": snippet.get("title"),
                 "channel_name": snippet.get("channelTitle"),
+                "scheduled_start_time": scheduled_start_iso,  # ISO形式のフル日時
+                "scheduled_start_date": scheduled_start_date,  # テンプレート用日付
+                "scheduled_start_time_hhmm": scheduled_start_time,  # テンプレート用時間
             }
         except Exception as e:
             logger.error(f"❌ 動画情報抽出エラー: {e}")
