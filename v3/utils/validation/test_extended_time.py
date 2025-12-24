@@ -3,7 +3,7 @@
 """拡張時刻フィルターの動作確認"""
 
 from jinja2 import Environment
-from v3.template_utils import _extended_time_display_filter, _extended_time_filter
+from template_utils import _extended_time_display_filter, _extended_time_filter
 
 # フィルター登録
 env = Environment()
@@ -24,7 +24,7 @@ print()
 
 # ファイルベースのテンプレート読み込みも確認
 print('ファイルベースのテンプレート読み込みテスト:')
-from v3.template_utils import load_template_with_fallback, render_template
+from template_utils import load_template_with_fallback, render_template
 
 template_obj = load_template_with_fallback("templates/youtube/yt_archive_template.txt")
 if template_obj:

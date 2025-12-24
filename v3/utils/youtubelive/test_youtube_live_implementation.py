@@ -14,7 +14,7 @@ import os
 from pathlib import Path
 
 # v2 パスを追加
-sys.path.insert(0, str(Path(__file__).parent.parent / "v2"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 def test_classify_video_core_exists():
     """_classify_video_core() が存在するか確認"""
@@ -67,7 +67,7 @@ def test_template_files_exist_and_valid():
     """テンプレートファイルの存在・形式を確認"""
     from pathlib import Path
 
-    base = Path(__file__).parent.parent / "v2" / "templates" / "youtube"
+    base = Path(__file__).parent.parent.parent / "templates" / "youtube"
 
     templates = {
         "yt_online_template.txt": ["▶️", "YouTube Live", "{{ channel_name }}", "{{ title }}", "{{ video_url }}"],

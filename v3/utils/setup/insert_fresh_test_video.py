@@ -8,7 +8,7 @@
 import sqlite3
 from datetime import datetime, timedelta
 
-DB_PATH = "data/video_list.db"
+DB_PATH = Path(__file__).parent.parent.parent / "data" / "video_list.db"
 
 # テスト用の新しい動画情報
 TEST_VIDEO = {
@@ -24,7 +24,7 @@ TEST_VIDEO = {
 }
 
 try:
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(str(DB_PATH))
     cursor = conn.cursor()
 
     cursor.execute("""

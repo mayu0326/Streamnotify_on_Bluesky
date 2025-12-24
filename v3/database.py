@@ -172,7 +172,7 @@ class Database:
             logger.error(f"スキーママイグレーションエラー: {e}")
             raise
 
-    def insert_video(self, video_id, title, video_url, published_at, channel_name="", thumbnail_url="", content_type="video", live_status=None, is_premiere=False, source="youtube"):
+    def insert_video(self, video_id, title, video_url, published_at, channel_name="", thumbnail_url="", content_type="video", live_status=None, is_premiere=False, source="youtube", skip_dedup=False):
         """
         動画情報を挿入（リトライ付き、YouTube重複排除対応）
 
@@ -187,13 +187,15 @@ class Database:
             live_status: ライブ配信状態（null/"none"/"upcoming"/"live"/"completed"）
             is_premiere: プレミア配信フラグ
             source: 配信元（"youtube"/"niconico"など）
+            skip_dedup: 重複排除をスキップするか（手動追加時 True）
         """
         # バリデーション
         content_type = self._validate_content_type(content_type)
         live_status = self._validate_live_status(live_status, content_type)
 
         # YouTube動画の重複チェック（優先度ロジック適用）
-        if source == "youtube" and title and channel_name:
+        # ★ skip_dedup=True なら重複チェックをスキップ（手動追加時の強制挿入）
+        if not skip_dedup and source == "youtube" and title and channel_name:
             try:
                 import sys
                 from pathlib import Path
@@ -706,6 +708,81 @@ class Database:
         except Exception as e:
             logger.error(f"動画ステータス更新に失敗: {video_id} - {e}")
             return False
+
+    def update_published_at(self, video_id: str, published_at: str) -> bool:
+        """
+        ★ YouTube API 優先: 既存動画の published_at を API データで上書き
+
+        RSS で登録された動画の published_at を、YouTube API から取得した
+        scheduledStartTime（より正確な配信予定時刻）で上書きする。
+
+        ⚠️ **重要**: このメソッドは LIVE 動画の配信予定日時精度を決定する。
+                 絶対に失敗してはいけない。
+
+        Args:
+            video_id: 動画ID
+            published_at: 更新後の published_at（ISO 8601形式）
+
+        Returns:
+            更新成功フラグ
+        """
+        if not video_id or not published_at:
+            logger.error(f"❌ update_published_at: 必須パラメータが不足しています（video_id={video_id}, published_at={published_at}）")
+            return False
+
+        for attempt in range(DB_RETRY_MAX):
+            try:
+                conn = self._get_connection()
+                cursor = conn.cursor()
+
+                # 現在の値を取得
+                cursor.execute("SELECT published_at FROM videos WHERE video_id = ?", (video_id,))
+                row = cursor.fetchone()
+                if not row:
+                    logger.debug(f"⚠️ 動画が見つかりません: {video_id}")
+                    conn.close()
+                    return False
+
+                old_published_at = row[0]
+
+                # published_at を更新
+                cursor.execute("""
+                    UPDATE videos SET published_at = ? WHERE video_id = ?
+                """, (published_at, video_id))
+
+                affected_rows = cursor.rowcount
+                conn.commit()
+                conn.close()
+
+                if affected_rows == 0:
+                    logger.error(f"❌ 動画更新に失敗（ロー数=0）: {video_id}")
+                    return False
+
+                if old_published_at != published_at:
+                    logger.info(f"✅ [★重要] published_at を API データで更新: {video_id}")
+                    logger.info(f"   旧: {old_published_at}")
+                    logger.info(f"   新: {published_at}")
+                else:
+                    logger.debug(f"ℹ️ published_at は変わっていません（既に同じ値）: {video_id}")
+
+                return True
+
+            except sqlite3.OperationalError as e:
+                conn.close()
+                if "locked" in str(e).lower() and attempt < DB_RETRY_MAX - 1:
+                    logger.debug(f"DB ロック中。{attempt + 1}/{DB_RETRY_MAX} リトライします...")
+                    time.sleep(0.5)
+                    continue
+                else:
+                    logger.error(f"❌ DB エラー（published_at 更新失敗）: {video_id} - {e}")
+                    return False
+
+            except Exception as e:
+                logger.error(f"❌ published_at 更新に予期しないエラー: {video_id} - {e}")
+                return False
+
+        logger.error(f"❌ published_at 更新に失敗（リトライ上限）: {video_id}")
+        return False
 
     def delete_video(self, video_id: str) -> bool:
         """動画をDBから削除（除外動画リスト連携付き）"""

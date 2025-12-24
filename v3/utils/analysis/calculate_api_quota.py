@@ -10,12 +10,12 @@ import sqlite3
 from pathlib import Path
 
 # v3 パスを追加
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "v3"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
 
 def main():
     """メイン処理"""
-    db_path = Path(__file__).parent.parent.parent / "v3" / "data" / "video_list.db"
+    db_path = Path(__file__).parent.parent.parent.parent / "data" / "video_list.db"
 
     print("\n" + "="*80)
     print("📊 YouTube Data API クォータ計算")

@@ -11,14 +11,14 @@ import sys
 import sqlite3
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "v3"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 print("=" * 70)
 print("🔍 ビデオ詳細確認 (SaKd1RqfM5A)")
 print("=" * 70)
 
 try:
-    db_path = Path(__file__).parent.parent / "v3" / "data" / "video_list.db"
+    db_path = Path(__file__).parent.parent.parent / "data" / "video_list.db"
 
     if not db_path.exists():
         print(f"❌ データベースが見つかりません: {db_path}")

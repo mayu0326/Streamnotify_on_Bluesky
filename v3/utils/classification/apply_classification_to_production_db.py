@@ -15,10 +15,10 @@ from datetime import datetime
 from dotenv import load_dotenv
 
 # v2 パスを追加
-sys.path.insert(0, str(Path(__file__).parent.parent / "v2"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 # settings.env から環境変数を読み込み
-env_path = Path(__file__).parent.parent / "v2" / "settings.env"
+env_path = Path(__file__).parent.parent.parent / "settings.env"
 load_dotenv(env_path)
 
 from plugins.youtube_api_plugin import YouTubeAPIPlugin
@@ -37,8 +37,8 @@ def main():
     print("🎬 YouTube Live 分類ロジック - 本番 DB 一括適用")
     print("="*80 + "\n")
 
-    db_path = Path(__file__).parent.parent / "v2" / "data" / "video_list.db"
-    backup_path = Path(__file__).parent.parent / "v2" / "data" / f"video_list.backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
+    db_path = Path(__file__).parent.parent.parent / "data" / "video_list.db"
+    backup_path = Path(__file__).parent.parent.parent / "data" / f"video_list.backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
 
     if not db_path.exists():
         print(f"❌ DB が見つかりません: {db_path}")

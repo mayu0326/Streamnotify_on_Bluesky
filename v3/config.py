@@ -130,9 +130,34 @@ class Config:
             app_mode_str = OperationMode.AUTOPOST
 
         # 動作モードの決定ロジック（仕様 v1.0）
-        # SELFPOST / AUTOPOST は排他的
+        # ★ 修正: DB が空（初回起動）の場合は COLLECT モード にフォールバック
         if not db_exists or app_mode_str == OperationMode.COLLECT:
             self.operation_mode = OperationMode.COLLECT
+        # ★ 追加: DB が存在していても、初回起動検出フラグで COLLECT モード にフォールバック
+        elif db_exists:
+            try:
+                from database import get_database
+                db = get_database()
+                if db.is_first_run:
+                    logger.info("🆕 初回起動です。収集モードで動作します。")
+                    self.operation_mode = OperationMode.COLLECT
+                elif app_mode_str == OperationMode.DRY_RUN:
+                    self.operation_mode = OperationMode.DRY_RUN
+                elif app_mode_str == OperationMode.AUTOPOST:
+                    # AUTOPOST は Bluesky 投稿が有効化されている場合のみ
+                    if self.bluesky_post_enabled:
+                        self.operation_mode = OperationMode.AUTOPOST
+                    else:
+                        logger.warning("AUTOPOST モードが指定されていますが、BLUESKY_POST_ENABLED=true に設定してください。SELFPOST モードで起動します。")
+                        self.operation_mode = OperationMode.SELFPOST
+                elif app_mode_str == OperationMode.SELFPOST or not self.bluesky_post_enabled:
+                    self.operation_mode = OperationMode.SELFPOST
+                else:
+                    # デフォルトは SELFPOST モード
+                    self.operation_mode = OperationMode.SELFPOST
+            except Exception:
+                # DB読み込み失敗時は SELFPOST
+                self.operation_mode = OperationMode.SELFPOST
         elif app_mode_str == OperationMode.DRY_RUN:
             self.operation_mode = OperationMode.DRY_RUN
         elif app_mode_str == OperationMode.AUTOPOST:

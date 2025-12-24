@@ -21,7 +21,7 @@ from unittest.mock import Mock, patch, MagicMock
 import unittest
 
 # プロジェクトルートを Python パスに追加
-project_root = Path(__file__).parent.parent / "v2"
+project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 # ロギングを無効化してテスト出力を見やすく
@@ -195,7 +195,7 @@ class TestYouTubeLivePluginMethods(unittest.TestCase):
     def test_auto_post_live_start(self):
         """auto_post_live_start() が正しく Bluesky プラグインを呼び出す"""
         try:
-            from v2.plugins.youtube_live_plugin import YouTubeLivePlugin
+            from v3.plugins.youtube_live_plugin import YouTubeLivePlugin
         except (ModuleNotFoundError, ImportError):
             # プラグインが導入されていない場合はスキップ
             print("⚠️ test_auto_post_live_start: youtube_live_plugin が見つかりません（スキップ）")
@@ -233,7 +233,7 @@ class TestYouTubeLivePluginMethods(unittest.TestCase):
     def test_auto_post_live_end(self):
         """auto_post_live_end() が YOUTUBE_LIVE_AUTO_POST_END を尊重"""
         try:
-            from v2.plugins.youtube_live_plugin import YouTubeLivePlugin
+            from v3.plugins.youtube_live_plugin import YouTubeLivePlugin
         except (ModuleNotFoundError, ImportError):
             # プラグインが導入されていない場合はスキップ
             print("⚠️ test_auto_post_live_end: youtube_live_plugin が見つかりません（スキップ）")

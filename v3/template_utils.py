@@ -82,6 +82,63 @@ def _random_emoji_filter(emoji_list=None) -> str:
     return random.choice(emoji_list)
 
 
+def calculate_extended_time_for_event(video_dict: Dict[str, Any]) -> None:
+    """
+    イベント情報から拡張時刻を計算して video_dict に追加
+
+    ★ v3.4.0: 朝早い時刻（00:00～12:00）を拡張時刻として表現
+
+    例: published_at が 2025-12-29 03:00 の場合
+    → 2025-12-29 の 27 時として表現（同日基準日 27 時）
+
+    つまり：
+    - displayed_date = 2025-12-29（DB保存日付）
+    - extended_hour = 27（24 + 3）
+    - テンプレート出力: 「2025年12月29日27時(2025年12月30日(火)午前3時)」
+
+    Args:
+        video_dict: 動画情報辞書（published_at を含む）
+
+    Returns:
+        None。video_dict に以下を追加:
+        - extended_hour: 拡張時刻（27など、朝早い場合は 24 + 時刻）
+        - extended_display_date: 拡張表示用の日付（DB保存日付）
+    """
+    try:
+        published_at_str = video_dict.get("published_at")
+        if not published_at_str:
+            return
+
+        # 日時を解析
+        try:
+            published_at = datetime.fromisoformat(published_at_str)
+        except:
+            return
+
+        hour = published_at.hour
+        date = published_at.date()
+
+        # ★ 朝早い時刻（00:00～12:00）の場合、拡張時刻として解釈
+        if hour < 12:
+            # 拡張時刻 = 24 + 時刻（例：27 = 24 + 3）
+            extended_hour = 24 + hour
+            # 表示日付は DB 保存日付（変更なし）
+            extended_display_date = date.strftime("%Y-%m-%d")
+
+            logger.debug(f"🔢 拡張時刻: {date} {hour:02d}:00 → {extended_display_date} {extended_hour}時")
+        else:
+            # 正午以降の場合は通常時刻
+            extended_hour = hour
+            extended_display_date = date.strftime("%Y-%m-%d")
+            logger.debug(f"🔢 通常時刻: {date} {hour:02d}:00")
+
+        video_dict["extended_hour"] = extended_hour
+        video_dict["extended_display_date"] = extended_display_date
+
+    except Exception as e:
+        logger.warning(f"⚠️ 拡張時刻計算エラー: {e}")
+
+
 def _weekday_filter(value=None) -> str:
     """
     曜日を日本語で返す
@@ -714,6 +771,8 @@ def load_template_with_fallback(
 
         # Jinja2 Environment でテンプレート化
         env = Environment()
+        # ★ Jinja2 ビルトインフィルターを有効化（int, upper, lower など）
+
         # フィルターを登録（format_datetime_filter は別途提供）
         from utils_v3 import format_datetime_filter
         env.filters["datetimeformat"] = format_datetime_filter
@@ -870,15 +929,27 @@ def render_template(
         context["normalize_extended_datetime"] = normalize_datetime_with_extended_time
 
         # ★ 日付と拡張時刻の合成表示用ヘルパー関数
-        def format_extended_datetime_range(base_date_str: str, extended_hour: int) -> str:
+        def format_extended_datetime_range(base_date_str: str, extended_hour_or_time: Any) -> str:
             """
             基準日付と拡張時刻から、日付と時刻の両方を正規化して併記
 
             使用例:
                 {{ format_extended_datetime_range(published_at | datetimeformat('%Y-%m-%d'), 27) }}
                 → "2025年12月21日27時(2025年12月22日(月)午前3時)"
+
+                {{ format_extended_datetime_range(scheduled_start_date, scheduled_start_time_hhmm) }}
+                → "2025年12月29日27:00(2025年12月30日(木)午前3時)"
             """
             try:
+                # extended_hour_or_time が文字列の場合（"27:00"）と整数の場合（27）に対応
+                if isinstance(extended_hour_or_time, str):
+                    # "27:00" 形式の場合
+                    time_parts = extended_hour_or_time.split(":")
+                    extended_hour = int(time_parts[0]) if time_parts else 0
+                else:
+                    # 整数の場合（27）
+                    extended_hour = int(extended_hour_or_time)
+
                 logger.debug(f"🔍 format_extended_datetime_range: base_date_str={base_date_str}, extended_hour={extended_hour}")
 
                 # 時刻情報から正規化
@@ -910,10 +981,15 @@ def render_template(
                 logger.debug(f"✅ format_extended_datetime_range 成功: {result}")
                 return result
             except Exception as e:
-                logger.warning(f"⚠️ 拡張日時フォーマットエラー: {e} (base_date_str={base_date_str}, extended_hour={extended_hour})")
-                return f"{base_date_str}{extended_hour}時"
+                logger.warning(f"⚠️ 拡張日時フォーマットエラー: {e} (base_date_str={base_date_str}, extended_hour_or_time={extended_hour_or_time})")
+                return f"{base_date_str}{extended_hour_or_time}時"
 
         context["format_extended_datetime_range"] = format_extended_datetime_range
+
+        # ★ Jinja2 ビルトインフィルターをコンテキストに追加
+        context["int"] = int  # int フィルター用
+        context["str"] = str  # str フィルター用
+        context["float"] = float  # float フィルター用
 
         rendered_text = template_obj.render(**context)
         logger.debug(f"✅ テンプレートレンダリング成功（種別: {template_type}）")
