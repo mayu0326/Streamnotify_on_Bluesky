@@ -107,7 +107,6 @@ APP_MODE=selfpost
 │                                                    │
 ├─ 動画一覧 ──────────────────────────────────────┤
 │ ☑ 【新着】新作動画発表！       未投稿  YouTube  │
-│ ☐ 【Shorts】30秒動画          未投稿  YouTube  │
 │ ☐ ライブ配信予定             未投稿  YouTube  │
 │                                                    │
 ├─ 操作パネル ──────────────────────────────────────┤
@@ -147,8 +146,6 @@ AUTOPOST_UNPOSTED_THRESHOLD=20        # 未投稿動画の安全上限
 
 # 投稿対象フィルタ
 AUTOPOST_INCLUDE_NORMAL=true          # 通常動画を投稿
-AUTOPOST_INCLUDE_SHORTS=false         # Shorts を投稿
-AUTOPOST_INCLUDE_MEMBER_ONLY=false    # メンバー限定を投稿
 AUTOPOST_INCLUDE_PREMIERE=true        # プレミア配信を投稿
 ```
 
@@ -178,7 +175,7 @@ AUTOPOST_INCLUDE_PREMIERE=true        # プレミア配信を投稿
 
 3️⃣ 動画種別フィルタ
    ├─ INCLUDE_*** 環境変数で投稿対象を限定
-   └─ 例: 通常動画のみ投稿、Shorts は投稿しない
+   └─ 例: 通常動画のみ投稿、Shorts,メンバー限定動画 は投稿しない
 ```
 
 ### 使用シーン
@@ -228,8 +225,6 @@ AUTOPOST_INTERVAL_MINUTES=60
 AUTOPOST_LOOKBACK_MINUTES=60
 AUTOPOST_UNPOSTED_THRESHOLD=10
 AUTOPOST_INCLUDE_NORMAL=true
-AUTOPOST_INCLUDE_SHORTS=false
-AUTOPOST_INCLUDE_MEMBER_ONLY=false
 AUTOPOST_INCLUDE_PREMIERE=false
 
 # 【パターン B】積極型：全種別投稿、5分ごと
@@ -238,8 +233,6 @@ AUTOPOST_INTERVAL_MINUTES=5
 AUTOPOST_LOOKBACK_MINUTES=30
 AUTOPOST_UNPOSTED_THRESHOLD=20
 AUTOPOST_INCLUDE_NORMAL=true
-AUTOPOST_INCLUDE_SHORTS=true
-AUTOPOST_INCLUDE_MEMBER_ONLY=true
 AUTOPOST_INCLUDE_PREMIERE=true
 ```
 

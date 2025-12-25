@@ -20,7 +20,7 @@ post_logger = logging.getLogger("PostLogger")
 
 __author__ = "mayuneco(mayunya)"
 __copyright__ = "Copyright (C) 2025 mayuneco(mayunya)"
-__license__ = "GPLv3"
+__license__ = "GPLv2"
 
 
 class PluginManager:
@@ -70,6 +70,12 @@ class PluginManager:
             NotificationPlugin: ロードされたプラグイン、失敗時は None
         """
         try:
+                # ファイル存在確認
+                plugin_file = Path(plugin_path)
+                if not plugin_file.exists():
+                    logger.warning(f"⏭️  プラグイン '{plugin_name}' をスキップします（ファイルが見つかりません: {plugin_path}）")
+                    return None
+
                 # すでに同名プラグインがロード済みなら何もしない（重複ログ防止）
                 if plugin_name in self.loaded_plugins:
                     return self.loaded_plugins[plugin_name]

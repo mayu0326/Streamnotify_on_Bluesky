@@ -12,7 +12,7 @@ from typing import List, Dict, Any, Optional
 
 __author__ = "mayuneco(mayunya)"
 __copyright__ = "Copyright (C) 2025 mayuneco(mayunya)"
-__license__ = "GPLv3"
+__license__ = "GPLv2"
 
 
 def get_video_priority(video: Dict[str, Any]) -> tuple:

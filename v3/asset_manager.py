@@ -16,7 +16,7 @@ logger = logging.getLogger("AppLogger")
 
 __author__ = "mayuneco(mayunya)"
 __copyright__ = "Copyright (C) 2025 mayuneco(mayunya)"
-__license__ = "GPLv3"
+__license__ = "GPLv2"
 
 
 class AssetManager:
@@ -254,4 +254,3 @@ class AssetManager:
 def get_asset_manager(asset_dir="Asset", base_dir=".") -> AssetManager:
     """AssetManager インスタンスを取得"""
     return AssetManager(asset_dir=asset_dir, base_dir=base_dir)
-

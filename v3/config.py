@@ -15,7 +15,7 @@ logger = logging.getLogger("AppLogger")
 
 __author__ = "mayuneco(mayunya)"
 __copyright__ = "Copyright (C) 2025 mayuneco(mayunya)"
-__license__ = "GPLv3"
+__license__ = "GPLv2"
 
 DB_PATH = "data/video_list.db"
 
@@ -63,24 +63,18 @@ class Config:
 
         if plugin_exists:
             if self.youtube_api_key:
-                logger.info("有効なAPIキーが設定されています。")
-                logger.info("YouTube連携機能を有効化しました。")
                 self.youtube_api_plugin_enabled = True
             else:
-                logger.info("有効なAPIキーが設定されていません。")
-                logger.info("YouTube連携機能を無効化しました。")
                 self.youtube_api_plugin_enabled = False
         else:
             self.youtube_api_plugin_enabled = False
-            logger.info("YouTubeAPIプラグインが導入されていません。RSS取得のみで動作します。")
 
         if not self.youtube_channel_id:
             logger.error("YOUTUBE_CHANNEL_ID が未設定です。settings.env を確認してください。")
             raise ValueError("YOUTUBE_CHANNEL_ID is required")
 
-        # YouTubeAPI未導入時（バリデーション段階ではINFOのみ出力。WARNINGはmain_v3で出力）
+        # YouTubeAPI未導入時（チャンネルID形式をバリデーション）
         if not plugin_exists:
-            logger.info("YouTubeAPI連携プラグインが未導入です。UCから始まるチャンネルIDのみ利用可能です。")
             if not self.youtube_channel_id.startswith("UC"):
                 logger.error(f"YouTubeAPI未導入時はUCから始まるIDのみ許可されます。現在のID: {self.youtube_channel_id}")
                 raise ValueError("YouTubeAPI未導入時はUCから始まるIDのみ許可されます。設定を確認してください。")
@@ -97,7 +91,47 @@ class Config:
             logger.error("BLUESKY_PASSWORD が未設定です。settings.env を確認してください。")
             raise ValueError("BLUESKY_PASSWORD is required")
 
-        # ポーリング間隔
+        # ===== YouTube フィード取得モード（RSS ポーリング vs WebSub） =====
+        self.youtube_feed_mode = os.getenv("YOUTUBE_FEED_MODE", "poll").strip().lower()
+
+        # バリデーション
+        if self.youtube_feed_mode not in ("poll", "websub", "hybrid"):
+            logger.warning(f"YOUTUBE_FEED_MODE が無効です: {self.youtube_feed_mode}。'poll' に設定します。")
+            self.youtube_feed_mode = "poll"
+
+        logger.info(f"📡 YouTube フィード取得モード: {self._get_feed_mode_description()}")
+
+        # WebSub クライアント ID（自家サーバー用）
+        self.websub_client_id = os.getenv("WEBSUB_CLIENT_ID", "").strip()
+
+        # WebSub コールバック URL（WebSub/Hybrid モード用）
+        self.websub_callback_url = os.getenv("WEBSUB_CALLBACK_URL", "").strip()
+        if self.youtube_feed_mode in ("websub", "hybrid"):
+            if not self.websub_callback_url:
+                logger.warning("YOUTUBE_FEED_MODE が 'websub' または 'hybrid' ですが、WEBSUB_CALLBACK_URL が未設定です。ポーリングモードにフォールバックします。")
+                self.youtube_feed_mode = "poll"
+
+        # WebSub ローカルサーバーポート（オプション、デフォルト: 8765）
+        try:
+            self.websub_server_port = int(os.getenv("WEBSUB_SERVER_PORT", "8765"))
+            if self.websub_server_port < 1024 or self.websub_server_port > 65535:
+                logger.warning(f"WEBSUB_SERVER_PORT が範囲外です (1024〜65535): {self.websub_server_port}。8765に設定します。")
+                self.websub_server_port = 8765
+        except ValueError:
+            logger.warning("WEBSUB_SERVER_PORT が無効です。8765に設定します。")
+            self.websub_server_port = 8765
+
+        # WebSub 購読期間（秒、デフォルト: 5日 = 432000秒）
+        try:
+            self.websub_lease_seconds = int(os.getenv("WEBSUB_LEASE_SECONDS", "432000"))
+            if self.websub_lease_seconds < 86400 or self.websub_lease_seconds > 2592000:
+                logger.warning(f"WEBSUB_LEASE_SECONDS が範囲外です (86400〜2592000): {self.websub_lease_seconds}。432000に設定します。")
+                self.websub_lease_seconds = 432000
+        except ValueError:
+            logger.warning("WEBSUB_LEASE_SECONDS が無効です。432000に設定します。")
+            self.websub_lease_seconds = 432000
+
+        # ポーリング間隔（ポーリング/Hybrid モード用）
         try:
             self.poll_interval_minutes = int(os.getenv("POLL_INTERVAL_MINUTES", 10))
             if self.poll_interval_minutes < 5 or self.poll_interval_minutes > 30:
@@ -107,6 +141,16 @@ class Config:
             logger.warning("POLL_INTERVAL_MINUTES が無効です。10分に設定します。")
             self.poll_interval_minutes = 10
 
+        # WebSub ポーリング間隔（WebSub/Hybrid モード用）- 理想: 1分
+        try:
+            self.websub_poll_interval_minutes = int(os.getenv("WEBSUB_POLL_INTERVAL_MINUTES", 1))
+            if self.websub_poll_interval_minutes < 1 or self.websub_poll_interval_minutes > 10:
+                logger.warning(f"WebSub ポーリング間隔が範囲外です (1〜10): {self.websub_poll_interval_minutes}。1分に設定します。")
+                self.websub_poll_interval_minutes = 1
+        except ValueError:
+            logger.warning("WEBSUB_POLL_INTERVAL_MINUTES が無効です。1分に設定します。")
+            self.websub_poll_interval_minutes = 1
+
         # Bluesky 投稿フラグ（デフォルト: False = ドライラン）
         post_enabled_str = os.getenv("BLUESKY_POST_ENABLED", "false").strip().lower()
         self.bluesky_post_enabled = post_enabled_str in ("true", "1", "yes", "on")
@@ -114,6 +158,10 @@ class Config:
         # 重複投稿防止オプション（デフォルト: False）
         duplicate_prevention_str = os.getenv("PREVENT_DUPLICATE_POSTS", "false").strip().lower()
         self.prevent_duplicate_posts = duplicate_prevention_str in ("true", "1", "yes", "on")
+
+        # YouTube重複排除オプション（デフォルト: True）
+        youtube_dedup_str = os.getenv("YOUTUBE_DEDUP_ENABLED", "true").strip().lower()
+        self.youtube_dedup_enabled = youtube_dedup_str in ("true", "1", "yes", "on")
 
         # デバッグモード（デフォルト: False）
         debug_mode_str = os.getenv("DEBUG_MODE", "false").strip().lower()
@@ -130,34 +178,9 @@ class Config:
             app_mode_str = OperationMode.AUTOPOST
 
         # 動作モードの決定ロジック（仕様 v1.0）
-        # ★ 修正: DB が空（初回起動）の場合は COLLECT モード にフォールバック
+        # SELFPOST / AUTOPOST は排他的
         if not db_exists or app_mode_str == OperationMode.COLLECT:
             self.operation_mode = OperationMode.COLLECT
-        # ★ 追加: DB が存在していても、初回起動検出フラグで COLLECT モード にフォールバック
-        elif db_exists:
-            try:
-                from database import get_database
-                db = get_database()
-                if db.is_first_run:
-                    logger.info("🆕 初回起動です。収集モードで動作します。")
-                    self.operation_mode = OperationMode.COLLECT
-                elif app_mode_str == OperationMode.DRY_RUN:
-                    self.operation_mode = OperationMode.DRY_RUN
-                elif app_mode_str == OperationMode.AUTOPOST:
-                    # AUTOPOST は Bluesky 投稿が有効化されている場合のみ
-                    if self.bluesky_post_enabled:
-                        self.operation_mode = OperationMode.AUTOPOST
-                    else:
-                        logger.warning("AUTOPOST モードが指定されていますが、BLUESKY_POST_ENABLED=true に設定してください。SELFPOST モードで起動します。")
-                        self.operation_mode = OperationMode.SELFPOST
-                elif app_mode_str == OperationMode.SELFPOST or not self.bluesky_post_enabled:
-                    self.operation_mode = OperationMode.SELFPOST
-                else:
-                    # デフォルトは SELFPOST モード
-                    self.operation_mode = OperationMode.SELFPOST
-            except Exception:
-                # DB読み込み失敗時は SELFPOST
-                self.operation_mode = OperationMode.SELFPOST
         elif app_mode_str == OperationMode.DRY_RUN:
             self.operation_mode = OperationMode.DRY_RUN
         elif app_mode_str == OperationMode.AUTOPOST:
@@ -248,12 +271,6 @@ class Config:
         autopost_include_normal = os.getenv("AUTOPOST_INCLUDE_NORMAL", "true").strip().lower()
         self.autopost_include_normal = autopost_include_normal in ("true", "1", "yes", "on")
 
-        autopost_include_shorts = os.getenv("AUTOPOST_INCLUDE_SHORTS", "false").strip().lower()
-        self.autopost_include_shorts = autopost_include_shorts in ("true", "1", "yes", "on")
-
-        autopost_include_member_only = os.getenv("AUTOPOST_INCLUDE_MEMBER_ONLY", "false").strip().lower()
-        self.autopost_include_member_only = autopost_include_member_only in ("true", "1", "yes", "on")
-
         autopost_include_premiere = os.getenv("AUTOPOST_INCLUDE_PREMIERE", "true").strip().lower()
         self.autopost_include_premiere = autopost_include_premiere in ("true", "1", "yes", "on")
 
@@ -288,6 +305,12 @@ class Config:
         youtube_live_auto_post_archive = os.getenv("YOUTUBE_LIVE_AUTO_POST_ARCHIVE", "true").strip().lower()
         self.youtube_live_auto_post_archive = youtube_live_auto_post_archive in ("true", "1", "yes", "on")
 
+        # YouTube Live 投稿遅延設定（B-2, v3.4.0+）
+        self.youtube_live_post_delay = os.getenv("YOUTUBE_LIVE_POST_DELAY", "immediate").strip().lower()
+        if self.youtube_live_post_delay not in ("immediate", "delay_5min", "delay_30min"):
+            logger.warning(f"⚠️ YOUTUBE_LIVE_POST_DELAY が無効です: {self.youtube_live_post_delay}。デフォルト 'immediate' に設定します。")
+            self.youtube_live_post_delay = "immediate"
+
     def _log_operation_mode(self):
         """現在の動作モードをログに出力"""
         mode_descriptions = {
@@ -308,10 +331,14 @@ class Config:
         # デバッグモードの状態
         debug_status = "有効" if self.debug_mode else "無効"
 
+        # YouTube重複排除の状態
+        dedup_status = "有効" if self.youtube_dedup_enabled else "無効"
+
         logger.info("=" * 60)
         logger.info(f"動作モード: {mode_descriptions.get(self.operation_mode, self.operation_mode)}")
         logger.info(f"Bluesky投稿機能: {post_status}")
         logger.info(f"重複投稿防止: {'有効' if self.prevent_duplicate_posts else '無効'}")
+        logger.info(f"YouTube重複排除: {dedup_status}")
         logger.info(f"デバッグモード: {debug_status}")
         logger.info("=" * 60)
 
@@ -324,6 +351,15 @@ class Config:
             logger.info("👤 投稿対象をGUIから設定し、手動で投稿を行ってください。")
         elif self.operation_mode == OperationMode.AUTOPOST:
             logger.info("🤖 自動投稿モード。人間の介入なく自動投稿が実行されます。GUI投稿操作は無効化されます。")
+
+    def _get_feed_mode_description(self) -> str:
+        """フィード取得モードの説明を返す"""
+        descriptions = {
+            "poll": "ポーリング（定期的に RSS を確認）",
+            "websub": "WebSub（YouTube から プッシュ通知を受信）",
+            "hybrid": "ハイブリッド（WebSub + ポーリングのフォールバック）"
+        }
+        return descriptions.get(self.youtube_feed_mode, "不明")
 
 
 def get_config(env_path="settings.env") -> Config:

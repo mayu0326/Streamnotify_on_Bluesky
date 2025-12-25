@@ -120,7 +120,7 @@ class YouTubeThumbManager:
                     live_plugin = pm.get_plugin("youtube_live_plugin")
                     if live_plugin and live_plugin.is_available():
                         youtube_logger.debug(f"🔍 YouTube Live プラグイン: RSS新規追加 {saved_count} 件を自動分類中...")
-                        updated = live_plugin._update_unclassified_videos()
+                        updated = live_plugin.poller.sync_unclassified_videos()
                         if updated > 0:
                             youtube_logger.info(f"✅ YouTube Live 自動分類: {updated} 件更新（配信予定枠など検出）")
                         else:

@@ -13,13 +13,14 @@ import os
 import time
 from datetime import datetime
 from pathlib import Path
+from typing import Dict, Any, Optional
 
 logger = logging.getLogger("AppLogger")
 post_logger = logging.getLogger("PostLogger")
 
 __author__ = "mayuneco(mayunya)"
 __copyright__ = "Copyright (C) 2025 mayuneco(mayunya)"
-__license__ = "GPLv3"
+__license__ = "GPLv2"
 
 DB_PATH = "data/video_list.db"
 DB_TIMEOUT = 10
@@ -193,9 +194,19 @@ class Database:
         content_type = self._validate_content_type(content_type)
         live_status = self._validate_live_status(live_status, content_type)
 
+        # YouTube重複排除設定を確認（config から読み込み）
+        youtube_dedup_enabled = True  # デフォルト: True
+        try:
+            from config import get_config
+            config = get_config("settings.env")
+            youtube_dedup_enabled = config.youtube_dedup_enabled
+        except Exception:
+            pass  # 設定読み込み失敗時はデフォルト値を使用
+
         # YouTube動画の重複チェック（優先度ロジック適用）
         # ★ skip_dedup=True なら重複チェックをスキップ（手動追加時の強制挿入）
-        if not skip_dedup and source == "youtube" and title and channel_name:
+        # ★ youtube_dedup_enabled=False なら重複チェックをスキップ（設定で無効化）
+        if not skip_dedup and youtube_dedup_enabled and source == "youtube" and title and channel_name:
             try:
                 import sys
                 from pathlib import Path
@@ -282,6 +293,7 @@ class Database:
                 conn = self._get_connection()
                 cursor = conn.cursor()
 
+                logger.debug(f"  [DEBUG] 挿入前チェック: video_id={video_id}, title={title[:50]}, channel_name={repr(channel_name)}")
                 cursor.execute("""
                     INSERT INTO videos (video_id, title, video_url, published_at, channel_name, thumbnail_url, content_type, live_status, is_premiere, source)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -292,9 +304,9 @@ class Database:
                 logger.info(f"動画を保存しました: {title}")
                 return True
 
-            except sqlite3.IntegrityError:
+            except sqlite3.IntegrityError as e:
                 conn.close()
-                logger.debug(f"動画は既に保存されています: {video_id}")
+                logger.debug(f"⚠️ 動画は既に保存されています: {video_id} (IntegrityError: {e})")
                 return False
 
             except sqlite3.OperationalError as e:
@@ -304,8 +316,14 @@ class Database:
                     time.sleep(0.5)
                     continue
                 else:
-                    logger.error(f"DB エラー: {e}")
+                    logger.error(f"❌ DB エラー (Operational): {e}")
                     return False
+
+            except Exception as e:
+                logger.error(f"❌ 予期しないエラー ({type(e).__name__}): {e}")
+                if 'conn' in locals():
+                    conn.close()
+                return False
 
             except Exception as e:
                 logger.error(f"動画の保存に失敗しました: {e}")
@@ -380,6 +398,33 @@ class Database:
             logger.error(f"全動画の取得に失敗しました: {e}")
             return []
 
+    def get_video_by_id(self, video_id: str) -> dict:
+        """
+        指定された video_id の動画を取得
+
+        Args:
+            video_id: YouTube 動画 ID
+
+        Returns:
+            動画情報辞書、見つからない場合は None
+        """
+        try:
+            conn = self._get_connection()
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+
+            cursor.execute("""
+                SELECT * FROM videos WHERE video_id = ?
+            """, (video_id,))
+
+            result = cursor.fetchone()
+            conn.close()
+            return dict(result) if result else None
+
+        except Exception as e:
+            logger.error(f"動画取得に失敗しました ({video_id}): {e}")
+            return None
+
     def count_unposted_in_lookback(self, lookback_minutes: int) -> int:
         """
         LOOKBACK 時間窓内の未投稿動画数をカウント（AUTOPOST 起動抑止判定用）
@@ -431,16 +476,19 @@ class Database:
             ]
 
             # 動画種別フィルタ（仕様 v1.0 セクション 3）
+            # ⚠️ メンバー限定・ショート動画は現在のところ区別が難しいため、非対応扱い
+            # 今後の実装時に以下を有効化
             type_conditions = []
 
             if config.autopost_include_normal:
+                # メンバー限定とショート動画を除外して、通常動画のみ投稿
                 type_conditions.append("(is_short = 0 AND is_members_only = 0 AND is_premiere = 0)")
 
-            if config.autopost_include_shorts:
-                type_conditions.append("(is_short = 1)")
-
-            if config.autopost_include_member_only:
-                type_conditions.append("(is_members_only = 1)")
+            # ⚠️ 以下は非対応のためコメントアウト
+            # if config.autopost_include_shorts:
+            #     type_conditions.append("(is_short = 1)")
+            # if config.autopost_include_member_only:
+            #     type_conditions.append("(is_members_only = 1)")
 
             if config.autopost_include_premiere:
                 type_conditions.append("(is_premiere = 1)")
@@ -677,13 +725,15 @@ class Database:
             update_parts = []
             params = []
 
+            # content_type を更新する場合
             if content_type is not None:
                 content_type = self._validate_content_type(content_type)
                 update_parts.append("content_type = ?")
                 params.append(content_type)
 
-            if live_status is not None or content_type is not None:
-                # content_typeが指定されていない場合は、既存の値を取得
+            # live_status を更新する場合
+            if live_status is not None:
+                # content_type が指定されていない場合は、既存の値を取得
                 if content_type is None:
                     cursor.execute("SELECT content_type FROM videos WHERE video_id = ?", (video_id,))
                     row = cursor.fetchone()
@@ -845,6 +895,69 @@ class Database:
                 deleted_count += 1
 
         return deleted_count
+
+    def get_video_statistics(self) -> Dict[str, int]:
+        """
+        動画統計情報を取得（デバッグ・監視用）
+
+        Returns:
+            {
+                "total": 総動画数,
+                "unposted": 未投稿数,
+                "posted": 投稿済み数,
+                "selected": 投稿選択済み数,
+                "scheduled": 予約投稿待ち数,
+                "live": ライブ関連,
+                "archive": アーカイブ,
+                "video": 通常動画
+            }
+        """
+        try:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+
+            stats = {}
+
+            # 総動画数
+            cursor.execute("SELECT COUNT(*) FROM videos")
+            stats["total"] = cursor.fetchone()[0]
+
+            # 未投稿数
+            cursor.execute("SELECT COUNT(*) FROM videos WHERE posted_to_bluesky = 0")
+            stats["unposted"] = cursor.fetchone()[0]
+
+            # 投稿済み数
+            cursor.execute("SELECT COUNT(*) FROM videos WHERE posted_to_bluesky = 1")
+            stats["posted"] = cursor.fetchone()[0]
+
+            # 投稿選択済み数
+            cursor.execute("SELECT COUNT(*) FROM videos WHERE selected_for_post = 1")
+            stats["selected"] = cursor.fetchone()[0]
+
+            # 予約投稿待ち数
+            cursor.execute("""
+                SELECT COUNT(*) FROM videos
+                WHERE selected_for_post = 1 AND scheduled_at IS NOT NULL
+                  AND scheduled_at > datetime('now')
+            """)
+            stats["scheduled"] = cursor.fetchone()[0]
+
+            # コンテンツ種別別
+            cursor.execute("SELECT COUNT(*) FROM videos WHERE content_type = 'live'")
+            stats["live"] = cursor.fetchone()[0]
+
+            cursor.execute("SELECT COUNT(*) FROM videos WHERE content_type = 'archive'")
+            stats["archive"] = cursor.fetchone()[0]
+
+            cursor.execute("SELECT COUNT(*) FROM videos WHERE content_type = 'video'")
+            stats["video"] = cursor.fetchone()[0]
+
+            conn.close()
+            return stats
+
+        except Exception as e:
+            logger.error(f"動画統計取得エラー: {e}")
+            return {"error": str(e)}
 
 
 def get_database(db_path=DB_PATH) -> Database:

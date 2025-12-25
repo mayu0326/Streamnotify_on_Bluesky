@@ -22,7 +22,7 @@ logger = logging.getLogger("AppLogger")
 
 __author__ = "mayuneco(mayunya)"
 __copyright__ = "Copyright (C) 2025 mayuneco(mayunya)"
-__license__ = "GPLv3"
+__license__ = "GPLv2"
 
 # ============ v3.2.0: Jinja2 動的変数フィルター ============
 
