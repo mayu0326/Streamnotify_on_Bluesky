@@ -133,7 +133,7 @@ python3 --version
 
 ```bash
 # リポジトリをクローン
-git clone https://github.com/mayu0326/Streamnotify_on_Bluesky.git
+git clone https://git.neco-server.net/mayuneco/Streamnotify_on_Bluesky.git
 
 # ディレクトリに移動
 cd Streamnotify_on_Bluesky/v3

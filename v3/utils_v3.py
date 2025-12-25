@@ -17,7 +17,7 @@ from thumbnails.niconico_ogp_backfill import backfill_niconico, fetch_thumbnail_
 
 __author__ = "mayuneco(mayunya)"
 __copyright__ = "Copyright (C) 2025 mayuneco(mayunya)"
-__license__ = "GPLv3"
+__license__ = "GPLv2"
 
 # ロギング設定
 util_logger = logging.getLogger("AppLogger.Utils")
@@ -121,4 +121,3 @@ def is_valid_url(url):
         URL の場合は True、そうでなければ False
     """
     return isinstance(url, str) and (url.startswith("http://") or url.startswith("https://"))
-

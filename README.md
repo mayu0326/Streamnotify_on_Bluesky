@@ -9,7 +9,7 @@
 Bluesky に自動投稿する常駐ボットです。
 - プラグインアーキテクチャにより、新しいプラットフォーム・通知先の対応は  \
 拡張プラグインで実現できます。
-- **v3（次世代版）**: GUI 大幅拡張、既存機能強化、YouTubeLive 完全対応
+- **v3（次世代版）**: GUI 大幅拡張、既存機能強化、YouTubeLive 完全対応 \
 - **v2（安定版）**: YouTube RSS 監視、Bluesky 投稿機能強化、基本 GUI、YouTube Live 対応、  \
 テンプレート管理、画像処理パイプライン、プラグイン拡張 、ニコニコ動画対応
 
@@ -18,16 +18,16 @@ Bluesky に自動投稿する常駐ボットです。
 ### v3（推奨）
 - **複数プラットフォーム監視**: YouTube、Niconico に対応（Twitch は準備中）
 - **高度なフィルタリング**: タイトル検索、配信元別、投稿状態、コンテンツタイプ  \
-（🎬 動画/📹 アーカイブ/🔴 配信）
+（🎬 動画/📹 アーカイブ/🔴 配信/ プレミア公開）
 - **マルチテンプレート対応**: YouTube（新着/Live/Archive）、Niconico（新着）
 - **YouTube 優先度ベース重複排除**: 新動画 > アーカイブ > 通常動画で自動判定
-- **拡張 GUI**: 複合フィルタリング、動画統計表示
+- **拡張 GUI**: 複合フィルタリング、動画統計表示、Websub、プラグイン状態表示
 - **テンプレートシステム**: プラットフォーム別・イベント別にテンプレート選択可能
 - **AssetManager**: プラグイン導入時にテンプレート・画像を自動配置
 - **画像処理パイプライン**: サムネイル自動取得・リサイズ・最適化・キャッシング
 
 ### v2（安定版）
-- **YouTube RSS 監視**: 指定チャンネルの新着動画を自動検出
+- **YouTubeRSS&Websub 監視**: 指定チャンネルの新着動画を自動検出(webhook対応)
 - **YouTube Live 判定・投稿**: ライブ配信の開始・終了を自動検出して投稿
 - **YouTube API キャッシング**: API 呼び出し回数削減のためのローカルキャッシュ
 - **ライブ配信対応**: YouTube Live の自動判定・投稿
@@ -43,14 +43,14 @@ Bluesky に自動投稿する常駐ボットです。
 - **Tkinter GUI**: 動画一覧表示・手動投稿・統計表示に対応
 
 ## プロジェクト構成
-
+<details>
 ```
 ├── README.md                    # このファイル
 ├── LICENSE                      # ライセンス
 │
 ├── v3/                          # v3（推奨、次世代版）
 │   ├── main_v3.py               # エントリーポイント
-│   ├── gui_v3.py                # 拡張 GUI（1,363 行）
+│   ├── gui_v3.py                # 拡張 GUI（2,760 行）
 │   ├── plugin_manager.py        # プラグイン管理
 │   ├── plugins/                 # プラグイン実装（5 種）
 │   ├── utils/                   # デバッグ・検証スクリプト
@@ -64,7 +64,19 @@ Bluesky に自動投稿する常駐ボットです。
 │   │   ├── Guides/              # ユーザーガイド
 │   │   ├── References/          # 参考資料
 │   │   └── Local/               # ローカル作業用
+│   ├── data/                    # ローカルデータ
+│   │   └── video_list.db        # SQLite データベース
+│   ├── logs/                    # ログファイル出力先
+│   ├── thumbnails/              # サムネイル用ユーティリティ
 │   ├── Asset/                   # テンプレート・画像配布
+│   │    ├── README.md                       # AssetManager 統合ガイド
+│   │    ├── templates/                      # テンプレート配布元
+│   │   |    └── default/                    # デフォルトテンプレート
+│   │    └── images/                         # 画像配布元
+│   │       ├── default/                    # デフォルト画像
+│   │      ├── YouTube/                    # YouTube 関連
+│   │      ├── Niconico/                   # ニコニコ関連
+│   │      └── Twitch/                     # Twitch 関連（将来）
 │   └── settings.env.example     # 設定ファイル例
 │
 ├── v2/                          # v2（安定版、既存ユーザー向け）
@@ -91,10 +103,8 @@ Bluesky に自動投稿する常駐ボットです。
 │   │   │   ├── FUTURE_ROADMAP_v3.md
 │   │   │   └── ...
 │   │   ├── ARCHIVE/             # 実装計画・記録（完了後）
-│   │   │   ├── TEMPLATE_IMPLEMENTATION_CHECKLIST.md
-│   │   │   ├── youtube_live_classification_plan.md
 │   │   │   └── ...
-│   │   └── Local/               # AI生成レポート・一時ファイル（非公開推奨）
+│   │   └── Local/               # 一時ファイル（非公開推奨）
 │   │
 │   ├── data/                    # ローカルデータ
 │   │   └── video_list.db        # SQLite データベース
@@ -104,17 +114,26 @@ Bluesky に自動投稿する常駐ボットです。
 │   ├── templates/               # 投稿テンプレート
 │   │   └── .templates/
 │   │
-│   ├── images/                  # スクリーンショット・参考画像
+│   ├── images/                  # サムネイル用キャッシュ(各サイト毎)
 │   │
-│   ├── thumbnails/              # キャッシュ済み動画サムネイル
+│   ├── thumbnails/              # サムネイル用ユーティリティ
 │   │
 │   ├── Asset/                   # プラグイン用テンプレート・画像
-│   │   └── README.md
-│   │
+│   │   ├── README.md
+│   │   ├── images/
+│   │   │    └── default/          # デフォルト画像
+│   │   └── templates/
+│   │       ├── default/          # デフォルトテンプレート
+│   │       ├── YouTube/          # YouTube 用
+│   │       ├── Niconico/         # ニコニコ用
+│   │       └── Twitch/           # Twitch 用（将来）
 │   └── __pycache__/             # Python キャッシュ（Git 管理外）
 │
 ├── v1/                          # v1（レガシー版、参考用）
+│
+└── OLD_App/                     # 旧アプリケーション（参考用）
 ```
+</details>
 
 ## 必要な環境
 
@@ -213,8 +232,6 @@ python main_v2.py
 
 - **動画種別フィルタ**:
   - `AUTOPOST_INCLUDE_NORMAL`: 通常動画を投稿
-  - `AUTOPOST_INCLUDE_SHORTS`: YouTube Shorts を投稿
-  - `AUTOPOST_INCLUDE_MEMBER_ONLY`: メンバー限定動画を投稿
   - `AUTOPOST_INCLUDE_PREMIERE`: プレミア配信を投稿
 
 詳細は [AUTOPOST機能仕様書](v3/docs/References/AUTOPOST_SELFPOST_機能仕様書.md) を参照。
@@ -240,7 +257,7 @@ python main_v2.py
 
 ### ⚠️ リアルタイム性に関する制限
 
-この設計により、以下の制限があります：
+この設計により、RSSモード時は以下の制限があります：
 
 - **ラグの発生**: YouTube への動画投稿、配信枠作成から実際にこのアプリで検知され投稿されるまで、  \
 **数分～数十分程度ラグが発生する場合があります**。\
@@ -248,6 +265,8 @@ python main_v2.py
 アプリ側では制御できません。
 
 - **リアルタイム性の目安**: 通常は数分以内に検知されますが、状況により **10分程度遅れる可能性があります**。
+
+- **WebSub/Webhook 対応**: WebSub/Webhook には、ご自身でwebhookサーバーを作られる場合に限り対応しています。
 
 ### ✅ この設計のメリット
 
@@ -270,7 +289,9 @@ python main_v2.py
 - [動作モードガイド](v3/docs/Guides/OPERATION_MODES_GUIDE.md)
 - [設定項目一覧](v3/docs/Guides/SETTINGS_OVERVIEW.md)
 - [YouTube 設定ガイド](v3/docs/Guides/YOUTUBE_SETUP_GUIDE.md)
+- [ニコニコ設定ガイド](v3/docs/Guides/NICONICO_SETUP_GUIDE.md)
 - [FAQ/トラブルシューティング](v3/docs/Guides/FAQ_TROUBLESHOOTING_BASIC.md)
+- [動画追加機能ガイド](v3/docs/Guides/ADD_VIDEO_GUI_FEATURE.md)
 - [投稿テンプレートガイド](v3/docs/Guides/TEMPLATE_GUIDE.md)
 
 ### 🛠 技術資料
@@ -283,7 +304,11 @@ python main_v2.py
 - [プラグインシステム ガイド](v3/docs/Technical/PLUGIN_SYSTEM.md)
 - [Bluesky リッチテキスト ガイド](v3/docs/Technical/RICHTEXT_FACET_SPECIFICATION.md)
 - [テンプレートシステム ガイド](v3/docs/Technical/TEMPLATE_SYSTEM.md)
-- [**Twitch API ポーリング実装ガイド**](v3/docs/Technical/TWITCH_POLLING_IMPLEMENTATION.md)（Twitch 対応設計・実装予定）
+- [WebSub 実装ガイド](v3/docs/Technical/WEBSUB_IMPLEMENTATION.md)
+- [WebSub クライアント ガイド](v3/docs/Technical/WEBSUB_CLIENT_IMPLEMENTATION.md)
+- [YouTube 重複排除設定ガイド](v3/docs/Technical/YOUTUBE_DEDUP_SETTING.md)
+- [プラグイン実装タスク管理](v3/docs/Technical/V3_PLUGIN_IMPLEMENTATION_TASKS.md)
+- [**Twitch API ポーリング実装ガイド**](v3/docs/Technical/TWITCH_POLLING_IMPLEMENTATION.md)
 
 ## 📚 YouTube関連資料
 - [YouTube API キャシュ実装](v3/docs/Technical/YouTube/YOUTUBE_API_CACHING_IMPLEMENTATION.md)
@@ -291,7 +316,7 @@ python main_v2.py
 - [YouTube Live プラグイン](v3/docs/Technical/YouTube/YOUTUBE_LIVE_PLUGIN_IMPLEMENTATION.md)
 
 ### 💡 設計思想・アーキテクチャ
-- [**Streamnotify 設計思想とアーキテクチャ哲学**](v3/docs/References/DESIGN_PHILOSOPHY.md)（⭐ 必読：ローカル完結・リアルタイム性についての判断基準）
+- [**Streamnotify 設計思想とアーキテクチャ哲学**](v3/docs/References/DESIGN_PHILOSOPHY.md)（⭐ 必読）
 - [OLD_App 既存実装リファレンス](v3/docs/Technical/OLDAPP_REFERENCE_FOR_V3_PLUGINS.md)
 
 ### 関連資料
@@ -419,6 +444,11 @@ Git による公開リポジトリには含めないでください（`.gitignor
 #### v3.2.0 フィルタプロファイル保存機能（2025-12-18）
 - フィルタ条件の保存機能を追加しました
 - フィルタリング処理のパフォーマンスが向上しました
+- 動画追加機能を追加しました（GUI の「➕ 動画追加」ボタン）
+- YouTube API/手動入力による動画登録機能を実装しました
+- youtube_video_detail_cache.json による自動キャッシング対応
+- DB 操作の最適化を行いました
+- wwbsub 機能に対応しました(v3のみ/センターサーバー方式)
 
 ## 🎉 v3.1.0 プロジェクト整理完了
 - GUI フィルタ・検索機能、重複投稿防止オプションを追加しました。
@@ -479,4 +509,4 @@ YouTubeLiveプラグインの実装が完全に完了しました。以下の機
 
 ---
 
-**最終更新**: 2025-12-19
+**最終更新**: 2025-12-26
