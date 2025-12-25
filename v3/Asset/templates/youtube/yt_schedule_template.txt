@@ -1,7 +1,7 @@
 📺 YouTube Live 放送予定のお知らせ！
 
 チャンネル: {{ channel_name }}
-タイトル:  {{ title }} 
+タイトル:  {{ title }}
 開始日時: {{ published_at | datetimeformat('%Y年%m月%d日 %H:%M') }}
 
 視聴URL: {{ video_url }}

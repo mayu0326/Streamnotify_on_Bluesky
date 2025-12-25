@@ -28,7 +28,7 @@ logger = logging.getLogger("GUILogger")
 
 __author__ = "mayuneco(mayunya)"
 __copyright__ = "Copyright (C) 2025 mayuneco(mayunya)"
-__license__ = "GPLv3"
+__license__ = "GPLv2"
 
 
 class StreamNotifyGUI:
@@ -53,6 +53,12 @@ class StreamNotifyGUI:
         # フィルタ用の変数
         self.all_videos = []  # フィルタ前のすべての動画
         self.filtered_videos = []  # フィルタ後の動画
+
+        # フィルタ状態を保持するための変数（refresh_data時に復元するため）
+        self.saved_filter_title = ""
+        self.saved_filter_status = "全て"
+        self.saved_filter_source = "全て"
+        self.saved_filter_type = "全て"
 
         self.setup_ui()
         self.refresh_data()
@@ -90,6 +96,7 @@ class StreamNotifyGUI:
             self.execute_post_button.config(state=tk.DISABLED)
         ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=2)
         ttk.Button(toolbar, text="ℹ️ 統計", command=self.show_stats).pack(side=tk.LEFT, padx=2)
+        ttk.Button(toolbar, text="🎬 Live設定", command=self.youtube_live_settings).pack(side=tk.LEFT, padx=2)
         ttk.Button(toolbar, text="🔧 プラグイン", command=self.show_plugins).pack(side=tk.LEFT, padx=2)
         ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=2)
         ttk.Button(toolbar, text="💾 バックアップ", command=self.backup_data).pack(side=tk.LEFT, padx=2)
@@ -131,13 +138,13 @@ class StreamNotifyGUI:
         source_combo.grid(row=0, column=5, sticky=tk.W, padx=5, pady=5)
         source_combo.bind("<<ComboboxSelected>>", lambda e: self.apply_filters())
 
-        # タイプフィルタ（YouTube: 動画/アーカイブ/Live）
+        # タイプフィルタ（YouTube: 動画/アーカイブ/Live/プレミア）
         ttk.Label(filter_frame, text="タイプ:").grid(row=0, column=6, sticky=tk.W, padx=5, pady=5)
         self.filter_type_var = tk.StringVar(value="全て")
         type_combo = ttk.Combobox(
             filter_frame,
             textvariable=self.filter_type_var,
-            values=["全て", "🎬 動画", "📹 アーカイブ", "🔴 配信"],
+            values=["全て", "🎬 動画", "📹 アーカイブ", "🔴 配信", "🎆 プレミア"],
             state="readonly",
             width=15
         )
@@ -221,17 +228,26 @@ class StreamNotifyGUI:
 
     def refresh_data(self):
         """DB から最新データを取得して表示"""
+        # 現在のフィルタ状態を保存
+        self.saved_filter_title = self.filter_title_entry.get() if hasattr(self, 'filter_title_entry') else ""
+        self.saved_filter_status = self.filter_status_var.get() if hasattr(self, 'filter_status_var') else "全て"
+        self.saved_filter_source = self.filter_source_var.get() if hasattr(self, 'filter_source_var') else "全て"
+        self.saved_filter_type = self.filter_type_var.get() if hasattr(self, 'filter_type_var') else "全て"
+
         # すべての動画をキャッシュ
         self.all_videos = self.db.get_all_videos()
         self.selected_rows.clear()
 
-        # フィルタをリセット
+        # 保存されたフィルタ状態を復元
         if hasattr(self, 'filter_title_entry'):
             self.filter_title_entry.delete(0, tk.END)
+            self.filter_title_entry.insert(0, self.saved_filter_title)
         if hasattr(self, 'filter_status_var'):
-            self.filter_status_var.set("全て")
+            self.filter_status_var.set(self.saved_filter_status)
         if hasattr(self, 'filter_source_var'):
-            self.filter_source_var.set("全て")
+            self.filter_source_var.set(self.saved_filter_source)
+        if hasattr(self, 'filter_type_var'):
+            self.filter_type_var.set(self.saved_filter_type)
 
         # フィルタを適用して表示
         self.apply_filters()
@@ -274,18 +290,30 @@ class StreamNotifyGUI:
                 ):
                     added_count += 1
 
-            # ★ 新: YouTube Live プラグインで自動分類を実行
-            # RSS取得後、新規追加動画（content_type="video"）をYouTube Liveプラグインで分類
+            # ★ 新: YouTube API プラグインで自動分類を実行
+            # RSS取得後、新規追加動画（content_type="video"）をYouTube APIプラグインで分類
             if added_count > 0:
                 try:
                     pm = PluginManager()
-                    live_plugin = pm.get_plugin("youtube_live_plugin")
-                    if live_plugin and live_plugin.is_available():
-                        logger.info(f"🔍 YouTube Live プラグイン: RSS新規追加動画 {added_count} 件を自動分類します...")
-                        updated = live_plugin._update_unclassified_videos()
-                        logger.info(f"✅ YouTube Live 自動分類完了: {updated} 件更新")
+                    api_plugin = pm.get_plugin("youtube_api_plugin")
+                    if api_plugin and api_plugin.is_available():
+                        logger.info(f"🔍 YouTube API プラグイン: RSS新規追加動画 {added_count} 件を自動分類します...")
+                        db = get_database()
+                        unclassified = [v for v in db.get_all_videos() if v.get("content_type") == "video"]
+                        updated_count = 0
+                        for video in unclassified:
+                            try:
+                                details = api_plugin._get_cached_video_detail(video["video_id"])
+                                if details:
+                                    content_type, live_status, is_premiere = api_plugin._classify_video_core(details)
+                                    db.update_video_status(video["video_id"], content_type, live_status)
+                                    updated_count += 1
+                            except Exception as ve:
+                                logger.debug(f"動画分類エラー {video.get('video_id')}: {ve}")
+                        if updated_count > 0:
+                            logger.info(f"✅ YouTube API 自動分類完了: {updated_count} 件更新")
                 except Exception as e:
-                    logger.warning(f"⚠️ YouTube Live プラグインでの自動分類に失敗: {e}")
+                    logger.warning(f"⚠️ YouTube API プラグインでの自動分類に失敗: {e}")
                     # エラーでも処理を続行
 
             # 結果をメッセージボックスで表示
@@ -313,26 +341,38 @@ DB を再読込みします。
             messagebox.showerror("エラー", f"RSS更新中にエラーが発生しました:\n{e}")
 
     def classify_youtube_live_manually(self):
-        """YouTube Live 判定を手動で今すぐ実行"""
+        """YouTube Live 判定を手動で今すぐ実行（未判定動画を分類）"""
         try:
-            # YouTubeLive プラグインを取得
-            youtube_live_plugin = self.plugin_manager.get_plugin("youtube_live_plugin")
+            # YouTube API プラグインを取得
+            api_plugin = self.plugin_manager.get_plugin("youtube_api_plugin")
 
-            if not youtube_live_plugin:
-                messagebox.showwarning("警告", "YouTube Live プラグインがロードされていません。")
-                logger.warning("⚠️ YouTube Live プラグインが見つかりません")
+            if not api_plugin:
+                messagebox.showwarning("警告", "YouTube APIプラグインがロードされていません。")
+                logger.warning("⚠️ YouTube APIプラグインが見つかりません")
                 return
 
-            if not youtube_live_plugin.is_available():
-                messagebox.showwarning("警告", "YouTube Live プラグインが利用不可です。\n（YouTube API キーが設定されていない可能性があります）")
-                logger.warning("⚠️ YouTube Live プラグインが利用不可")
+            if not api_plugin.is_available():
+                messagebox.showwarning("警告", "YouTube APIプラグインが利用不可です。\n（YouTube API キーが設定されていない可能性があります）")
+                logger.warning("⚠️ YouTube APIプラグインが利用不可")
                 return
 
             # 判定開始を通知
             messagebox.showinfo("YouTube Live判定", "未判定動画のYouTube Live判定を実行中...\n（ウィンドウを閉じないでください）")
 
-            # YouTube Live 判定を実行（on_enable と同じロジック）
-            updated_count = youtube_live_plugin._update_unclassified_videos()
+            # 未判定動画（content_type="video"）を分類
+            db = get_database()
+            unclassified = [v for v in db.get_all_videos() if v.get("content_type") == "video"]
+
+            updated_count = 0
+            for video in unclassified:
+                try:
+                    details = api_plugin._get_cached_video_detail(video["video_id"])
+                    if details:
+                        content_type, live_status, is_premiere = api_plugin._classify_video_core(details)
+                        db.update_video_status(video["video_id"], content_type, live_status)
+                        updated_count += 1
+                except Exception as ve:
+                    logger.debug(f"動画分類エラー {video.get('video_id')}: {ve}")
 
             # 結果をメッセージボックスで表示
             result_msg = f"""
@@ -385,12 +425,16 @@ DB を再読込みします。
             if source_filter_lower != "全て" and source != source_filter_lower:
                 continue
 
-            # タイプフィルタ（動画/アーカイブ/Live）
+            # タイプフィルタ（動画/アーカイブ/Live/プレミア）
             if type_filter != "全て":
                 # 表示用のタイプを計算
                 content_type = video.get("content_type", "video")
+                is_premiere = video.get("is_premiere", 0)
                 source_for_display = video.get("source", "").lower()
-                if source_for_display == "niconico":
+
+                if is_premiere:
+                    display_type = "🎆 プレミア"
+                elif source_for_display == "niconico":
                     display_type = "🎬 動画"
                 elif content_type == "archive":
                     display_type = "📹 アーカイブ"
@@ -1261,6 +1305,204 @@ YouTube:      {youtube_count} 件 (投稿済み: {youtube_posted})
         """
         messagebox.showinfo("統計情報", stats)
 
+    def youtube_live_settings(self):
+        """YouTube Live 投稿設定パネル（B-2: GUI 拡張）"""
+        settings_window = tk.Toplevel(self.root)
+        settings_window.title("YouTube Live 投稿設定")
+        settings_window.geometry("500x600")
+        settings_window.resizable(False, False)
+
+        # === 1. 投稿タイミング設定 ===
+        timing_frame = ttk.LabelFrame(settings_window, text="📅 投稿タイミング")
+        timing_frame.pack(fill=tk.X, padx=10, pady=10)
+
+        self.post_schedule_var = tk.BooleanVar(value=self.config.youtube_live_auto_post_schedule)
+        self.post_live_var = tk.BooleanVar(value=self.config.youtube_live_auto_post_live)
+        self.post_archive_var = tk.BooleanVar(value=self.config.youtube_live_auto_post_archive)
+
+        ttk.Checkbutton(
+            timing_frame,
+            text="📌 予約枠（upcoming）を投稿する",
+            variable=self.post_schedule_var
+        ).pack(anchor=tk.W, padx=10, pady=5)
+
+        ttk.Checkbutton(
+            timing_frame,
+            text="🔴 配信中・終了（live/completed）を投稿する",
+            variable=self.post_live_var
+        ).pack(anchor=tk.W, padx=10, pady=5)
+
+        ttk.Checkbutton(
+            timing_frame,
+            text="🎬 アーカイブ公開を投稿する",
+            variable=self.post_archive_var
+        ).pack(anchor=tk.W, padx=10, pady=5)
+
+        # === 2. 投稿遅延設定 ===
+        delay_frame = ttk.LabelFrame(settings_window, text="⏱️ 投稿遅延設定")
+        delay_frame.pack(fill=tk.X, padx=10, pady=10)
+
+        ttk.Label(delay_frame, text="配信開始後、いつ投稿するか：").pack(anchor=tk.W, padx=10, pady=5)
+
+        self.post_delay_var = tk.StringVar(
+            value=os.getenv("YOUTUBE_LIVE_POST_DELAY", "immediate")
+        )
+
+        delay_options = {
+            "immediate": "⚡ 即座に投稿",
+            "delay_5min": "⏰ 5分後に投稿",
+            "delay_30min": "🕐 30分後に投稿"
+        }
+
+        for value, label in delay_options.items():
+            ttk.Radiobutton(
+                delay_frame,
+                text=label,
+                variable=self.post_delay_var,
+                value=value
+            ).pack(anchor=tk.W, padx=20, pady=3)
+
+        # === 3. 動画種別フィルタ ===
+        filter_frame = ttk.LabelFrame(settings_window, text="🎬 動画種別フィルタ")
+        filter_frame.pack(fill=tk.X, padx=10, pady=10)
+
+        ttk.Label(filter_frame, text="以下の種別を AUTOPOST に含める：").pack(anchor=tk.W, padx=10, pady=5)
+
+        self.include_premiere_var = tk.BooleanVar(
+            value=self.config.autopost_include_premiere
+        )
+
+        ttk.Checkbutton(
+            filter_frame,
+            text="⭐ プレミア配信を投稿する",
+            variable=self.include_premiere_var
+        ).pack(anchor=tk.W, padx=10, pady=5)
+
+        # === 情報パネル ===
+        info_frame = ttk.LabelFrame(settings_window, text="ℹ️ 情報")
+        info_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        info_text = tk.Text(info_frame, wrap=tk.WORD, font=("Courier New", 8), height=8)
+        info_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        info_content = """📝 設定の説明
+
+【投稿タイミング】
+• 予約枠: 配信枠が立った直後
+• 配信中/終了: ライブ配信が開始/終了した時
+• アーカイブ: ライブ配信の動画が保存された時
+
+【投稿遅延】
+• 即座: 検知直後に投稿（スパム判定の可能性）
+• 5分後: 配信開始確認後に投稿
+• 30分後: 配信が安定した後に投稿
+
+【動画種別】
+• プレミア配信: プレミア（ライブ試聴会）
+
+⚠️ YouTube Shorts とメンバー限定動画は、現在のところ
+区別が難しいため非対応扱いです。今後の実装時に対応予定。"""
+
+        info_text.insert(tk.END, info_content)
+        info_text.config(state=tk.DISABLED)
+
+        # === ボタンパネル ===
+        button_frame = ttk.Frame(settings_window)
+        button_frame.pack(fill=tk.X, padx=10, pady=10)
+
+        ttk.Button(
+            button_frame,
+            text="💾 保存して閉じる",
+            command=lambda: self._save_youtube_live_settings(settings_window)
+        ).pack(side=tk.LEFT, padx=5)
+
+        ttk.Button(
+            button_frame,
+            text="キャンセル",
+            command=settings_window.destroy
+        ).pack(side=tk.LEFT, padx=5)
+
+    def _save_youtube_live_settings(self, window):
+        """YouTube Live 設定を config に保存"""
+        try:
+            # 環境変数に一時保存（アプリ再起動時に反映）
+            os.environ["YOUTUBE_LIVE_AUTO_POST_SCHEDULE"] = str(self.post_schedule_var.get()).lower()
+            os.environ["YOUTUBE_LIVE_AUTO_POST_LIVE"] = str(self.post_live_var.get()).lower()
+            os.environ["YOUTUBE_LIVE_AUTO_POST_ARCHIVE"] = str(self.post_archive_var.get()).lower()
+            os.environ["YOUTUBE_LIVE_POST_DELAY"] = self.post_delay_var.get()
+            os.environ["AUTOPOST_INCLUDE_PREMIERE"] = str(self.include_premiere_var.get()).lower()
+
+            # settings.env に書き込み
+            self._update_settings_env(
+                YOUTUBE_LIVE_AUTO_POST_SCHEDULE=str(self.post_schedule_var.get()).lower(),
+                YOUTUBE_LIVE_AUTO_POST_LIVE=str(self.post_live_var.get()).lower(),
+                YOUTUBE_LIVE_AUTO_POST_ARCHIVE=str(self.post_archive_var.get()).lower(),
+                YOUTUBE_LIVE_POST_DELAY=self.post_delay_var.get(),
+                AUTOPOST_INCLUDE_PREMIERE=str(self.include_premiere_var.get()).lower()
+            )
+
+            messagebox.showinfo(
+                "設定保存完了",
+                "YouTube Live 投稿設定を保存しました。\n\n"
+                "変更を反映するにはアプリケーションを再起動してください。"
+            )
+            window.destroy()
+            logger.info("✅ YouTube Live 投稿設定を保存しました")
+
+        except Exception as e:
+            messagebox.showerror("保存失敗", f"設定の保存に失敗しました:\n{e}")
+            logger.error(f"❌ YouTube Live 設定保存エラー: {e}")
+
+    def _update_settings_env(self, **kwargs):
+        """settings.env に設定を書き込み"""
+        settings_file = "settings.env"
+        if not Path(settings_file).exists():
+            logger.warning(f"⚠️ {settings_file} が見つかりません")
+            return
+
+        try:
+            # 既存の内容を読み込み
+            with open(settings_file, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+
+            # 更新対象のキーをセット
+            update_keys = set(kwargs.keys())
+
+            # ファイルを再構築
+            new_lines = []
+            updated_keys = set()
+
+            for line in lines:
+                # コメント行は保持
+                if line.strip().startswith('#') or not line.strip():
+                    new_lines.append(line)
+                    continue
+
+                # キー=値形式を確認
+                if '=' in line:
+                    key = line.split('=')[0].strip()
+                    if key in update_keys:
+                        new_lines.append(f"{key}={kwargs[key]}\n")
+                        updated_keys.add(key)
+                    else:
+                        new_lines.append(line)
+                else:
+                    new_lines.append(line)
+
+            # 新しいキーをファイルの末尾に追加
+            for key in update_keys - updated_keys:
+                new_lines.append(f"{key}={kwargs[key]}\n")
+
+            # ファイルに書き込み
+            with open(settings_file, 'w', encoding='utf-8') as f:
+                f.writelines(new_lines)
+
+            logger.info(f"✅ {len(kwargs)} 個の設定を {settings_file} に保存しました")
+
+        except Exception as e:
+            logger.error(f"❌ settings.env 更新エラー: {e}")
+            raise
+
     def show_plugins(self):
         """導入プラグイン情報を表示"""
         if not self.plugin_manager:
@@ -1564,21 +1806,40 @@ YouTube:      {youtube_count} 件 (投稿済み: {youtube_posted})
         """動画追加ダイアログを表示"""
         dialog = tk.Toplevel(self.root)
         dialog.title("➕ 動画を追加")
-        dialog.geometry("450x300")
+        dialog.geometry("500x380")
         dialog.transient(self.root)
         dialog.grab_set()
 
         # === タイトル ===
-        ttk.Label(dialog, text="YouTube 動画IDを指定して追加", font=("", 12, "bold")).pack(padx=10, pady=10)
+        ttk.Label(dialog, text="動画を手動で追加", font=("", 12, "bold")).pack(padx=10, pady=10)
+
+        # === プラットフォーム選択 ===
+        ttk.Label(dialog, text="プラットフォーム:").pack(padx=10, pady=(10, 5), anchor=tk.W)
+        platform_var = tk.StringVar(value="YouTube")
+        platform_frame = ttk.Frame(dialog)
+        platform_frame.pack(padx=10, pady=5, fill=tk.X)
+
+        ttk.Radiobutton(platform_frame, text="YouTube", variable=platform_var, value="YouTube").pack(side=tk.LEFT, padx=5)
+        ttk.Radiobutton(platform_frame, text="ニコニコ", variable=platform_var, value="Niconico").pack(side=tk.LEFT, padx=5)
 
         # === 説明 ===
-        description = ttk.Label(
-            dialog,
-            text="YouTubeの動画URLまたは動画IDを入力してください。\n\n例：dQw4w9WgXcQ\nまたは：https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-            justify=tk.LEFT,
-            foreground="gray"
-        )
-        description.pack(padx=10, pady=5)
+        description_frame = ttk.Frame(dialog)
+        description_frame.pack(padx=10, pady=5, fill=tk.BOTH, expand=True)
+
+        def update_description(*args):
+            for widget in description_frame.winfo_children():
+                widget.destroy()
+
+            if platform_var.get() == "YouTube":
+                desc_text = "YouTubeの動画URLまたは動画IDを入力してください。\n\n例：dQw4w9WgXcQ\nまたは：https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+            else:
+                desc_text = "ニコニコの動画URLまたは動画IDを入力してください。\n\n例：sm123456789\nまたは：https://www.nicovideo.jp/watch/sm123456789"
+
+            desc = ttk.Label(description_frame, text=desc_text, justify=tk.LEFT, foreground="gray")
+            desc.pack(padx=5, pady=5, anchor=tk.W)
+
+        platform_var.trace("w", update_description)
+        update_description()
 
         # === 入力フィールド ===
         ttk.Label(dialog, text="動画URL / 動画ID:").pack(padx=10, pady=(10, 5), anchor=tk.W)
@@ -1598,23 +1859,32 @@ YouTube:      {youtube_count} 件 (投稿済み: {youtube_posted})
                 return
 
             dialog.destroy()
-            self._add_video_from_id(input_value)
+            self._add_video_from_id(input_value, platform_var.get())
 
         ttk.Button(button_frame, text="✅ 追加", command=on_add).pack(side=tk.LEFT, padx=5)
         ttk.Button(button_frame, text="✖️ キャンセル", command=dialog.destroy).pack(side=tk.LEFT, padx=5)
 
-    def _add_video_from_id(self, input_value: str):
+    def _add_video_from_id(self, input_value: str, platform: str = "YouTube"):
         """動画IDから動画を追加"""
-        logger.info(f"🔍 動画追加を開始: {input_value}")
+        logger.info(f"🔍 {platform} 動画追加を開始: {input_value}")
 
+        if platform == "YouTube":
+            self._add_youtube_video(input_value)
+        elif platform == "Niconico":
+            self._add_niconico_video(input_value)
+        else:
+            messagebox.showerror("エラー", f"対応していないプラットフォーム: {platform}")
+
+    def _add_youtube_video(self, input_value: str):
+        """YouTube 動画を追加"""
         # 動画ID を抽出
         video_id = self._extract_video_id(input_value)
         if not video_id:
             messagebox.showerror("エラー", "有効な YouTube 動画IDが見つかりませんでした")
-            logger.error(f"❌ 動画ID抽出失敗: {input_value}")
+            logger.error(f"❌ YouTube 動画ID抽出失敗: {input_value}")
             return
 
-        logger.info(f"✅ 抽出された動画ID: {video_id}")
+        logger.info(f"✅ 抽出された YouTube 動画ID: {video_id}")
 
         # YouTube API プラグインから動画情報を取得
         if not self.plugin_manager:
@@ -1624,7 +1894,6 @@ YouTube:      {youtube_count} 件 (投稿済み: {youtube_posted})
         # YouTube API プラグインを取得
         youtube_api_plugin = None
         try:
-            # プラグイン一覧から youtube_api_plugin を探す
             plugins = self.plugin_manager.get_enabled_plugins()
             for plugin_name, plugin_instance in plugins.items():
                 if "youtube_api" in plugin_name.lower():
@@ -1639,8 +1908,6 @@ YouTube:      {youtube_count} 件 (投稿済み: {youtube_posted})
 
             # 動画情報を取得
             logger.info(f"🌐 YouTube API から動画情報を取得: {video_id}")
-
-            # YouTube API プラグインの _fetch_video_detail メソッドを使用
             video_details = youtube_api_plugin._fetch_video_detail(video_id)
 
             if not video_details:
@@ -1653,9 +1920,9 @@ YouTube:      {youtube_count} 件 (投稿済み: {youtube_posted})
             snippet = video_details.get("snippet", {})
 
             # ★ ライブ判定を実行（API データから）
-            from plugins.youtube_live_plugin import YouTubeLivePlugin
-            live_plugin = YouTubeLivePlugin()
-            content_type, live_status, is_premiere = live_plugin._classify_live(video_details)
+            from plugins.youtube_api_plugin import YouTubeAPIPlugin
+            api_plugin = YouTubeAPIPlugin()
+            content_type, live_status, is_premiere = api_plugin._classify_video_core(video_details)
 
             # サムネイル URL を取得
             thumbnail_url = snippet.get("thumbnails", {}).get("high", {}).get("url", "")
@@ -1675,9 +1942,9 @@ YouTube:      {youtube_count} 件 (投稿済み: {youtube_posted})
                 "published_at": published_at,
                 "channel_name": snippet.get("channelTitle", ""),
                 "thumbnail_url": thumbnail_url,
-                "content_type": content_type,      # ★ LIVE判定結果
-                "live_status": live_status,        # ★ LIVE判定結果
-                "is_premiere": is_premiere,        # ★ LIVE判定結果
+                "content_type": content_type,
+                "live_status": live_status,
+                "is_premiere": is_premiere,
                 "source": "youtube"
             }
 
@@ -1719,18 +1986,116 @@ YouTube:      {youtube_count} 件 (投稿済み: {youtube_posted})
                     except Exception as e:
                         logger.warning(f"⚠️ サムネイルダウンロード失敗（継続）: {e}")
 
-                logger.info(f"✅ 動画情報を取得・保存しました: {video_id} (content_type={content_type}, live_status={live_status})")
-                messagebox.showinfo("成功", f"✅ 動画を追加しました\n\n{video_dict['title'][:60]}...\n\nコンテンツ種別: {content_type}\n配信状態: {live_status or 'なし'}")
+                logger.info(f"✅ YouTube 動画を追加しました: {video_id} (content_type={content_type}, live_status={live_status})")
+                messagebox.showinfo("成功", f"YouTube 動画を追加しました:\n{video_dict['title']}")
                 self.refresh_data()
             else:
-                logger.warning(f"⚠️ 動画をDBに保存できませんでした: {video_id}")
-                messagebox.showinfo("情報", "動画情報を取得しましたが、DB 保存に失敗しました\n\n手動で動画情報を入力してください")
-                self._add_video_manual(video_id)
+                logger.warning(f"⚠️ DB 保存に失敗しました: {video_id}")
+                messagebox.showerror("エラー", "動画情報の保存に失敗しました")
 
         except Exception as e:
-            logger.error(f"❌ 動画追加エラー: {e}", exc_info=True)
-            messagebox.showerror("エラー", f"動画追加に失敗しました:\n{str(e)}\n\n手動で動画情報を入力してください")
-            self._add_video_manual(video_id)
+            logger.error(f"❌ YouTube 動画追加エラー: {e}", exc_info=True)
+            messagebox.showerror("エラー", f"エラーが発生しました:\n{e}")
+
+    def _add_niconico_video(self, input_value: str):
+        """ニコニコ動画を追加"""
+        # ニコニコ動画ID を抽出
+        video_id = self._extract_niconico_video_id(input_value)
+        if not video_id:
+            messagebox.showerror("エラー", "有効なニコニコ動画IDが見つかりませんでした\n(例: sm123456789)")
+            logger.error(f"❌ ニコニコ 動画ID抽出失敗: {input_value}")
+            return
+
+        logger.info(f"✅ 抽出されたニコニコ動画ID: {video_id}")
+
+        # ニコニコプラグインを取得
+        if not self.plugin_manager:
+            messagebox.showerror("エラー", "プラグインマネージャーが初期化されていません")
+            return
+
+        niconico_plugin = None
+        try:
+            plugins = self.plugin_manager.get_enabled_plugins()
+            for plugin_name, plugin_instance in plugins.items():
+                if "niconico" in plugin_name.lower():
+                    niconico_plugin = plugin_instance
+                    break
+
+            if not niconico_plugin:
+                logger.warning("⚠️ ニコニコプラグインが有効化されていません")
+                messagebox.showwarning("警告", "ニコニコプラグインが有効化されていません\n\nニコニコユーザーIDを設定.envで設定してください")
+                return
+
+            # 動画情報を取得
+            logger.info(f"🌐 ニコニコ API から動画情報を取得: {video_id}")
+
+            # ニコニコプラグインから動画情報を取得
+            video_details = niconico_plugin.get_video_details(video_id)
+
+            if not video_details:
+                logger.warning(f"⚠️ ニコニコ API での取得に失敗しました: {video_id}")
+                messagebox.showerror("エラー", f"ニコニコ動画情報の取得に失敗しました:\n{video_id}")
+                return
+
+            # 動画情報を構築
+            video_id_clean = video_id if video_id.startswith("sm") or video_id.startswith("so") else f"sm{video_id}"
+
+            published_at = video_details.get("published_at", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+
+            video_dict = {
+                "video_id": video_id_clean,
+                "title": video_details.get("title", f"【ニコニコ】{video_id_clean}"),
+                "video_url": f"https://www.nicovideo.jp/watch/{video_id_clean}",
+                "published_at": published_at,
+                "channel_name": video_details.get("channel_name", video_details.get("user_name", "")),
+                "thumbnail_url": video_details.get("thumbnail_url", ""),
+                "source": "niconico"
+            }
+
+            # DB に保存
+            success = self.db.insert_video(
+                video_id=video_dict["video_id"],
+                title=video_dict["title"],
+                video_url=video_dict["video_url"],
+                published_at=video_dict["published_at"],
+                channel_name=video_dict["channel_name"],
+                thumbnail_url=video_dict.get("thumbnail_url", ""),
+                source=video_dict["source"],
+                skip_dedup=True  # ★ 手動追加は重複排除をスキップ
+            )
+
+            if success:
+                # ★ 手動追加後にサムネイルをダウンロード
+                if video_dict.get("thumbnail_url") and self.image_manager:
+                    try:
+                        logger.info(f"📥 手動追加後、サムネイル画像をダウンロード中: {video_id_clean}")
+                        image_filename = self.image_manager.download_and_save_thumbnail(
+                            thumbnail_url=video_dict["thumbnail_url"],
+                            site="Niconico",
+                            video_id=video_id_clean,
+                            mode="autopost"
+                        )
+                        # ★ ダウンロード成功時、DB に画像情報を登録
+                        if image_filename:
+                            self.db.update_image_info(
+                                video_id=video_id_clean,
+                                image_mode="autopost",
+                                image_filename=image_filename
+                            )
+                            logger.info(f"✅ DB に画像情報を登録しました: {video_id_clean} → {image_filename}")
+                    except Exception as e:
+                        logger.warning(f"⚠️ サムネイルダウンロード失敗（継続）: {e}")
+
+                logger.info(f"✅ ニコニコ動画を追加しました: {video_id_clean}")
+                messagebox.showinfo("成功", f"ニコニコ動画を追加しました:\n{video_dict['title']}")
+                self.refresh_data()
+            else:
+                logger.warning(f"⚠️ DB 保存に失敗しました: {video_id_clean}")
+                messagebox.showerror("エラー", "動画情報の保存に失敗しました")
+
+        except Exception as e:
+            logger.error(f"❌ ニコニコ動画追加エラー: {e}", exc_info=True)
+            messagebox.showerror("エラー", f"エラーが発生しました:\n{e}")
 
     def _video_exists(self, video_id: str) -> bool:
         """動画がDBに存在するか確認"""
@@ -1767,6 +2132,24 @@ YouTube:      {youtube_count} 件 (投稿済み: {youtube_posted})
 
         # 11文字の動画ID の場合はそのまま
         if len(input_value) == 11 and re.match(r'^[a-zA-Z0-9_-]{11}$', input_value):
+            return input_value
+
+        return None
+
+    def _extract_niconico_video_id(self, input_value: str) -> str:
+        """URLまたは ID からニコニコ動画IDを抽出"""
+        input_value = input_value.strip()
+
+        # パターンマッチング
+        import re
+
+        # nicovideo.jp/watch/sm123456789 または so123456789
+        match = re.search(r'watch/((?:sm|so)\d+)', input_value)
+        if match:
+            return match.group(1)
+
+        # sm123456789 または so123456789 の直接入力
+        if re.match(r'^(?:sm|so)\d+$', input_value):
             return input_value
 
         return None
@@ -1818,8 +2201,9 @@ YouTube:      {youtube_count} 件 (投稿済み: {youtube_posted})
                     pass
 
                 # ライブ判定
-                live_plugin = YouTubeLivePlugin()
-                content_type, live_status, is_premiere = live_plugin._classify_live(details)
+                from plugins.youtube_api_plugin import YouTubeAPIPlugin
+                api_plugin = YouTubeAPIPlugin()
+                content_type, live_status, is_premiere = api_plugin._classify_video_core(details)
 
                 # サムネイル URL
                 thumbnail_url = snippet.get("thumbnails", {}).get("high", {}).get("url", "")
@@ -2279,8 +2663,10 @@ class PostSettingsWindow:
                     # ★ dry_run フラグを渡す
                     results = self.plugin_manager.post_video_with_all_enabled(video_with_settings, dry_run=dry_run)
                     logger.info(f"投稿結果: {results}")
-                    if any(results.values()) and not dry_run:
+                    if any(results.values()) or dry_run:
                         self.db.mark_as_posted(video["video_id"])
+                        if dry_run:
+                            logger.info(f"🧪 画像添付投稿ドライラン完了（投稿済みフラグ登録）")
                 else:
                     messagebox.showerror("エラー", "プラグインマネージャが初期化されていません")
                     return
@@ -2293,9 +2679,14 @@ class PostSettingsWindow:
                     # ★ dry_run フラグを渡す
                     results = self.plugin_manager.post_video_with_all_enabled(video_with_settings, dry_run=dry_run)
                     logger.info(f"投稿結果: {results}")
+                    if any(results.values()) or dry_run:
+                        try:
+                            self.db.mark_as_posted(video["video_id"])
+                            if dry_run:
+                                logger.info(f"🧪 テンプレート投稿ドライラン完了（投稿済みフラグ登録）")
+                        except Exception as db_err:
+                            logger.error(f"❌ 投稿済みフラグ登録エラー: {db_err}", exc_info=True)
                     success = any(results.values())  # 任意のプラグイン成功で OK
-                    if success and not dry_run:
-                        self.db.mark_as_posted(video["video_id"])
                 elif self.bluesky_core:
                     # フォールバック：プラグインがない場合はコア機能を直接呼び出し
                     logger.info(f"📤 コア機能で投稿（テンプレート非対応、シンプルテキストのみ）: {video['title']}")
@@ -2308,14 +2699,28 @@ class PostSettingsWindow:
                     if hasattr(self.bluesky_core, 'set_dry_run'):
                         self.bluesky_core.set_dry_run(dry_run)
                     success = self.bluesky_core.post_video_minimal(video_with_settings)
-                    if success and not dry_run:
-                        self.db.mark_as_posted(video["video_id"])
+                    if success or dry_run:
+                        try:
+                            self.db.mark_as_posted(video["video_id"])
+                            if dry_run:
+                                logger.info(f"🧪 コア機能投稿ドライラン完了（投稿済みフラグ登録）")
+                        except Exception as db_err:
+                            logger.error(f"❌ 投稿済みフラグ登録エラー: {db_err}", exc_info=True)
                 else:
                     messagebox.showerror("エラー", "プラグインもコア機能も初期化されていません")
                     return
 
             msg = f"{'✅ 投稿テスト完了' if dry_run else '✅ 投稿完了'}\n\n{video['title'][:60]}...\n\n投稿方法: {mode_str}"
             messagebox.showinfo("成功", msg)
+
+            # ★ ドライラン時は親ウィンドウを自動更新
+            if dry_run:
+                try:
+                    logger.info("🔄 ドライラン完了後、親ウィンドウを自動更新します...")
+                    self.parent_window.refresh_data()
+                    logger.info("✅ 親ウィンドウを更新しました")
+                except Exception as e:
+                    logger.warning(f"⚠️  親ウィンドウの自動更新に失敗: {e}")
 
             # ★ 投稿テスト後でも選択状態を更新（投稿テストは投稿済み扱いにしない）
             if not dry_run:

@@ -40,7 +40,7 @@ logger = logging.getLogger("AppLogger")
 
 __author__ = "mayuneco(mayunya)"
 __copyright__ = "Copyright (C) 2025 mayuneco(mayunya)"
-__license__ = "GPLv3"
+__license__ = "GPLv2"
 
 # ============ UI定義 ============
 
@@ -420,4 +420,3 @@ if __name__ == "__main__":
     test_btn.pack(padx=20, pady=20, fill="x")
 
     root.mainloop()
-

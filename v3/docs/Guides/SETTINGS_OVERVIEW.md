@@ -40,8 +40,6 @@
 - `AUTOPOST_LOOKBACK_MINUTES` (デフォルト: 30) - 時間窓
 - `AUTOPOST_UNPOSTED_THRESHOLD` (デフォルト: 20) - 未投稿閾値
 - `AUTOPOST_INCLUDE_NORMAL` - 通常動画を投稿
-- `AUTOPOST_INCLUDE_SHORTS` - YouTube Shortsを投稿
-- `AUTOPOST_INCLUDE_MEMBER_ONLY` - メンバー限定動画を投稿
 - `AUTOPOST_INCLUDE_PREMIERE` - プレミア配信を投稿
 
 ---

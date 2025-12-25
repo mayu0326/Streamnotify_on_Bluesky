@@ -38,7 +38,7 @@ class LFRotatingFileHandler(RotatingFileHandler):
 
 __author__ = "mayuneco(mayunya)"
 __copyright__ = "Copyright (C) 2025 mayuneco(mayunya)"
-__license__ = "GPLv3"
+__license__ = "GPLv2"
 
 
 def _try_load_logging_plugin():
@@ -219,4 +219,3 @@ def _apply_debug_mode(logger):
             target_logger.setLevel(logging.DEBUG)
 
     logger.debug("🔍 デバッグモードが有効になりました")
-

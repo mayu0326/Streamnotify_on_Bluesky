@@ -43,7 +43,7 @@ __version__ = "2.1.0"                    # セマンティックバージョニ�
 __release_date__ = "2025-12-17"         # リリース日
 __status__ = "development"               # development/alpha/beta/stable
 __author__ = "mayuneco(mayunya)"
-__license__ = "GPLv3"
+__license__ = "GPLv2"
 
 # CI/CD で自動設定（Git タグ作成時）
 __git_commit__ = ""                      # GitコミットハッシュSHA1
@@ -70,7 +70,7 @@ full_info = get_full_version_info()
 #     "release_date": "2025-12-17",
 #     "status": "development",
 #     "author": "mayuneco(mayunya)",
-#     "license": "GPLv3",
+#     "license": "GPLv2",
 #     "git_commit": "abc1234...",
 #     "git_branch": "feature/local",
 #     "formatted": "v3.1.0 (2025-12-17) [development]"
@@ -119,7 +119,7 @@ v[MAJOR].[MINOR].[PATCH]
 __version__ = "1.0.0"
 __author__ = "mayuneco(mayunya)"
 __copyright__ = "Copyright (C) 2025 mayuneco(mayunya)"
-__license__ = "GPLv3"
+__license__ = "GPLv2"
 ```
 
 **役割**: Bluesky コア機能（ポスト、Rich Text Facet、認証、DRY RUN）
@@ -134,7 +134,7 @@ __license__ = "GPLv3"
 __version__ = "1.0.0"
 __author__ = "mayuneco(mayunya)"
 __copyright__ = "Copyright (C) 2025 mayuneco(mayunya)"
-__license__ = "GPLv3"
+__license__ = "GPLv2"
 ```
 
 **役割**: サムネイル画像取得・管理、画像情報検出

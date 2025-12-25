@@ -25,7 +25,7 @@ post_logger = logging.getLogger("PostLogger")
 
 __author__ = "mayuneco(mayunya)"
 __copyright__ = "Copyright (C) 2025 mayuneco(mayunya)"
-__license__ = "GPLv3"
+__license__ = "GPLv2"
 
 __version__ = "1.0.0"
 
@@ -454,4 +454,3 @@ class BlueskyMinimalPoster:
         except Exception as e:
             post_logger.warning(f"⚠️ リンクカード構築失敗: {e}")
             return None
-
