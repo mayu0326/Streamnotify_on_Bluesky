@@ -20,9 +20,7 @@ from PIL import Image
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from image_manager import get_image_manager
 from bluesky_core import BlueskyMinimalPoster
-import image_processor
-
-
+from image_processor import resize_image
 
 logger = logging.getLogger("AppLogger")
 post_logger = logging.getLogger("PostLogger")
