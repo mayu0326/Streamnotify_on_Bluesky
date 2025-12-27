@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 """
-本番サーバー API クライアント - WebSub データ取得用（HTTP 経由）
+Websubサーバー HTTP API クライアント - WebSub データ取得用（HTTP 経由）
 
 本番サーバー (https://webhook.neco-server.net) の HTTP API を使用して、
 WebSub で集積されたビデオデータを取得する。
@@ -53,13 +53,13 @@ class ProductionServerAPIClient:
         try:
             # ★ 改善: /health ヘルスチェック用エンドポイントでテスト
             url = f"{self.base_url}/health"
-            logger.debug(f"🔍 本番サーバー API 接続テスト: {url}")
+            logger.debug(f"🔍 Websubサーバー HTTP API 接続テスト: {url}")
             response = requests.get(url, timeout=self.timeout)
 
             if response.status_code == 200:
-                logger.info(f"✅ 本番サーバー API 接続成功: {self.base_url}")
+                logger.info(f"✅ Websubサーバー HTTP API 接続成功: {self.base_url}")
             else:
-                logger.warning(f"⚠️ 本番サーバー API 応答コード: {response.status_code}")
+                logger.warning(f"⚠️ Websubサーバー HTTP API 応答コード: {response.status_code}")
                 logger.warning(f"   テスト URL: {url}")
                 logger.warning(f"   レスポンス: {response.text[:200] if response.text else '(empty)'}")
 
@@ -114,14 +114,14 @@ class ProductionServerAPIClient:
                 "limit": limit
             }
 
-            logger.debug(f"📥 本番サーバー API リクエスト: {url} params={params}")
+            logger.debug(f"📥 Websubサーバー HTTP API リクエスト: {url} params={params}")
             response = requests.get(url, params=params, timeout=self.timeout)
             response.raise_for_status()
 
             data = response.json()
             items = data.get("items", [])
 
-            logger.debug(f"📥 本番サーバー API から {len(items)} 件のビデオを取得")
+            logger.debug(f"📥 Websubサーバー HTTP API から {len(items)} 件のビデオを取得")
 
             return items
 
@@ -210,7 +210,7 @@ def get_production_api_client(base_url: str = None) -> ProductionServerAPIClient
     ProductionServerAPIClient のシングルトンインスタンスを取得
 
     Args:
-        base_url: 本番サーバー API のベース URL（省略可）
+        base_url: Websubサーバー HTTP API のベース URL（省略可）
 
     Returns:
         ProductionServerAPIClient インスタンス

@@ -1,7 +1,6 @@
 # テスト用スクリプト（一時的な検証・デバッグ用）
 test_scripts/
 **/test_settings/*
-
 **/.venv/*
 **/.vscode/*
 .env
@@ -11,8 +10,6 @@ test_scripts/
 **/v3/logs/*
 **/v2/logs/*
 **/v1/logs/*
-**/OLD_App/*
-**/test/*
 __pycache__
 **/v1/data/*
 **/v2/data/*
@@ -26,6 +23,4 @@ __pycache__
 Streamnotify_on_Bluesky.code-workspace
 .editorconfig
 .gitattributes
-**/YouTube_ALL_DATA/*
-**/YouTube_ALL_DATA/yt/*
 **/data/*

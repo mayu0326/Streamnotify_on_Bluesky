@@ -411,174 +411,6 @@ class NiconicoPlugin(NotificationPlugin):
         logger.debug(f"[RSS取得] 動画: {url}")
         return self._fetch_rss_with_retry(url, kind="video")
 
-    def get_video_details(self, video_id: str) -> Optional[Dict[str, Any]]:
-        """
-        ニコニコ動画の詳細情報を取得（GUI マニュアル追加用）
-
-        Args:
-            video_id: ニコニコ動画ID（sm123456789 など）
-
-        Returns:
-            dict: {video_id, title, video_url, published_at, channel_name, thumbnail_url}
-                  取得失敗時は None
-        """
-        if not video_id:
-            logger.error("[get_video_details] video_id が空です")
-            return None
-
-        try:
-            # ニコニコ動画ページから情報を取得
-            video_url = f"https://www.nicovideo.jp/watch/{video_id}"
-            logger.debug(f"[get_video_details] 取得開始: {video_id}")
-
-            # ページ取得
-            try:
-                response = requests.get(video_url, timeout=NICONICO_USER_PAGE_TIMEOUT)
-                response.raise_for_status()
-            except requests.RequestException as e:
-                logger.warning(f"[get_video_details] ページ取得失敗: {video_id} - {e}")
-                return None
-
-            # OGP メタデータから情報を抽出
-            soup = BeautifulSoup(response.content, 'html.parser')
-
-            # OGP メタデータを取得
-            title = ""
-            description = ""
-            for meta in soup.find_all('meta'):
-                property_name = meta.get('property', '') or meta.get('name', '')
-                content = meta.get('content', '')
-
-                if property_name == 'og:title':
-                    title = content
-                elif property_name == 'og:description':
-                    description = content
-
-            # タイトルが取得できなければ動画URL としてスキップ
-            if not title:
-                logger.warning(f"[get_video_details] タイトルが取得できません: {video_id}")
-                title = "[ニコニコ]"
-
-            # ユーザー名を取得
-            author = self._get_user_name()
-
-            # 🔧 修正: ニコニコページから公開日時を抽出（優先度順）
-            from datetime import datetime, timezone
-            published_at = None
-
-            # 優先度1: video:release_date メタタグから取得（最も正確）
-            try:
-                for meta in soup.find_all('meta'):
-                    if meta.get('property') == 'video:release_date':
-                        published_at = meta.get('content', '')
-                        if published_at:
-                            logger.debug(f"[get_video_details] video:release_date から取得: {published_at}")
-                            break
-            except Exception as e:
-                logger.debug(f"[get_video_details] video:release_date からの抽出失敗: {e}")
-
-            # 優先度2: article:published_time メタタグから取得
-            if not published_at:
-                try:
-                    for meta in soup.find_all('meta'):
-                        if meta.get('property') == 'article:published_time':
-                            published_at = meta.get('content', '')
-                            if published_at:
-                                logger.debug(f"[get_video_details] article:published_time から取得: {published_at}")
-                                break
-                except Exception as e:
-                    logger.debug(f"[get_video_details] meta タグからの抽出失敗: {e}")
-
-            # 優先度3: ニコニコページの data-initial-state JSON から createTime を抽出
-            if not published_at:
-                try:
-                    import json
-                    initial_state = soup.find("script", {"id": "__NUXT_STATE__"})
-                    if initial_state:
-                        state_text = initial_state.string
-                        if state_text:
-                            # createTime を正規表現で抽出
-                            match = re.search(r'"createTime":"([^"]+)"', state_text)
-                            if match:
-                                published_at = match.group(1)
-                                logger.debug(f"[get_video_details] createTime 抽出成功: {published_at}")
-                except Exception as e:
-                    logger.debug(f"[get_video_details] data-initial-state からの抽出失敗: {e}")
-
-            # 優先度4: RSS から取得（RSS が利用可能な場合）
-            if not published_at:
-                try:
-                    rss_data = self._fetch_rss_with_retry(
-                        f"https://www.nicovideo.jp/user/{self.user_id}/video/rss",
-                        kind="video"
-                    )
-                    if rss_data and rss_data.get("published"):
-                        published_at = rss_data["published"]
-                        logger.debug(f"[get_video_details] RSS から取得: {published_at}")
-                except Exception as e:
-                    logger.debug(f"[get_video_details] RSS からの取得失敗: {e}")
-
-            # 絶対的なフォールバック: 現在時刻（手動追加時の日時として記録）
-            if not published_at:
-                # ⚠️ 警告: 正確な公開日時が取得できません
-                logger.warning(f"[get_video_details] 公開日時が取得できません（手動入力で現在時刻を使用）: {video_id}")
-                published_at = datetime.now(timezone.utc).isoformat()
-            else:
-                # 既に ISO 8601 形式の場合はそのまま使用、そうでない場合は変換
-                if "T" not in str(published_at):
-                    try:
-                        # RFC 2822 形式（RSS）等から ISO 8601 形式に変換
-                        # 例: "Mon, 17 Sep 2025 19:03:00 +0900" → "2025-09-17T19:03:00+09:00"
-                        published_str = str(published_at).strip()
-
-                        # 簡易パーサ: "YYYY-MM-DD HH:MM:SS" や "Mon, DD Mmm YYYY HH:MM:SS" に対応
-                        if "," in published_str and len(published_str) > 15:
-                            # RFC 2822 形式を想定
-                            try:
-                                # Python 標準 email.utils を使用
-                                from email.utils import parsedate_to_datetime
-                                dt = parsedate_to_datetime(published_str)
-                                published_at = dt.isoformat()
-                            except Exception:
-                                # パース失敗時は元のまま
-                                logger.debug(f"[get_video_details] RFC 2822 パース失敗: {published_str}")
-                        elif "-" in published_str and ":" in published_str:
-                            # "YYYY-MM-DD HH:MM:SS" または "YYYY-MM-DDTHH:MM:SS" 形式
-                            try:
-                                # スペースをT に置換して ISO 8601 形式に
-                                if " " in published_str and "T" not in published_str:
-                                    published_str = published_str.replace(" ", "T")
-                                # タイムゾーン情報がない場合は UTC を追加
-                                if "+" not in published_str and "Z" not in published_str:
-                                    published_str += "Z"
-                                published_at = published_str
-                            except Exception:
-                                pass
-                    except Exception:
-                        # パース失敗時は元のまま（DB で検証される）
-                        pass
-
-            # サムネイル URL を取得
-            thumbnail_url = self._fetch_thumbnail_url(video_id) or ""
-
-            # 詳細情報を辞書として返す
-            result = {
-                "video_id": video_id,
-                "title": title,
-                "video_url": video_url,
-                "published_at": published_at,
-                "channel_name": author,
-                "thumbnail_url": thumbnail_url,
-                "source": "niconico",
-            }
-
-            logger.debug(f"[get_video_details] 取得成功: {video_id} - {title} - published_at={published_at}")
-            return result
-
-        except Exception as e:
-            logger.error(f"[get_video_details] エラー: {video_id} - {type(e).__name__}: {e}")
-            return None
-
     def _fetch_rss_with_retry(self, url: str, kind: str = "video") -> Optional[Dict[str, Any]]:
         """
         RSS を取得（リトライロジック付き）
@@ -782,6 +614,201 @@ class NiconicoPlugin(NotificationPlugin):
         ogp_url = get_niconico_ogp_url(video_id)
         if ogp_url:
             return ogp_url
+        return None
+
+    def get_video_details(self, video_id: str) -> Optional[Dict[str, Any]]:
+        """
+        ニコニコ動画の詳細情報を取得（GUI マニュアル追加用）
+
+        Args:
+            video_id: ニコニコ動画ID（sm123456789 など）
+
+        Returns:
+            dict: {video_id, title, video_url, published_at, channel_name, thumbnail_url}
+                  取得失敗時は None
+        """
+        if not video_id:
+            logger.error("[get_video_details] video_id が空です")
+            return None
+
+        try:
+            # ニコニコ動画ページから情報を取得
+            video_url = f"https://www.nicovideo.jp/watch/{video_id}"
+            logger.debug(f"[get_video_details] 取得開始: {video_id}")
+
+            # ページ取得
+            try:
+                response = requests.get(video_url, timeout=NICONICO_USER_PAGE_TIMEOUT)
+                response.raise_for_status()
+            except requests.RequestException as e:
+                logger.warning(f"[get_video_details] ページ取得失敗: {video_id} - {e}")
+                return None
+
+            # OGP メタデータから情報を抽出
+            soup = BeautifulSoup(response.content, 'html.parser')
+
+            # OGP メタデータを取得
+            title = ""
+            description = ""
+            for meta in soup.find_all('meta'):
+                property_name = meta.get('property', '') or meta.get('name', '')
+                content = meta.get('content', '')
+
+                if property_name == 'og:title':
+                    title = content
+                elif property_name == 'og:description':
+                    description = content
+
+            # タイトルが取得できなければ動画URL としてスキップ
+            if not title:
+                logger.warning(f"[get_video_details] タイトルが取得できません: {video_id}")
+                title = "[ニコニコ]"
+
+            # ユーザー名を取得
+            author = self._get_user_name()
+
+            # 公開日時を抽出（優先度順）
+            from datetime import datetime, timezone
+            published_at = None
+
+            # 優先度1: video:release_date メタタグから取得（最も正確）
+            try:
+                for meta in soup.find_all('meta'):
+                    if meta.get('property') == 'video:release_date':
+                        published_at = meta.get('content', '')
+                        if published_at:
+                            logger.debug(f"[get_video_details] video:release_date から取得: {published_at}")
+                            break
+            except Exception as e:
+                logger.debug(f"[get_video_details] video:release_date からの抽出失敗: {e}")
+
+            # 優先度2: article:published_time メタタグから取得
+            if not published_at:
+                try:
+                    for meta in soup.find_all('meta'):
+                        if meta.get('property') == 'article:published_time':
+                            published_at = meta.get('content', '')
+                            if published_at:
+                                logger.debug(f"[get_video_details] article:published_time から取得: {published_at}")
+                                break
+                except Exception as e:
+                    logger.debug(f"[get_video_details] meta タグからの抽出失敗: {e}")
+
+            # 優先度3: ニコニコページの data-initial-state JSON から createTime を抽出
+            if not published_at:
+                try:
+                    import json
+                    initial_state = soup.find("script", {"id": "__NUXT_STATE__"})
+                    if initial_state:
+                        state_text = initial_state.string
+                        if state_text:
+                            # createTime を正規表現で抽出
+                            match = re.search(r'"createTime":"([^"]+)"', state_text)
+                            if match:
+                                published_at = match.group(1)
+                                logger.debug(f"[get_video_details] createTime 抽出成功: {published_at}")
+                except Exception as e:
+                    logger.debug(f"[get_video_details] data-initial-state からの抽出失敗: {e}")
+
+            # 絶対的なフォールバック: 現在時刻（手動追加時の日時として記録）
+            if not published_at:
+                # 警告: 正確な公開日時が取得できません
+                logger.warning(f"[get_video_details] 公開日時が取得できません（手動入力で現在時刻を使用）: {video_id}")
+                published_at = datetime.now(timezone.utc).isoformat()
+            else:
+                # 既に ISO 8601 形式の場合はそのまま使用、そうでない場合は変換
+                if "T" not in str(published_at):
+                    try:
+                        published_str = str(published_at).strip()
+
+                        # 簡易パーサ: "YYYY-MM-DD HH:MM:SS" や "Mon, DD Mmm YYYY HH:MM:SS" に対応
+                        if "," in published_str and len(published_str) > 15:
+                            # RFC 2822 形式を想定
+                            try:
+                                from email.utils import parsedate_to_datetime
+                                dt = parsedate_to_datetime(published_str)
+                                published_at = dt.isoformat()
+                            except Exception:
+                                logger.debug(f"[get_video_details] RFC 2822 パース失敗: {published_str}")
+                        elif "-" in published_str and ":" in published_str:
+                            # "YYYY-MM-DD HH:MM:SS" または "YYYY-MM-DDTHH:MM:SS" 形式
+                            try:
+                                if " " in published_str and "T" not in published_str:
+                                    published_str = published_str.replace(" ", "T")
+                                # タイムゾーン情報がない場合は UTC を追加
+                                if "+" not in published_str and "Z" not in published_str:
+                                    published_str += "Z"
+                                published_at = published_str
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+
+            # サムネイル URL を取得
+            thumbnail_url = self._fetch_thumbnail_url(video_id) or ""
+
+            # 詳細情報を辞書として返す
+            result = {
+                "video_id": video_id,
+                "title": title,
+                "video_url": video_url,
+                "published_at": published_at,
+                "channel_name": author,
+                "thumbnail_url": thumbnail_url,
+                "source": "niconico",
+            }
+
+            logger.debug(f"[get_video_details] 取得成功: {video_id} - {title} - published_at={published_at}")
+            return result
+
+        except Exception as e:
+            logger.error(f"[get_video_details] エラー: {video_id} - {type(e).__name__}: {e}")
+            return None
+
+    def _fetch_rss_with_retry(self, url: str, kind: str = "video") -> Optional[Dict[str, Any]]:
+        """
+        RSS を取得（リトライロジック付き）
+
+        Args:
+            url: RSS フィード URL
+            kind: "video"
+
+        Returns:
+            dict または None
+        """
+        for attempt in range(1, RSS_RETRY_MAX + 1):
+            try:
+                logger.debug(f"[RSS取得試行] {attempt}/{RSS_RETRY_MAX}")
+
+                # feedparser は timeout パラメータに対応していないため、
+                # 基本的なエラーハンドリングのみ実装
+                feed = feedparser.parse(url)
+
+                # feedparser のエラーチェック
+                if hasattr(feed, 'bozo_exception') and feed.bozo_exception:
+                    raise feed.bozo_exception
+
+                if feed.entries:
+                    entry = feed.entries[0]
+                    result = {
+                        "id": entry.get("id", ""),
+                        "title": entry.get("title", ""),
+                        "link": entry.get("link", ""),
+                        "published": entry.get("published", ""),
+                        "author": entry.get("author", ""),
+                    }
+                    logger.debug(f"[RSS取得成功] entry_id={result.get('id')}")
+                    return result
+
+                logger.debug(f"[RSS取得] エントリなし（フィード空）")
+                return None
+
+            except Exception as e:
+                logger.warning(f"[RSS取得失敗] 試行 {attempt}/{RSS_RETRY_MAX}: {type(e).__name__}: {e}")
+                if attempt < RSS_RETRY_MAX:
+                    time.sleep(RSS_RETRY_WAIT)
+
+        logger.error(f"[RSS取得] 最大リトライ回数に達しました")
         return None
 
     def on_interval(self):

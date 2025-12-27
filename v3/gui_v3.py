@@ -54,12 +54,6 @@ class StreamNotifyGUI:
         self.all_videos = []  # フィルタ前のすべての動画
         self.filtered_videos = []  # フィルタ後の動画
 
-        # フィルタ状態を保持するための変数（refresh_data時に復元するため）
-        self.saved_filter_title = ""
-        self.saved_filter_status = "全て"
-        self.saved_filter_source = "全て"
-        self.saved_filter_type = "全て"
-
         self.setup_ui()
         self.refresh_data()
 
@@ -228,26 +222,17 @@ class StreamNotifyGUI:
 
     def refresh_data(self):
         """DB から最新データを取得して表示"""
-        # 現在のフィルタ状態を保存
-        self.saved_filter_title = self.filter_title_entry.get() if hasattr(self, 'filter_title_entry') else ""
-        self.saved_filter_status = self.filter_status_var.get() if hasattr(self, 'filter_status_var') else "全て"
-        self.saved_filter_source = self.filter_source_var.get() if hasattr(self, 'filter_source_var') else "全て"
-        self.saved_filter_type = self.filter_type_var.get() if hasattr(self, 'filter_type_var') else "全て"
-
         # すべての動画をキャッシュ
         self.all_videos = self.db.get_all_videos()
         self.selected_rows.clear()
 
-        # 保存されたフィルタ状態を復元
+        # フィルタをリセット
         if hasattr(self, 'filter_title_entry'):
             self.filter_title_entry.delete(0, tk.END)
-            self.filter_title_entry.insert(0, self.saved_filter_title)
         if hasattr(self, 'filter_status_var'):
-            self.filter_status_var.set(self.saved_filter_status)
+            self.filter_status_var.set("全て")
         if hasattr(self, 'filter_source_var'):
-            self.filter_source_var.set(self.saved_filter_source)
-        if hasattr(self, 'filter_type_var'):
-            self.filter_type_var.set(self.saved_filter_type)
+            self.filter_source_var.set("全て")
 
         # フィルタを適用して表示
         self.apply_filters()
@@ -290,30 +275,18 @@ class StreamNotifyGUI:
                 ):
                     added_count += 1
 
-            # ★ 新: YouTube API プラグインで自動分類を実行
-            # RSS取得後、新規追加動画（content_type="video"）をYouTube APIプラグインで分類
+            # ★ 新: YouTube Live プラグインで自動分類を実行
+            # RSS取得後、新規追加動画（content_type="video"）をYouTube Liveプラグインで分類
             if added_count > 0:
                 try:
                     pm = PluginManager()
-                    api_plugin = pm.get_plugin("youtube_api_plugin")
-                    if api_plugin and api_plugin.is_available():
-                        logger.info(f"🔍 YouTube API プラグイン: RSS新規追加動画 {added_count} 件を自動分類します...")
-                        db = get_database()
-                        unclassified = [v for v in db.get_all_videos() if v.get("content_type") == "video"]
-                        updated_count = 0
-                        for video in unclassified:
-                            try:
-                                details = api_plugin._get_cached_video_detail(video["video_id"])
-                                if details:
-                                    content_type, live_status, is_premiere = api_plugin._classify_video_core(details)
-                                    db.update_video_status(video["video_id"], content_type, live_status)
-                                    updated_count += 1
-                            except Exception as ve:
-                                logger.debug(f"動画分類エラー {video.get('video_id')}: {ve}")
-                        if updated_count > 0:
-                            logger.info(f"✅ YouTube API 自動分類完了: {updated_count} 件更新")
+                    live_plugin = pm.get_plugin("youtube_live_plugin")
+                    if live_plugin and live_plugin.is_available():
+                        logger.info(f"🔍 YouTube Live プラグイン: RSS新規追加動画 {added_count} 件を自動分類します...")
+                        updated = live_plugin._update_unclassified_videos()
+                        logger.info(f"✅ YouTube Live 自動分類完了: {updated} 件更新")
                 except Exception as e:
-                    logger.warning(f"⚠️ YouTube API プラグインでの自動分類に失敗: {e}")
+                    logger.warning(f"⚠️ YouTube Live プラグインでの自動分類に失敗: {e}")
                     # エラーでも処理を続行
 
             # 結果をメッセージボックスで表示
@@ -341,38 +314,26 @@ DB を再読込みします。
             messagebox.showerror("エラー", f"RSS更新中にエラーが発生しました:\n{e}")
 
     def classify_youtube_live_manually(self):
-        """YouTube Live 判定を手動で今すぐ実行（未判定動画を分類）"""
+        """YouTube Live 判定を手動で今すぐ実行"""
         try:
-            # YouTube API プラグインを取得
-            api_plugin = self.plugin_manager.get_plugin("youtube_api_plugin")
+            # YouTubeLive プラグインを取得
+            youtube_live_plugin = self.plugin_manager.get_plugin("youtube_live_plugin")
 
-            if not api_plugin:
-                messagebox.showwarning("警告", "YouTube APIプラグインがロードされていません。")
-                logger.warning("⚠️ YouTube APIプラグインが見つかりません")
+            if not youtube_live_plugin:
+                messagebox.showwarning("警告", "YouTube Live プラグインがロードされていません。")
+                logger.warning("⚠️ YouTube Live プラグインが見つかりません")
                 return
 
-            if not api_plugin.is_available():
-                messagebox.showwarning("警告", "YouTube APIプラグインが利用不可です。\n（YouTube API キーが設定されていない可能性があります）")
-                logger.warning("⚠️ YouTube APIプラグインが利用不可")
+            if not youtube_live_plugin.is_available():
+                messagebox.showwarning("警告", "YouTube Live プラグインが利用不可です。\n（YouTube API キーが設定されていない可能性があります）")
+                logger.warning("⚠️ YouTube Live プラグインが利用不可")
                 return
 
             # 判定開始を通知
             messagebox.showinfo("YouTube Live判定", "未判定動画のYouTube Live判定を実行中...\n（ウィンドウを閉じないでください）")
 
-            # 未判定動画（content_type="video"）を分類
-            db = get_database()
-            unclassified = [v for v in db.get_all_videos() if v.get("content_type") == "video"]
-
-            updated_count = 0
-            for video in unclassified:
-                try:
-                    details = api_plugin._get_cached_video_detail(video["video_id"])
-                    if details:
-                        content_type, live_status, is_premiere = api_plugin._classify_video_core(details)
-                        db.update_video_status(video["video_id"], content_type, live_status)
-                        updated_count += 1
-                except Exception as ve:
-                    logger.debug(f"動画分類エラー {video.get('video_id')}: {ve}")
+            # YouTube Live 判定を実行（on_enable と同じロジック）
+            updated_count = youtube_live_plugin._update_unclassified_videos()
 
             # 結果をメッセージボックスで表示
             result_msg = f"""
@@ -466,7 +427,10 @@ DB を再読込みします。
 
             # 分類情報を取得
             content_type = video.get("content_type", "video")
-            if source == "Niconico":
+            is_premiere = video.get("is_premiere", 0)
+            if is_premiere:
+                display_type = "🎆 プレミア"
+            elif source == "Niconico":
                 display_type = "🎬 動画"
             elif content_type == "archive":
                 display_type = "📹 アーカイブ"
@@ -1306,7 +1270,7 @@ YouTube:      {youtube_count} 件 (投稿済み: {youtube_posted})
         messagebox.showinfo("統計情報", stats)
 
     def youtube_live_settings(self):
-        """YouTube Live 投稿設定パネル（B-2: GUI 拡張）"""
+        """YouTube Live 投稿設定パネル"""
         settings_window = tk.Toplevel(self.root)
         settings_window.title("YouTube Live 投稿設定")
         settings_window.geometry("500x600")
@@ -1433,75 +1397,49 @@ YouTube:      {youtube_count} 件 (投稿済み: {youtube_posted})
             os.environ["AUTOPOST_INCLUDE_PREMIERE"] = str(self.include_premiere_var.get()).lower()
 
             # settings.env に書き込み
-            self._update_settings_env(
-                YOUTUBE_LIVE_AUTO_POST_SCHEDULE=str(self.post_schedule_var.get()).lower(),
-                YOUTUBE_LIVE_AUTO_POST_LIVE=str(self.post_live_var.get()).lower(),
-                YOUTUBE_LIVE_AUTO_POST_ARCHIVE=str(self.post_archive_var.get()).lower(),
-                YOUTUBE_LIVE_POST_DELAY=self.post_delay_var.get(),
-                AUTOPOST_INCLUDE_PREMIERE=str(self.include_premiere_var.get()).lower()
-            )
+            settings_file = Path("settings.env")
+            if settings_file.exists():
+                with open(settings_file, "r", encoding="utf-8") as f:
+                    content = f.read()
 
-            messagebox.showinfo(
-                "設定保存完了",
-                "YouTube Live 投稿設定を保存しました。\n\n"
-                "変更を反映するにはアプリケーションを再起動してください。"
-            )
+                # 既存の行を置換
+                import re
+                content = re.sub(
+                    r'YOUTUBE_LIVE_AUTO_POST_SCHEDULE\s*=.*',
+                    f'YOUTUBE_LIVE_AUTO_POST_SCHEDULE={str(self.post_schedule_var.get()).lower()}',
+                    content
+                )
+                content = re.sub(
+                    r'YOUTUBE_LIVE_AUTO_POST_LIVE\s*=.*',
+                    f'YOUTUBE_LIVE_AUTO_POST_LIVE={str(self.post_live_var.get()).lower()}',
+                    content
+                )
+                content = re.sub(
+                    r'YOUTUBE_LIVE_AUTO_POST_ARCHIVE\s*=.*',
+                    f'YOUTUBE_LIVE_AUTO_POST_ARCHIVE={str(self.post_archive_var.get()).lower()}',
+                    content
+                )
+                content = re.sub(
+                    r'YOUTUBE_LIVE_POST_DELAY\s*=.*',
+                    f'YOUTUBE_LIVE_POST_DELAY={self.post_delay_var.get()}',
+                    content
+                )
+                content = re.sub(
+                    r'AUTOPOST_INCLUDE_PREMIERE\s*=.*',
+                    f'AUTOPOST_INCLUDE_PREMIERE={str(self.include_premiere_var.get()).lower()}',
+                    content
+                )
+
+                with open(settings_file, "w", encoding="utf-8") as f:
+                    f.write(content)
+
+            messagebox.showinfo("成功", "YouTube Live 設定を保存しました。\n\n※ アプリ再起動時に反映されます。")
+            logger.info("✅ YouTube Live 設定を保存しました")
             window.destroy()
-            logger.info("✅ YouTube Live 投稿設定を保存しました")
 
         except Exception as e:
-            messagebox.showerror("保存失敗", f"設定の保存に失敗しました:\n{e}")
-            logger.error(f"❌ YouTube Live 設定保存エラー: {e}")
-
-    def _update_settings_env(self, **kwargs):
-        """settings.env に設定を書き込み"""
-        settings_file = "settings.env"
-        if not Path(settings_file).exists():
-            logger.warning(f"⚠️ {settings_file} が見つかりません")
-            return
-
-        try:
-            # 既存の内容を読み込み
-            with open(settings_file, 'r', encoding='utf-8') as f:
-                lines = f.readlines()
-
-            # 更新対象のキーをセット
-            update_keys = set(kwargs.keys())
-
-            # ファイルを再構築
-            new_lines = []
-            updated_keys = set()
-
-            for line in lines:
-                # コメント行は保持
-                if line.strip().startswith('#') or not line.strip():
-                    new_lines.append(line)
-                    continue
-
-                # キー=値形式を確認
-                if '=' in line:
-                    key = line.split('=')[0].strip()
-                    if key in update_keys:
-                        new_lines.append(f"{key}={kwargs[key]}\n")
-                        updated_keys.add(key)
-                    else:
-                        new_lines.append(line)
-                else:
-                    new_lines.append(line)
-
-            # 新しいキーをファイルの末尾に追加
-            for key in update_keys - updated_keys:
-                new_lines.append(f"{key}={kwargs[key]}\n")
-
-            # ファイルに書き込み
-            with open(settings_file, 'w', encoding='utf-8') as f:
-                f.writelines(new_lines)
-
-            logger.info(f"✅ {len(kwargs)} 個の設定を {settings_file} に保存しました")
-
-        except Exception as e:
-            logger.error(f"❌ settings.env 更新エラー: {e}")
-            raise
+            logger.error(f"❌ 設定保存エラー: {e}")
+            messagebox.showerror("エラー", f"設定の保存に失敗しました:\n{e}")
 
     def show_plugins(self):
         """導入プラグイン情報を表示"""
@@ -2663,10 +2601,8 @@ class PostSettingsWindow:
                     # ★ dry_run フラグを渡す
                     results = self.plugin_manager.post_video_with_all_enabled(video_with_settings, dry_run=dry_run)
                     logger.info(f"投稿結果: {results}")
-                    if any(results.values()) or dry_run:
+                    if any(results.values()) and not dry_run:
                         self.db.mark_as_posted(video["video_id"])
-                        if dry_run:
-                            logger.info(f"🧪 画像添付投稿ドライラン完了（投稿済みフラグ登録）")
                 else:
                     messagebox.showerror("エラー", "プラグインマネージャが初期化されていません")
                     return
@@ -2679,14 +2615,9 @@ class PostSettingsWindow:
                     # ★ dry_run フラグを渡す
                     results = self.plugin_manager.post_video_with_all_enabled(video_with_settings, dry_run=dry_run)
                     logger.info(f"投稿結果: {results}")
-                    if any(results.values()) or dry_run:
-                        try:
-                            self.db.mark_as_posted(video["video_id"])
-                            if dry_run:
-                                logger.info(f"🧪 テンプレート投稿ドライラン完了（投稿済みフラグ登録）")
-                        except Exception as db_err:
-                            logger.error(f"❌ 投稿済みフラグ登録エラー: {db_err}", exc_info=True)
                     success = any(results.values())  # 任意のプラグイン成功で OK
+                    if success and not dry_run:
+                        self.db.mark_as_posted(video["video_id"])
                 elif self.bluesky_core:
                     # フォールバック：プラグインがない場合はコア機能を直接呼び出し
                     logger.info(f"📤 コア機能で投稿（テンプレート非対応、シンプルテキストのみ）: {video['title']}")
@@ -2699,28 +2630,14 @@ class PostSettingsWindow:
                     if hasattr(self.bluesky_core, 'set_dry_run'):
                         self.bluesky_core.set_dry_run(dry_run)
                     success = self.bluesky_core.post_video_minimal(video_with_settings)
-                    if success or dry_run:
-                        try:
-                            self.db.mark_as_posted(video["video_id"])
-                            if dry_run:
-                                logger.info(f"🧪 コア機能投稿ドライラン完了（投稿済みフラグ登録）")
-                        except Exception as db_err:
-                            logger.error(f"❌ 投稿済みフラグ登録エラー: {db_err}", exc_info=True)
+                    if success and not dry_run:
+                        self.db.mark_as_posted(video["video_id"])
                 else:
                     messagebox.showerror("エラー", "プラグインもコア機能も初期化されていません")
                     return
 
             msg = f"{'✅ 投稿テスト完了' if dry_run else '✅ 投稿完了'}\n\n{video['title'][:60]}...\n\n投稿方法: {mode_str}"
             messagebox.showinfo("成功", msg)
-
-            # ★ ドライラン時は親ウィンドウを自動更新
-            if dry_run:
-                try:
-                    logger.info("🔄 ドライラン完了後、親ウィンドウを自動更新します...")
-                    self.parent_window.refresh_data()
-                    logger.info("✅ 親ウィンドウを更新しました")
-                except Exception as e:
-                    logger.warning(f"⚠️  親ウィンドウの自動更新に失敗: {e}")
 
             # ★ 投稿テスト後でも選択状態を更新（投稿テストは投稿済み扱いにしない）
             if not dry_run:

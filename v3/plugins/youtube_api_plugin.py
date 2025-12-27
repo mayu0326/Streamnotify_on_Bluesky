@@ -128,7 +128,7 @@ class YouTubeAPIPlugin(NotificationPlugin):
 
         snippet = details.get("snippet", {})
         live_details = details.get("liveStreamingDetails", {})
-
+        
         title = video.get("title") or snippet.get("title", "【新着動画】")
         channel_name = video.get("channel_name") or snippet.get("channelTitle", "")
         video_url = video.get("video_url") or f"https://www.youtube.com/watch?v={video_id}"
@@ -552,17 +552,6 @@ class YouTubeAPIPlugin(NotificationPlugin):
         Returns:
             bool: True = 純粋な動画（通常アップロード）
                   False = ライブ/アーカイブ/プレミア/その他
-
-        Example:
-            ```python
-            # キャッシュから取得した詳細情報で判定
-            is_pure = YouTubeAPIPlugin.is_pure_video(cached_details)
-
-            if is_pure:
-                print("✅ 通常動画")
-            else:
-                print("❌ ライブ/アーカイブ/プレミア")
-            ```
         """
         # 条件1: snippet.liveBroadcastContent == "none"
         snippet = details.get("snippet", {})
@@ -594,12 +583,7 @@ class YouTubeAPIPlugin(NotificationPlugin):
 
         ★ 判定基準:
           1. liveStreamingDetails が存在する
-          2. concurrentViewers プロパティが存在する、または過去に存在した形跡がある
-
-        【注意】 2025年時点では、キャッシュに concurrentViewers が保存されない場合が多いため、
-        以下の代替判定を使用します:
-          - actualStartTime と actualEndTime が両方存在する
-          - 配信時間が記録されている（= ライブ配信特有の動作）
+          2. actualStartTime と actualEndTime が両方存在する、OR concurrentViewers が存在する
 
         Args:
             details: YouTube API videos.list で取得した動画詳細（キャッシュから直接使用）
@@ -607,13 +591,6 @@ class YouTubeAPIPlugin(NotificationPlugin):
         Returns:
             bool: True = ライブ配信アーカイブ
                   False = 通常動画またはプレミア公開アーカイブ
-
-        Example:
-            ```python
-            is_archive = YouTubeAPIPlugin.is_live_archive(cached_details)
-            if is_archive:
-                print("📹 ライブ配信アーカイブ")
-            ```
         """
         live = details.get("liveStreamingDetails", {})
 
@@ -621,91 +598,30 @@ class YouTubeAPIPlugin(NotificationPlugin):
             # liveStreamingDetails がない = 通常動画
             return False
 
-        # 判定基準: actualStartTime と actualEndTime が存在
-        # ライブ配信は開始～終了の時間帯が記録される
+        # 判定基準: actualStartTime と actualEndTime が存在、または concurrentViewers が存在
+        # ライブ配信は開始～終了の時間帯が記録される、または視聴者数が記録される
         has_actual_start = "actualStartTime" in live
         has_actual_end = "actualEndTime" in live
-
-        # 将来的に concurrentViewers が含まれる可能性に対応
         has_concurrent_viewers = "concurrentViewers" in live
 
-        # ライブ配信 = actualStartTime と actualEndTime がある、
-        # または concurrentViewers がある
+        # ライブ配信 = (actualStartTime と actualEndTime がある) OR (concurrentViewers がある)
         is_live = (has_actual_start and has_actual_end) or has_concurrent_viewers
 
         return is_live
-
-    @staticmethod
-    def is_premiere_archive(details: Dict[str, Any]) -> bool:
-        """
-        【キャッシュから判定】プレミア公開アーカイブか判定
-
-        プレミア公開（予約公開）のアーカイブを識別します。
-
-        ★ 判定基準:
-          1. liveStreamingDetails が存在する
-          2. concurrentViewers プロパティが一度も含まれていない
-
-        【注意】 2025年時点では、キャッシュに concurrentViewers が保存されない場合が多いため、
-        直接判定が難しいです。以下の情報が役立つ場合があります:
-          - snippet の description（プレミア公開の宣伝テキスト）
-          - scheduledStartTime の有無
-
-        現在の実装では、「liveStreamingDetails がある」ことのみで
-        プレミア公開の可能性を示唆します。
-
-        Args:
-            details: YouTube API videos.list で取得した動画詳細（キャッシュから直接使用）
-
-        Returns:
-            bool: True = プレミア公開アーカイブの可能性
-                  False = 通常動画またはライブ配信アーカイブ
-
-        Example:
-            ```python
-            is_premiere = YouTubeAPIPlugin.is_premiere_archive(cached_details)
-            if is_premiere:
-                print("🎥 プレミア公開アーカイブ")
-            ```
-        """
-        # is_live_archive() と is_premiere_archive() は相互に排他的な判定をすべきなので、
-        # 同じく liveStreamingDetails の判定で分けない
-        #
-        # 現在の実装では両者が同時に True になるため、
-        # ここではコンセプト提示に留める
-
-        live = details.get("liveStreamingDetails", {})
-
-        if not live:
-            # liveStreamingDetails がない = 通常動画
-            return False
-
-        # 【現在は判定不可】
-        # concurrentViewers が保存されていないため、厳密な判定ができません
-        #
-        # 理想的な判定基準:
-        # - concurrentViewers が存在しない = プレミア公開
-        # - concurrentViewers が存在する = ライブ配信
-        #
-        # ただし、将来的に API データ取得時に concurrentViewers を確認することで、
-        # より精密な判定が可能になります
-
-        return False
 
     def _classify_video_core(self, details: Dict[str, Any]) -> Tuple[str, Optional[str], bool]:
         """
         【統合分類ロジック】動画の種別と状態を判別（content_type, live_status, is_premiere）
 
-        新しい分類メソッド（is_pure_video, is_live_archive, is_premiere_archive）と
+        新しい分類メソッド（is_pure_video, is_live_archive）と
         既存の時間情報ベース判定を組み合わせた統合分類ロジックです。
 
         ★ 判定優先度（上から順）:
-          1. 新規フローバック: is_pure_video() → "video"
+          1. 新規フロー: is_pure_video() → "video"
           2. ライブアーカイブ: is_live_archive() → "archive"
-          3. プレミアアーカイブ: 代替判定（future）
-          4. タイムスタンプベース判定: actualStartTime/actualEndTime/scheduledStartTime
-          5. liveBroadcastContent ベース判定: "live", "upcoming", "completed"
-          6. デフォルト: "video"
+          3. タイムスタンプベース判定: actualStartTime/actualEndTime/scheduledStartTime
+          4. liveBroadcastContent ベース判定: "live", "upcoming", "completed"
+          5. デフォルト: "video"
 
         Args:
             details: YouTube API videos.list で取得した動画詳細
@@ -716,23 +632,31 @@ class YouTubeAPIPlugin(NotificationPlugin):
               - live_status: None | "upcoming" | "live" | "completed"
               - is_premiere: bool
         """
+        video_id = details.get("id", "unknown")
         snippet = details.get("snippet", {})
         live = details.get("liveStreamingDetails", {})
         status = details.get("status", {})
 
         # ★ 判定フロー 1: 純粋な動画（新フロー）
-        if self.is_pure_video(details):
+        is_pure = self.is_pure_video(details)
+        if is_pure:
+            logger.info(f"  📌 {video_id}: 分類フロー1 = is_pure_video() → 'video'")
             return "video", None, False
 
         # ★ 判定フロー 2: ライブ配信アーカイブ（新フロー）
-        if self.is_live_archive(details):
+        is_archive = self.is_live_archive(details)
+        if is_archive:
+            logger.info(f"  📌 {video_id}: 分類フロー2 = is_live_archive() → 'archive'")
             return "archive", "completed", False
+        
+        # デバッグ: is_live_archive が False の理由を出力
+        if live:
+            has_actual_start = "actualStartTime" in live
+            has_actual_end = "actualEndTime" in live
+            has_concurrent = "concurrentViewers" in live
+            logger.info(f"  📌 {video_id}: 分類フロー2 = is_live_archive() = False | actualStartTime={has_actual_start}, actualEndTime={has_actual_end}, concurrentViewers={has_concurrent}")
 
-        # ★ 判定フロー 3: プレミア公開アーカイブ（将来拡張）
-        # if self.is_premiere_archive(details):
-        #     return "archive", "completed", True
-
-        # ★ 判定フロー 4: liveStreamingDetails ベース（既存フロー）
+        # ★ 判定フロー 3: liveStreamingDetails ベース（既存フロー）
         if live:
             # プレミア公開フラグ判定
             broadcast_type = snippet.get("liveBroadcastContent", "none")
@@ -741,24 +665,31 @@ class YouTubeAPIPlugin(NotificationPlugin):
             # タイムスタンプから状態判定（精度優先）
             if live.get("actualEndTime"):
                 # 配信終了 → アーカイブ
+                logger.info(f"  📌 {video_id}: 分類フロー3 = actualEndTime あり → 'archive'")
                 return "archive", "completed", is_premiere
             elif live.get("actualStartTime"):
                 # 配信中
+                logger.info(f"  📌 {video_id}: 分類フロー3 = actualStartTime あり → 'live'")
                 return "live", "live", is_premiere
             elif live.get("scheduledStartTime"):
                 # 配信予定
+                logger.info(f"  📌 {video_id}: 分類フロー3 = scheduledStartTime あり → 'live (upcoming)'")
                 return "live", "upcoming", is_premiere
 
-        # ★ 判定フロー 5: liveBroadcastContent ベース（補助判定）
+        # ★ 判定フロー 4: liveBroadcastContent ベース（補助判定）
         broadcast_type = snippet.get("liveBroadcastContent", "none")
         if broadcast_type == "live":
+            logger.info(f"  📌 {video_id}: 分類フロー4 = liveBroadcastContent='live' → 'live'")
             return "live", "live", False
         elif broadcast_type == "upcoming":
+            logger.info(f"  📌 {video_id}: 分類フロー4 = liveBroadcastContent='upcoming' → 'live (upcoming)'")
             return "live", "upcoming", False
         elif broadcast_type == "completed":
+            logger.info(f"  📌 {video_id}: 分類フロー4 = liveBroadcastContent='completed' → 'archive'")
             return "archive", "completed", False
 
         # ★ デフォルト
+        logger.info(f"  📌 {video_id}: デフォルト → 'video'")
         return "video", None, False
 
     def _classify_video(self, details: Dict[str, Any]) -> Tuple[str, Optional[str], bool]:
@@ -821,17 +752,17 @@ class YouTubeAPIPlugin(NotificationPlugin):
             scheduled_start_date = ""
             scheduled_start_time = ""
             scheduled_start_iso = live_details.get("scheduledStartTime")
-
+            
             if scheduled_start_iso:
                 try:
                     # ISO 8601 形式から日付と時間を抽出
                     # 例: "2025-12-29T27:00:00Z" → date="2025-12-29", time="27:00"
                     dt_part = scheduled_start_iso.split("T")[0]  # "2025-12-29"
                     time_part = scheduled_start_iso.split("T")[1] if "T" in scheduled_start_iso else ""
-
+                    
                     if time_part:
                         time_part = time_part.split(":")[0] + ":" + time_part.split(":")[1]  # "27:00"
-
+                    
                     scheduled_start_date = dt_part
                     scheduled_start_time = time_part
                 except Exception as e:
@@ -850,180 +781,6 @@ class YouTubeAPIPlugin(NotificationPlugin):
         except Exception as e:
             logger.error(f"❌ 動画情報抽出エラー: {e}")
             return {}
-
-    @staticmethod
-    def extract_live_streaming_details(details: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        liveStreamingDetails オブジェクトから詳細な配信時間情報を抽出
-
-        【取得フィールド】
-        - scheduledStartTime: 配信予定開始時刻
-        - scheduledEndTime: 配信予定終了時刻
-        - actualStartTime: 実際の配信開始時刻
-        - actualEndTime: 実際の配信終了時刻
-
-        【ユースケース】
-        1. actualEndTime 存在判定 → 配信終了確認
-        2. actualStartTime + scheduledStartTime → 配信予定時刻の精密度向上
-        3. actualEndTime 未存在 + actualStartTime 存在 → 配信中判定
-
-        Args:
-            details: API の videos.list で取得した動画詳細辞書
-
-        Returns:
-            Dict[str, Any]: 配信時間情報
-                {
-                    "scheduled_start_time": "2025-12-24T15:00:00Z",
-                    "scheduled_end_time": "2025-12-24T17:00:00Z",
-                    "actual_start_time": "2025-12-24T15:02:30Z",
-                    "actual_end_time": "2025-12-24T16:58:15Z",
-                    "is_live_running": bool,
-                    "is_archived": bool,
-                }
-        """
-        try:
-            live = details.get("liveStreamingDetails", {})
-
-            scheduled_start = live.get("scheduledStartTime")
-            scheduled_end = live.get("scheduledEndTime")
-            actual_start = live.get("actualStartTime")
-            actual_end = live.get("actualEndTime")
-
-            # 配信状態判定
-            is_live_running = bool(actual_start and not actual_end)
-            is_archived = bool(actual_end)  # actualEndTime が存在 = 配信終了（アーカイブ化済み）
-
-            logger.debug(f"⏱️ 配信時間情報抽出:")
-            logger.debug(f"   scheduled: {scheduled_start} - {scheduled_end}")
-            logger.debug(f"   actual: {actual_start} - {actual_end}")
-            logger.debug(f"   状態: live_running={is_live_running}, archived={is_archived}")
-
-            return {
-                "scheduled_start_time": scheduled_start,
-                "scheduled_end_time": scheduled_end,
-                "actual_start_time": actual_start,
-                "actual_end_time": actual_end,
-                "is_live_running": is_live_running,
-                "is_archived": is_archived,
-            }
-
-        except Exception as e:
-            logger.error(f"❌ 配信時間情報抽出エラー: {e}")
-            return {
-                "scheduled_start_time": None,
-                "scheduled_end_time": None,
-                "actual_start_time": None,
-                "actual_end_time": None,
-                "is_live_running": False,
-                "is_archived": False,
-            }
-
-    @staticmethod
-    def extract_best_published_at(details: Dict[str, Any]) -> Optional[str]:
-        """
-        動画の「公開日時」として最適な値を抽出（優先順）
-
-        【優先順】
-        1. liveStreamingDetails.scheduledStartTime（配信予定時刻が最優先）
-        2. liveStreamingDetails.actualStartTime（実際の配信開始時刻）
-        3. snippet.publishedAt（RSS で取得した公開日時）
-
-        【用途】
-        - DB の published_at カラムに格納
-        - ポーリング・ソート・API キャッシュの参照に使用
-
-        Args:
-            details: API の videos.list で取得した動画詳細辞書
-
-        Returns:
-            ISO 8601 形式の日時文字列（UTC+Z）、なければ None
-        """
-        try:
-            live = details.get("liveStreamingDetails", {})
-            snippet = details.get("snippet", {})
-
-            # 優先順で取得
-            scheduled_start = live.get("scheduledStartTime")
-            if scheduled_start:
-                logger.debug(f"📅 published_at: scheduledStartTime を採用 → {scheduled_start}")
-                return scheduled_start
-
-            actual_start = live.get("actualStartTime")
-            if actual_start:
-                logger.debug(f"📅 published_at: actualStartTime を採用 → {actual_start}")
-                return actual_start
-
-            published_at = snippet.get("publishedAt")
-            if published_at:
-                logger.debug(f"📅 published_at: snippet.publishedAt を採用 → {published_at}")
-                return published_at
-
-            logger.warning("⚠️ 公開日時が見つかりません")
-            return None
-
-        except Exception as e:
-            logger.error(f"❌ 公開日時抽出エラー: {e}")
-            return None
-
-    @staticmethod
-    def is_archive_transitioned(old_details: Optional[Dict[str, Any]], new_details: Dict[str, Any]) -> bool:
-        """
-        ライブ配信 → アーカイブへの状態遷移を検知
-
-        【検知条件】
-        ✅ 新しい詳細情報で:
-           - actualEndTime が存在している
-           - actualStartTime が存在している（配信は実施された）
-           - liveBroadcastContent が "none" に変化した
-
-        【参考】
-        - old_details がない場合は "Live 状態 → Archive 状態" への単純転換として判定
-
-        Args:
-            old_details: 以前に取得した詳細情報（キャッシュなど）
-            new_details: 現在取得した詳細情報
-
-        Returns:
-            bool: Archive への遷移が検知された場合 True
-        """
-        try:
-            new_live = new_details.get("liveStreamingDetails", {})
-            new_snippet = new_details.get("snippet", {})
-
-            # 新しい詳細で配信終了を確認
-            actual_end = new_live.get("actualEndTime")
-            actual_start = new_live.get("actualStartTime")
-            broadcast_type = new_snippet.get("liveBroadcastContent", "none")
-
-            if not actual_end or not actual_start:
-                logger.debug("📊 Archive 遷移: 条件不足（actualEnd または actualStart なし）")
-                return False
-
-            # 旧詳細がある場合は状態遷移を確認
-            if old_details:
-                old_live = old_details.get("liveStreamingDetails", {})
-                old_broadcast_type = old_details.get("snippet", {}).get("liveBroadcastContent", "none")
-
-                # old: live/upcoming, new: none（＋actualEnd） = Archive 化遷移
-                if old_broadcast_type in ("live", "upcoming") and broadcast_type == "none" and actual_end:
-                    logger.info(f"🔔 Archive 遷移検知: {old_broadcast_type} → {broadcast_type}（actualEnd={actual_end}）")
-                    return True
-                # old では actualEnd がなかったが new にある = Archive 化
-                elif not old_live.get("actualEndTime") and actual_end:
-                    logger.info(f"🔔 Archive 遷移検知: actualEndTime が新たに設定（{actual_end}）")
-                    return True
-            else:
-                # old がない場合は、actualEnd の存在で Archive と判定
-                if actual_end and broadcast_type == "none":
-                    logger.info(f"🔔 Archive 遷移検知（初回）: actualEnd={actual_end}, broadcast_type={broadcast_type}")
-                    return True
-
-            logger.debug(f"📊 Archive 遷移なし: actualEnd={actual_end}, broadcast_type={broadcast_type}")
-            return False
-
-        except Exception as e:
-            logger.error(f"❌ Archive 遷移検知エラー: {e}")
-            return False
 
 
 def get_plugin():
