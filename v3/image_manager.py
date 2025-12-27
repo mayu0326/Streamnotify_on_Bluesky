@@ -688,3 +688,4 @@ def get_image_manager() -> ImageManager:
     if _image_manager_instance is None:
         _image_manager_instance = ImageManager()
     return _image_manager_instance
+

@@ -291,8 +291,3 @@ class YouTubeArchiveCacheManager:
 def get_youtube_archive_cache_manager() -> YouTubeArchiveCacheManager:
     """アーカイブキャッシュマネージャーのインスタンスを取得"""
     return YouTubeArchiveCacheManager()
-
-
-def get_youtube_archive_cache_manager() -> YouTubeArchiveCacheManager:
-    """アーカイブキャッシュマネージャーを取得（シングルトン）"""
-    return YouTubeArchiveCacheManager()

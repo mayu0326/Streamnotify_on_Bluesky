@@ -15,6 +15,10 @@ from pathlib import Path
 
 logger = logging.getLogger("AppLogger")
 
+__author__ = "mayuneco(mayunya)"
+__copyright__ = "Copyright (C) 2025 mayuneco(mayunya)"
+__license__ = "GPLv2"
+
 CACHE_FILE = "data/youtube_live_cache.json"
 
 
