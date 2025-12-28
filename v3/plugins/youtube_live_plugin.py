@@ -232,6 +232,39 @@ class YouTubeLivePlugin(NotificationPlugin):
                         logger.info(f"✅ 判定更新: {video_id} → {content_type} ({live_status})")
                     else:
                         logger.error(f"❌ DB更新失敗: {video_id}")
+                    
+                    # ★ 新: スケジュール動画もキャッシュに追加（毎ポーリングで更新追跡）
+                    if content_type == "live" and live_status == "upcoming":
+                        try:
+                            from youtube_live_cache import get_youtube_live_cache
+                            cache = get_youtube_live_cache()
+                            
+                            # キャッシュ用のデータを構築
+                            db_data = {
+                                "title": video.get("title", ""),
+                                "channel_name": video.get("channel_name", ""),
+                                "video_url": video.get("video_url", f"https://www.youtube.com/watch?v={video_id}"),
+                                "published_at": video.get("published_at", ""),
+                                "thumbnail_url": video.get("thumbnail_url", ""),
+                            }
+                            
+                            # スケジュール動画用の特別なステータス（"upcoming"）で保存
+                            cache_entry = {
+                                "video_id": video_id,
+                                "db_data": db_data,
+                                "api_data": details,
+                                "cached_at": datetime.now().isoformat(),
+                                "status": "upcoming",  # ★ スケジュール専用ステータス
+                                "scheduled_start_time": live_details.get("scheduledStartTime"),
+                                "poll_count": 0,
+                                "last_polled_at": None,
+                            }
+                            
+                            cache.cache_data[video_id] = cache_entry
+                            cache._save_cache()
+                            logger.debug(f"📌 スケジュール動画をキャッシュに追加: {video_id} (scheduled: {live_details.get('scheduledStartTime')})")
+                        except Exception as e:
+                            logger.debug(f"⚠️ スケジュール動画のキャッシュ追加失敗: {video_id} - {e}")
                 else:
                     logger.debug(f"⏭️ スキップ（live/archive 以外）: {video_id} → {content_type}")
                     skipped_no_live += 1
