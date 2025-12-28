@@ -65,7 +65,11 @@ class StreamNotifyGUI:
         toolbar.pack(side=tk.TOP, fill=tk.X, padx=5, pady=5)
 
         ttk.Button(toolbar, text="🔄 再読込", command=self.refresh_data).pack(side=tk.LEFT, padx=2)
-        ttk.Button(toolbar, text="🌐 RSS更新", command=self.fetch_rss_manually).pack(side=tk.LEFT, padx=2)
+        
+        # ★ フィード取得ボタン：websubモード時は「新着取得」、それ以外は「RSS更新」
+        feed_button_text = "📡 新着取得" if self.config.youtube_feed_mode == "websub" else "🌐 RSS更新"
+        ttk.Button(toolbar, text=feed_button_text, command=self.fetch_rss_manually).pack(side=tk.LEFT, padx=2)
+        
         ttk.Button(toolbar, text="🎬 Live判定", command=self.classify_youtube_live_manually).pack(side=tk.LEFT, padx=2)
         ttk.Button(toolbar, text="➕ 動画追加", command=self.add_video_dialog).pack(side=tk.LEFT, padx=2)
         ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=2)
@@ -241,6 +245,7 @@ class StreamNotifyGUI:
         """RSS フィードを手動で今すぐ取得・更新"""
         try:
             from youtube_rss import YouTubeRSS
+            from youtube_websub import YouTubeWebSub
             from config import Config
             from plugin_manager import PluginManager
 
@@ -251,59 +256,56 @@ class StreamNotifyGUI:
                 messagebox.showerror("エラー", "YouTube チャンネル ID が設定されていません。")
                 return
 
-            # RSS 取得開始を通知
-            messagebox.showinfo("RSS更新", "YouTube RSS フィードを取得中...\n（ウィンドウを閉じないでください）")
+            # フィード取得モード判定
+            feed_mode = config.youtube_feed_mode
+            
+            if feed_mode == "websub":
+                # WebSub モード時はWebSubサーバーから新着確認
+                messagebox.showinfo("RSS更新", "WebSub サーバーから新着を確認中...\n（ウィンドウを閉じないでください）")
+                fetcher = YouTubeWebSub(channel_id)
+            else:
+                # ポーリングモード（デフォルト）：RSS フィードを取得
+                messagebox.showinfo("RSS更新", "YouTube RSS フィードを取得中...\n（ウィンドウを閉じないでください）")
+                fetcher = YouTubeRSS(channel_id)
 
-            # RSS 取得実行
-            fetcher = YouTubeRSS(channel_id)
+            # ★ 重要: save_to_db メソッドを使用してDB保存（重複防止・API確認・YouTube Live自動分類を含む）
+            # save_to_db は fetch_feed を内部で呼び出して、重複防止ロジックを正しく適用します
+            added_count = fetcher.save_to_db(self.db)
             new_videos = fetcher.fetch_feed()
 
-            if not new_videos:
+            if not new_videos and added_count == 0:
                 messagebox.showinfo("RSS更新完了", "新着動画は検出されませんでした。")
                 return
 
-            # 新着動画を DB に追加
-            added_count = 0
-            for video in new_videos:
-                if self.db.insert_video(
-                    video_id=video["video_id"],
-                    title=video["title"],
-                    video_url=video["video_url"],
-                    published_at=video["published_at"],
-                    channel_name=video.get("channel_name", ""),
-                    source="youtube"
-                ):
-                    added_count += 1
-
             # ★ 新: YouTube Live プラグインで自動分類を実行
-            # RSS取得後、新規追加動画（content_type="video"）をYouTube Liveプラグインで分類
+            # 新規追加動画をYouTube Liveプラグインで分類
+            youtube_live_classified = 0
             if added_count > 0:
                 try:
                     pm = PluginManager()
                     live_plugin = pm.get_plugin("youtube_live_plugin")
                     if live_plugin and live_plugin.is_available():
-                        logger.info(f"🔍 YouTube Live プラグイン: RSS新規追加動画 {added_count} 件を自動分類します...")
-                        updated = live_plugin._update_unclassified_videos()
-                        logger.info(f"✅ YouTube Live 自動分類完了: {updated} 件更新")
+                        logger.info(f"🔍 YouTube Live プラグイン: 新規追加動画 {added_count} 件を自動分類します...")
+                        youtube_live_classified = live_plugin._update_unclassified_videos()
+                        logger.info(f"✅ YouTube Live 自動分類完了: {youtube_live_classified} 件更新")
                 except Exception as e:
                     logger.warning(f"⚠️ YouTube Live プラグインでの自動分類に失敗: {e}")
                     # エラーでも処理を続行
 
             # 結果をメッセージボックスで表示
-            result_msg = f"""
-✅ RSS更新完了
+            result_msg = f"""✅ フィード更新完了
 
+フィード取得モード: {"WebSub" if feed_mode == "websub" else "RSS ポーリング"}
 取得件数: {len(new_videos)}
 新規追加: {added_count}
+Live 自動分類: {youtube_live_classified} 件更新
 
-🔍 YouTube Live自動分類を実行しました。
-DB を再読込みします。
-            """
-            messagebox.showinfo("RSS更新完了", result_msg)
+DB を再読込みします。"""
+            messagebox.showinfo("フィード更新完了", result_msg)
 
             # DB を再読込して表示更新
             self.refresh_data()
-            logger.info(f"✅ RSS手動更新完了: {added_count} 件追加（YouTube Live自動分類実行）")
+            logger.info(f"✅ フィード手動更新完了: {added_count} 件追加（{feed_mode} モード、YouTube Live自動分類 {youtube_live_classified} 件）")
 
         except ImportError as e:
             logger.error(f"❌ インポートエラー: {e}")

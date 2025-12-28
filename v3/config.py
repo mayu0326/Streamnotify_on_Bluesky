@@ -107,15 +107,29 @@ class Config:
             logger.info("📡 YouTube フィード取得モード: WebSub（Websubサーバー HTTP API 経由）")
         # ★ hybridモードはコメントアウト（不使用）
 
-        # ポーリング間隔
-        try:
-            self.poll_interval_minutes = int(os.getenv("POLL_INTERVAL_MINUTES", 10))
-            if self.poll_interval_minutes < 5 or self.poll_interval_minutes > 30:
-                logger.warning(f"ポーリング間隔が範囲外です (5〜30): {self.poll_interval_minutes}。10分に設定します。")
+        # ポーリング間隔（RSS とWebSub で異なる範囲）
+        if self.youtube_feed_mode == "websub":
+            # WebSub モード: 3〜30分（自前インフラなので短い間隔も可能）
+            try:
+                self.poll_interval_minutes = int(os.getenv("YOUTUBE_WEBSUB_POLL_INTERVAL_MINUTES", 5))
+                if self.poll_interval_minutes < 3 or self.poll_interval_minutes > 30:
+                    logger.warning(f"WebSub ポーリング間隔が範囲外です (3〜30): {self.poll_interval_minutes}。5分に設定します。")
+                    self.poll_interval_minutes = 5
+                logger.info(f"📡 WebSub ポーリング間隔: {self.poll_interval_minutes} 分")
+            except ValueError:
+                logger.warning("YOUTUBE_WEBSUB_POLL_INTERVAL_MINUTES が無効です。5分に設定します。")
+                self.poll_interval_minutes = 5
+        else:
+            # RSS ポーリング モード: 10〜60分（外部サーバーなので長めの間隔）
+            try:
+                self.poll_interval_minutes = int(os.getenv("YOUTUBE_RSS_POLL_INTERVAL_MINUTES", 10))
+                if self.poll_interval_minutes < 10 or self.poll_interval_minutes > 60:
+                    logger.warning(f"RSS ポーリング間隔が範囲外です (10〜60): {self.poll_interval_minutes}。10分に設定します。")
+                    self.poll_interval_minutes = 10
+                logger.info(f"📡 RSS ポーリング間隔: {self.poll_interval_minutes} 分")
+            except ValueError:
+                logger.warning("YOUTUBE_RSS_POLL_INTERVAL_MINUTES が無効です。10分に設定します。")
                 self.poll_interval_minutes = 10
-        except ValueError:
-            logger.warning("POLL_INTERVAL_MINUTES が無効です。10分に設定します。")
-            self.poll_interval_minutes = 10
 
         # Bluesky 投稿フラグ（デフォルト: False = ドライラン）
         post_enabled_str = os.getenv("BLUESKY_POST_ENABLED", "false").strip().lower()
