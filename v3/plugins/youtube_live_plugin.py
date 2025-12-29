@@ -233,6 +233,25 @@ class YouTubeLivePlugin(NotificationPlugin):
                     else:
                         logger.error(f"❌ DB更新失敗: {video_id}")
                     
+                    # ★ 新: API から取得したメタデータを反映（タイトルなど）
+                    try:
+                        api_title = snippet.get("title", "")
+                        api_channel_name = snippet.get("channelTitle", "")
+                        api_thumbnail = details.get("snippet", {}).get("thumbnails", {}).get("high", {}).get("url", "")
+                        
+                        metadata_update = {}
+                        if api_title:
+                            metadata_update["title"] = api_title
+                        if api_channel_name:
+                            metadata_update["channel_name"] = api_channel_name
+                        if api_thumbnail:
+                            metadata_update["thumbnail_url"] = api_thumbnail
+                        
+                        if metadata_update:
+                            self.db.update_video_metadata(video_id, **metadata_update)
+                    except Exception as e:
+                        logger.warning(f"⚠️ メタデータ更新エラー: {video_id} - {e}")
+                    
                     # ★ 新: スケジュール動画もキャッシュに追加（毎ポーリングで更新追跡）
                     if content_type == "live" and live_status == "upcoming":
                         try:
@@ -320,6 +339,14 @@ class YouTubeLivePlugin(NotificationPlugin):
 
                         if should_post:
                             logger.info(f"📤 YouTube Live 自動投稿: {video['title']} (content_type={content_type}, live_status={live_status})")
+                            
+                            # ★ テンプレート選択用に classification_type を追加
+                            if content_type == "live":
+                                video["classification_type"] = "live"
+                            elif content_type == "archive":
+                                video["classification_type"] = "archive"
+                            
+                            logger.info(f"📤 【plugin_manager.post_video_with_all_enabled()直前】 classification_type={video.get('classification_type')}, content_type={video.get('content_type')}, video_id={video.get('video_id')}")
                             results = self.plugin_manager.post_video_with_all_enabled(video)
                             logger.debug(f"   投稿結果: {results}")
                             if any(results.values()):
@@ -590,8 +617,11 @@ class YouTubeLivePlugin(NotificationPlugin):
             video_copy = dict(video)
             video_copy["event_type"] = "live_start"
             video_copy["live_status"] = "live"
+            video_copy["content_type"] = "live"  # ★ テンプレート選択用に content_type を明示
+            video_copy["classification_type"] = "live"  # ★ テンプレート選択用に classification_type を設定
 
             logger.info(f"📡 ライブ開始自動投稿を実行します: {video.get('title')}")
+            logger.info(f"📤 【auto_post_live_start()から送信】 classification_type={video_copy.get('classification_type')}, content_type={video_copy.get('content_type')}")
             return bluesky_plugin.post_video(video_copy)
 
         except Exception as e:
@@ -622,6 +652,8 @@ class YouTubeLivePlugin(NotificationPlugin):
             video_copy = dict(video)
             video_copy["event_type"] = "live_end"
             video_copy["live_status"] = "completed"
+            video_copy["content_type"] = "live"  # ★ 終了告知時点では content_type は "live" のままで、classification_type で状態を判定
+            video_copy["classification_type"] = "completed"  # ★ テンプレート選択用に classification_type を "completed" に設定（youtube_offline を選択させるため）
 
             logger.info(f"📡 ライブ終了自動投稿を実行します: {video.get('title')}")
             return bluesky_plugin.post_video(video_copy)
@@ -632,44 +664,140 @@ class YouTubeLivePlugin(NotificationPlugin):
 
     def poll_live_status(self) -> None:
         """
-        ライブ中の動画を定期チェックし、終了を検知
+        ライブ中・予約中の動画を定期チェックし、ライブ開始・終了を検知
 
         新フロー：
-        ① DB から live_status='live' の動画を取得
-        ② 各動画の現在状態を API で確認
-        ③ DB データと API データを組み合わせてキャッシュに保存
-        ④ ポーリング（動画IDについて）を行い、キャッシュを更新
-        ⑤ LIVE終了の API データが取れたら終了と判定 → キャッシュデータで本番DB更新
-        ⑥ 設定に基づき自動投稿（オプション）
+        ① DB から live_status='upcoming' または 'live' の動画を取得
+        ② キャッシュから status='live' のエントリも取得（DB未登録の場合に対応）
+        ③ 各動画の現在状態を API で確認（リトライ対応、キャッシュバイパス）
+        ④ 状態遷移を検出：
+            - upcoming → live（ライブ開始）
+            - live → completed（ライブ終了）
+        ⑤ DB・キャッシュを更新
+        ⑥ 状態遷移に基づき自動投稿（設定に基づく）
+        ⑦ 各処理後にキャッシュをファイルに保存
+        ⑧ 終了済みエントリからも未投稿の場合は投稿処理を実行
         """
+        cache = None
+        processed_count = 0
+        
         try:
-            # ① DB から live_status='live' の動画を取得
+            # ① DB から live_status='upcoming' または 'live' の動画を取得
+            # ★修正：upcoming も監視対象に追加
+            upcoming_videos = self.db.get_videos_by_live_status("upcoming")
             live_videos = self.db.get_videos_by_live_status("live")
+            
+            # ② キャッシュから status='live' のエントリも取得
+            # （DB に登録されていないライブ動画が終了した場合に対応）
+            cache = get_youtube_live_cache()
+            if not cache:
+                logger.error("❌ ライブキャッシュの初期化に失敗しました")
+                return
+            
+            cache_live_videos = cache.get_live_videos_by_status("live")
+            cache_video_ids = {entry.get("video_id") for entry in cache_live_videos}
+            db_video_ids = {v.get("video_id") for v in upcoming_videos + live_videos}
+            
+            # DB に登録されていないキャッシュエントリを DB データに追加
+            for cache_entry in cache_live_videos:
+                video_id = cache_entry.get("video_id")
+                if video_id and video_id not in db_video_ids:
+                    # DB データをキャッシュから構築
+                    live_videos.append({
+                        "video_id": video_id,
+                        "title": cache_entry.get("db_data", {}).get("title", "Unknown"),
+                        "channel_name": cache_entry.get("db_data", {}).get("channel_name", "Unknown"),
+                        "video_url": cache_entry.get("db_data", {}).get("video_url", ""),
+                        "published_at": cache_entry.get("db_data", {}).get("published_at", ""),
+                        "thumbnail_url": cache_entry.get("db_data", {}).get("thumbnail_url", ""),
+                        "live_status": "live",  # キャッシュから取得
+                        "_from_cache": True,  # キャッシュ由来フラグ
+                    })
+            
+            # まとめて処理
+            all_live_videos = upcoming_videos + live_videos
 
-            if not live_videos:
-                logger.debug("ℹ️ ライブ中の動画がありません")
+            if not all_live_videos:
+                logger.debug("ℹ️ ポーリング対象の動画がありません（upcoming または live）")
+                # ただし終了済みエントリをチェック
+                self._process_ended_cache_entries(cache)
                 return
 
-            logger.info(f"🔄 {len(live_videos)} 件のライブ中動画をチェック中...")
+            logger.info(f"🔄 {len(all_live_videos)} 件のライブ関連動画をチェック中...（upcoming: {len(upcoming_videos)}, live: {len(live_videos)}, キャッシュ由来: {len(cache_live_videos)}）")
 
-            # キャッシュ取得
+            # キャッシュ取得（全体で一度だけ）
             cache = get_youtube_live_cache()
+            if not cache:
+                logger.error("❌ ライブキャッシュの初期化に失敗しました")
+                return
 
-            for video in live_videos:
+            for video in all_live_videos:
                 video_id = video.get("video_id")
+                old_live_status = video.get("live_status")  # ★新：状態遷移を記録用
+                
                 if not video_id:
                     continue
 
-                # ② API で現在の状態を確認
-                details = self.api_plugin._fetch_video_detail(video_id)
+                # ② API で現在の状態を確認（★修正：リトライロジックを追加、キャッシュバイパス）
+                details = None
+                retry_count = 0
+                max_retries = 3
+                
+                while retry_count < max_retries and details is None:
+                    try:
+                        # ★修正：LIVE ポーリング時は常に最新の API 情報を取得（キャッシュバイパス）
+                        details = self.api_plugin._fetch_video_detail_bypass_cache(video_id)
+                        if details:
+                            logger.debug(f"✅ API から動画詳細を取得: {video_id}")
+                            break
+                        else:
+                            logger.debug(f"⚠️ API から動画詳細が取得できませんでした（試行 {retry_count + 1}/{max_retries}）: {video_id}")
+                            retry_count += 1
+                            if retry_count < max_retries:
+                                time.sleep(2)  # リトライ前に2秒待機
+                    except Exception as e:
+                        logger.debug(f"⚠️ API リクエストエラー（試行 {retry_count + 1}/{max_retries}）: {video_id} - {e}")
+                        retry_count += 1
+                        if retry_count < max_retries:
+                            time.sleep(2)
+                
                 if not details:
-                    logger.warning(f"⚠️ 動画詳細取得に失敗: {video_id}")
+                    logger.warning(f"❌ 動画詳細取得に失敗（リトライ上限）: {video_id}")
+                    # ★修正：エラー時もキャッシュを更新し、次回ポーリングの参考にする
+                    cache_entry = cache.get_live_video(video_id)
+                    if cache_entry:
+                        logger.debug(f"📌 エラー時もキャッシュをマーク（前回のデータを保有）: {video_id}")
+                        # poll_count を増やして、何度もエラーが続いていることを記録
+                        cache.update_live_video(video_id, cache_entry.get("api_data", {}))
                     continue
 
-                # ③ DB データと API データを組み合わせてキャッシュに保存
+                # ③ 分類ロジックで現在の状態を判定
+                content_type, new_live_status, is_premiere = self._classify_live(details)
+
+                # ★修正：DB の old_live_status を考慮して、状態遷移を制御
+                # live → completed → archive の段階的な状態遷移を実現する
+                # 1. old_live_status = "live" かつ new_live_status = "completed" の場合
+                #    → まだ content_type = "live" のままにして、終了告知投稿を実施
+                # 2. 次のポーリングで new_live_status = "completed" かつ content_type が既に "archive"
+                #    → アーカイブ化が完了
+                
+                if old_live_status == "live" and new_live_status == "completed":
+                    # 終了検知時点では content_type を "live" のままにする（終了告知用）
+                    logger.info(f"📋 【状態遷移制御】 live → completed を検知: content_type を 'live' のまま保持（終了告知用）")
+                    # content_type は API の分類結果 "archive" ではなく、"live" で上書き
+                    content_type = "live"
+                elif old_live_status == "completed" and content_type == "archive":
+                    # 前回のポーリングで completed に更新済みで、今回 archive に分類
+                    logger.info(f"📋 【状態遷移制御】 completed → archive: アーカイブ化が確定")
+                    # content_type = "archive" で進行（API の分類結果を使用）
+
+                # ④ DB データと API データを組み合わせてキャッシュに保存
+                # ★修正：キャッシュの有効期限をチェック
                 cache_entry = cache.get_live_video(video_id)
-                if not cache_entry:
-                    # 初回追加
+                cache_is_valid = cache._is_cache_entry_valid(video_id) if cache_entry else False
+                
+                if not cache_entry or not cache_is_valid:
+                    # キャッシュがないか、有効期限切れ → 初回追加
                     db_data = {
                         "title": video.get("title"),
                         "channel_name": video.get("channel_name"),
@@ -678,48 +806,228 @@ class YouTubeLivePlugin(NotificationPlugin):
                         "thumbnail_url": video.get("thumbnail_url"),
                     }
                     cache.add_live_video(video_id, db_data, details)
-                    logger.debug(f"📌 キャッシュに追加: {video_id}")
+                    logger.info(f"📌 ライブ動画をキャッシュに追加（新規または期限切れ復帰）: {video_id}")
                 else:
-                    # ④ ポーリング結果に基づきキャッシュを更新
+                    # キャッシュが有効 → ポーリング結果に基づきキャッシュを更新
                     cache.update_live_video(video_id, details)
-                    logger.debug(f"🔄 キャッシュを更新: {video_id}")
+                    logger.info(f"🔄 ライブ動画のキャッシュを更新（ポーリング {cache.cache_data[video_id]['poll_count']} 回）: {video_id}")
 
-                # 分類ロジックで現在の状態を判定
-                content_type, live_status, is_premiere = self._classify_live(details)
+                # ★修正：各動画処理後にキャッシュをファイルに保存
+                try:
+                    cache._save_cache()
+                    logger.debug(f"💾 キャッシュを保存しました: {video_id}")
+                except Exception as e:
+                    logger.error(f"❌ キャッシュ保存エラー（{video_id}）: {e}")
 
-                # ⑤ LIVE終了の API データが取れたら終了と判定 → キャッシュデータで本番DB更新
-                if live_status == "completed" or content_type == "archive":
-                    logger.info(f"✅ ライブ終了を検知: {video_id} (live_status={live_status}, content_type={content_type})")
+                # ③ 状態遷移を検出して対応
+                logger.info(f"📊 状態遷移確認: {video_id} - {old_live_status} → {new_live_status}")
+                
+                # ⑤ 設定を読み込み
+                from config import get_config
+                config = get_config("settings.env")
+                
+                # 状態遷移: upcoming → live（ライブ開始）
+                if old_live_status == "upcoming" and new_live_status == "live":
+                    logger.info(f"🚀 ライブ開始を検知: {video_id}")
+                    
+                    # DB 更新
+                    self.db.update_video_status(video_id, content_type, new_live_status)
+                    
+                    # 自動投稿判定
+                    if self._should_autopost_live(content_type, new_live_status, config):
+                        logger.info(f"📡 ライブ開始自動投稿を実行します: {video_id}")
+                        self.auto_post_live_start(video)
+                    else:
+                        logger.info(f"ℹ️ YOUTUBE_LIVE_AUTOPOST_MODE の設定により投稿スキップ（content_type={content_type}, live_status={new_live_status}）")
+                    
+                    # キャッシュを保存
+                    try:
+                        cache._save_cache()
+                        logger.debug(f"💾 ライブ開始状態をキャッシュに保存: {video_id}")
+                    except Exception as e:
+                        logger.error(f"❌ キャッシュ保存エラー（ライブ開始、{video_id}）: {e}")
+                
+                # 状態遷移: live → completed（ライブ終了）
+                elif old_live_status == "live" and new_live_status == "completed":
+                    logger.info(f"✅ ライブ終了を検知: {video_id}")
+                    logger.info(f"📊 【auto_post_live_end()に渡す情報】 content_type={content_type}, new_live_status={new_live_status}, old_live_status={old_live_status}")
 
                     # キャッシュを終了状態に更新
                     cache.mark_as_ended(video_id)
 
-                    # DB 更新（キャッシュデータを反映）
-                    self.db.update_video_status(video_id, content_type, live_status)
+                    # DB 更新
+                    self.db.update_video_status(video_id, content_type, new_live_status)
 
-                    # ⑥ 設定に基づき自動投稿（新仕様：YOUTUBE_LIVE_AUTOPOST_MODE）
-                    from config import get_config
-                    config = get_config("settings.env")
-                    if self._should_autopost_live(content_type, live_status, config):
+                    # 自動投稿判定
+                    if self._should_autopost_live(content_type, new_live_status, config):
+                        logger.info(f"📡 ライブ終了自動投稿を実行します: {video_id}")
                         self.auto_post_live_end(video)
                     else:
-                        logger.info(f"ℹ️ YOUTUBE_LIVE_AUTOPOST_MODE の設定により投稿スキップ（content_type={content_type}, live_status={live_status}）")
+                        logger.info(f"ℹ️ YOUTUBE_LIVE_AUTOPOST_MODE の設定により投稿スキップ（content_type={content_type}, live_status={new_live_status}）")
 
-                    # ファイルに保存してキャッシュを維持
-                    # （ローンチ後のIssue対策：ファイルとして常に残す）
-                    cache._save_cache()
+                    # キャッシュを保存
+                    try:
+                        cache._save_cache()
+                        logger.debug(f"💾 ライブ終了状態をキャッシュに保存: {video_id}")
+                    except Exception as e:
+                        logger.error(f"❌ キャッシュ保存エラー（ライブ終了、{video_id}）: {e}")
+                
+                # ★ 新: 状態遷移がなくても、live/archive で未投稿なら投稿対象にする
+                # （例：archive から live に修正された場合など）
+                elif new_live_status in ("live", "completed") and content_type in ("live", "archive"):
+                    if not (old_live_status == "upcoming" and new_live_status == "live") and not (old_live_status == "live" and new_live_status == "completed"):
+                        # 状態遷移（upcoming→live、live→completed）以外の場合
+                        # DB の posted_to_bluesky フラグを確認
+                        try:
+                            conn = self.db._get_connection()
+                            conn.row_factory = __import__('sqlite3').Row
+                            cursor = conn.cursor()
+                            cursor.execute("SELECT posted_to_bluesky FROM videos WHERE video_id = ?", (video_id,))
+                            row = cursor.fetchone()
+                            conn.close()
+                            
+                            posted_flag = row[0] if row else 0
+                            
+                            # 未投稿（posted_to_bluesky = 0）なら投稿対象に
+                            if not posted_flag:
+                                logger.info(f"🔄 状態遷移はなしですが、未投稿の {new_live_status} 動画です: {video_id}")
+                                if self._should_autopost_live(content_type, new_live_status, config):
+                                    if new_live_status == "live":
+                                        logger.info(f"📡 ライブ開始自動投稿を実行します: {video_id}")
+                                        self.auto_post_live_start(video)
+                                    elif new_live_status == "completed":
+                                        logger.info(f"📡 ライブ終了自動投稿を実行します: {video_id}")
+                                        self.auto_post_live_end(video)
+                        except Exception as e:
+                            logger.warning(f"⚠️ 未投稿判定エラー: {video_id} - {e}")
+
+                
+                # upcoming のまま、または live のまま（状態遷移なし）
+                elif old_live_status == new_live_status:
+                    logger.debug(f"ℹ️ 状態変化なし（{old_live_status}のまま）: {video_id}")
+                    # この場合、既に DB は正しい状態なので、更新不要
+                
+                # 予期しない状態遷移
+                else:
+                    logger.warning(f"⚠️ 予期しない状態遷移: {video_id} - {old_live_status} → {new_live_status}")
+                    # DB を新しい状態に更新（念のため）
+                    self.db.update_video_status(video_id, content_type, new_live_status)
+                
+                processed_count += 1
+
+            logger.info(f"✅ ポーリング処理完了: {processed_count}/{len(all_live_videos)} 件処理")
 
         except Exception as e:
             logger.error(f"❌ ライブ終了チェックエラー: {e}")
 
         finally:
-            # ポーリング完了時、キャッシュをファイルに保存
-            # （youtube_live_cache.json を永続化）
+            # ★修正：最後に必ずキャッシュをファイルに保存（失敗時も記録）
             try:
-                cache = get_youtube_live_cache()
-                cache._save_cache()
+                if cache is None:
+                    cache = get_youtube_live_cache()
+                if cache:
+                    cache._save_cache()
+                    logger.debug("💾 ポーリング完了時にキャッシュをファイルに保存")
+                    
+                    # ★新: 終了済みエントリから未投稿の動画を検出して投稿処理を実行
+                    self._process_ended_cache_entries(cache)
+                    
+                    # ★新: 終了済みエントリを1時間以上経過していればクリーンアップ
+                    cleanup_count = cache.clear_ended_videos(max_age_seconds=3600)
+                    if cleanup_count > 0:
+                        logger.info(f"🧹 クリーンアップ完了: {cleanup_count} 件の終了済み動画をキャッシュから削除")
+                        cache._save_cache()
             except Exception as e:
-                logger.debug(f"⚠️ キャッシュの永続化に失敗: {e}")
+                logger.error(f"❌ 最終キャッシュ保存エラー: {e}")
+
+    def _process_ended_cache_entries(self, cache) -> None:
+        """
+        ★新: キャッシュから status='ended' のエントリを取得して、未投稿なら投稿処理を実行
+
+        Args:
+            cache: YouTubeLiveCache インスタンス
+        """
+        try:
+            from config import get_config
+            config = get_config("settings.env")
+            
+            ended_videos = cache.get_live_videos_by_status("ended")
+            
+            if not ended_videos:
+                logger.debug("ℹ️ 終了済みキャッシュエントリはありません")
+                return
+            
+            logger.info(f"🔍 {len(ended_videos)} 件の終了済みキャッシュエントリをチェック...")
+            
+            for cache_entry in ended_videos:
+                video_id = cache_entry.get("video_id")
+                
+                if not video_id:
+                    continue
+                
+                # DB での投稿フラグを確認
+                try:
+                    conn = self.db._get_connection()
+                    conn.row_factory = __import__('sqlite3').Row
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "SELECT posted_to_bluesky, live_status, content_type FROM videos WHERE video_id = ?",
+                        (video_id,)
+                    )
+                    row = cursor.fetchone()
+                    conn.close()
+                    
+                    if not row:
+                        # DB に登録されていない場合
+                        logger.debug(f"ℹ️ {video_id} は DB に未登録です（キャッシュのみ）")
+                        
+                        # キャッシュから投稿情報を構築
+                        posted_flag = 0  # 未投稿として扱う
+                        live_status = "completed"
+                        content_type = "archive"
+                    else:
+                        posted_flag = row[0]
+                        live_status = row[1] or "completed"
+                        content_type = row[2] or "archive"
+                    
+                    # 未投稿の場合のみ投稿処理を実行
+                    if not posted_flag:
+                        logger.info(f"📌 終了済みキャッシュから投稿対象を検出: {video_id}")
+                        logger.info(f"   live_status={live_status}, content_type={content_type}, posted_to_bluesky={posted_flag}")
+                        
+                        # 投稿判定
+                        if self._should_autopost_live(content_type, live_status, config):
+                            # 投稿用の動画データを構築
+                            video_data = {
+                                "video_id": video_id,
+                                "title": cache_entry.get("db_data", {}).get("title", "Unknown"),
+                                "channel_name": cache_entry.get("db_data", {}).get("channel_name", "Unknown"),
+                                "video_url": cache_entry.get("db_data", {}).get("video_url", ""),
+                                "published_at": cache_entry.get("db_data", {}).get("published_at", ""),
+                                "thumbnail_url": cache_entry.get("db_data", {}).get("thumbnail_url", ""),
+                                "live_status": live_status,
+                                "content_type": content_type,
+                            }
+                            
+                            logger.info(f"📡 終了済みキャッシュから自動投稿を実行: {video_id}")
+                            
+                            if live_status == "completed" or content_type == "archive":
+                                # ライブ終了またはアーカイブ公開
+                                self.auto_post_live_end(video_data)
+                            elif live_status == "live":
+                                # ライブ開始（念のため）
+                                self.auto_post_live_start(video_data)
+                        else:
+                            logger.debug(f"ℹ️ 投稿スキップ（設定により）: {video_id}")
+                    else:
+                        logger.debug(f"ℹ️ スキップ（既に投稿済み）: {video_id}")
+                
+                except Exception as e:
+                    logger.warning(f"⚠️ 終了済みエントリ処理エラー（{video_id}）: {e}")
+                    continue
+        
+        except Exception as e:
+            logger.error(f"❌ 終了済みキャッシュエントリ処理エラー: {e}")
 
 
 def get_plugin():

@@ -435,6 +435,44 @@ class YouTubeAPIPlugin(NotificationPlugin):
 
         return None
 
+    def _fetch_video_detail_bypass_cache(self, video_id: str) -> Optional[Dict[str, Any]]:
+        """
+        ★新: 単一動画の詳細を API から直接取得（キャッシュバイパス）
+        
+        LIVE ポーリング時に常に最新の状態を取得する必要があるため、
+        キャッシュをバイパスして API から直接取得します。
+        
+        用途：LIVE ポーリング中の状態確認用
+        
+        Args:
+            video_id: YouTube 動画 ID
+        
+        Returns:
+            動画詳細情報（API レスポンスの item）、取得失敗時は None
+        """
+        logger.debug(f"🔄 キャッシュをバイパスして API から動画詳細を取得: {video_id}")
+        
+        # ★ API から直接取得（キャッシュは使用しない）
+        data = self._get(
+            "videos",
+            {
+                "part": "snippet,contentDetails,liveStreamingDetails,status",
+                "id": video_id,
+                "maxResults": 1,
+            },
+            expected_cost=1,
+            operation=f"video detail (no-cache): {video_id}"
+        )
+        items = data.get("items", []) if data else []
+        if items:
+            details = items[0]
+            # キャッシュに保存（次回以降の参照用）
+            self._cache_video_detail(video_id, details)
+            logger.debug(f"✅ API から取得した動画詳細をキャッシュに保存: {video_id}")
+            return details
+
+        return None
+
     def fetch_video_detail(self, video_id: str) -> Optional[Dict[str, Any]]:
         """
         単一動画の詳細を取得（キャッシュ優先、1ユニット）
@@ -583,14 +621,14 @@ class YouTubeAPIPlugin(NotificationPlugin):
 
         ★ 判定基準:
           1. liveStreamingDetails が存在する
-          2. actualStartTime と actualEndTime が両方存在する、OR concurrentViewers が存在する
+          2. actualEndTime が存在する（配信終了時刻があればアーカイブ）
 
         Args:
             details: YouTube API videos.list で取得した動画詳細（キャッシュから直接使用）
 
         Returns:
-            bool: True = ライブ配信アーカイブ
-                  False = 通常動画またはプレミア公開アーカイブ
+            bool: True = ライブ配信アーカイブ（配信終了）
+                  False = 配信予定、配信中、または通常動画
         """
         live = details.get("liveStreamingDetails", {})
 
@@ -598,16 +636,11 @@ class YouTubeAPIPlugin(NotificationPlugin):
             # liveStreamingDetails がない = 通常動画
             return False
 
-        # 判定基準: actualStartTime と actualEndTime が存在、または concurrentViewers が存在
-        # ライブ配信は開始～終了の時間帯が記録される、または視聴者数が記録される
-        has_actual_start = "actualStartTime" in live
+        # 判定基準: actualEndTime が存在する = 配信が終了している
+        # actualEndTime がなければ、配信予定（scheduledStartTime）または配信中（actualStartTime + concurrentViewers）
         has_actual_end = "actualEndTime" in live
-        has_concurrent_viewers = "concurrentViewers" in live
 
-        # ライブ配信 = (actualStartTime と actualEndTime がある) OR (concurrentViewers がある)
-        is_live = (has_actual_start and has_actual_end) or has_concurrent_viewers
-
-        return is_live
+        return has_actual_end
 
     def _classify_video_core(self, details: Dict[str, Any]) -> Tuple[str, Optional[str], bool]:
         """

@@ -316,23 +316,46 @@ def main():
             return
 
         logger.info(f"📡 YouTubeLive ライブ終了検知ポーリングを開始します（間隔: {poll_interval_minutes} 分）")
+        
+        last_poll_time = 0
+        consecutive_errors = 0
+        max_consecutive_errors = 3
 
         while not stop_event.is_set():
             try:
-                live_plugin = plugin_manager.get_plugin("youtube_live_plugin")
-                if live_plugin and live_plugin.is_available():
-                    logger.debug("🔄 YouTubeLive ライブ終了チェック実行...")
-                    live_plugin.poll_live_status()
-                else:
-                    logger.debug("ℹ️ YouTubeLive プラグインが利用不可")
+                current_time = time.time()
+                
+                # ★ 修正: ポーリング間隔に達したかチェック（秒単位）
+                if current_time - last_poll_time >= poll_interval_minutes * 60:
+                    live_plugin = plugin_manager.get_plugin("youtube_live_plugin")
+                    if live_plugin and live_plugin.is_available():
+                        logger.info(f"🔄 YouTubeLive ライブ終了チェック実行...（ポーリング間隔: {poll_interval_minutes} 分）")
+                        
+                        try:
+                            live_plugin.poll_live_status()
+                            last_poll_time = current_time
+                            consecutive_errors = 0
+                            logger.info("✅ YouTubeLive ポーリング完了")
+                        except Exception as poll_error:
+                            consecutive_errors += 1
+                            logger.error(f"❌ ポーリング処理エラー（{consecutive_errors}/{max_consecutive_errors}）: {poll_error}")
+                            
+                            # ★ 連続エラーが多い場合は警告
+                            if consecutive_errors >= max_consecutive_errors:
+                                logger.warning(f"⚠️ ポーリングが {consecutive_errors} 回連続でエラーになっています。API キー・ネットワーク接続を確認してください。")
+                    else:
+                        if not live_plugin:
+                            logger.warning("⚠️ YouTubeLive プラグインが取得できません")
+                        else:
+                            logger.debug("ℹ️ YouTubeLive プラグインが利用不可（API キーなし）")
+                        last_poll_time = current_time
+                        consecutive_errors = 0
             except Exception as e:
-                logger.error(f"❌ ライブ終了チェックエラー: {e}")
+                logger.error(f"❌ ポーリングスレッドエラー: {e}")
+                consecutive_errors += 1
 
-            # 待機
-            for _ in range(poll_interval_minutes * 60):
-                if stop_event.is_set():
-                    break
-                time.sleep(1)
+            # ★ 修正: 短い間隔で stop_event をチェック（レスポンシブなシャットダウンのため）
+            time.sleep(1)  # 1秒ごとにチェック
 
     # ライブ終了検知スレッド開始
     live_polling_thread = threading.Thread(target=start_youtube_live_polling, daemon=True)

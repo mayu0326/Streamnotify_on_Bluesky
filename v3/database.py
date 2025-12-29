@@ -784,6 +784,77 @@ class Database:
         logger.error(f"❌ published_at 更新に失敗（リトライ上限）: {video_id}")
         return False
 
+    def update_video_metadata(self, video_id: str, **metadata) -> bool:
+        """
+        ★ API から取得したメタデータを更新
+
+        タイトル、説明、サムネイル URL などの動画メタデータを更新します。
+        
+        Args:
+            video_id: 動画ID
+            **metadata: 更新するカラム名と値（例: title="新タイトル", thumbnail_url="..."）
+
+        Returns:
+            更新成功フラグ
+        """
+        if not video_id or not metadata:
+            return False
+
+        # 有効なカラムのみを許可
+        valid_columns = {
+            "title", "channel_name", "thumbnail_url", "is_premiere", 
+            "is_short", "is_members_only"
+        }
+        update_data = {k: v for k, v in metadata.items() if k in valid_columns and v is not None}
+
+        if not update_data:
+            return False
+
+        for attempt in range(DB_RETRY_MAX):
+            try:
+                conn = self._get_connection()
+                cursor = conn.cursor()
+
+                # 更新 SQL を動的に構築
+                set_clause = ", ".join([f"{col} = ?" for col in update_data.keys()])
+                values = list(update_data.values()) + [video_id]
+                
+                sql = f"UPDATE videos SET {set_clause} WHERE video_id = ?"
+                cursor.execute(sql, values)
+
+                affected_rows = cursor.rowcount
+                conn.commit()
+                conn.close()
+
+                if affected_rows == 0:
+                    logger.debug(f"⚠️ 対象の動画が見つかりません: {video_id}")
+                    return False
+
+                # 更新内容をログ出力
+                for col, val in update_data.items():
+                    if isinstance(val, str) and len(val) > 50:
+                        logger.info(f"✅ {col} を更新: {video_id} → {val[:50]}...")
+                    else:
+                        logger.info(f"✅ {col} を更新: {video_id} → {val}")
+
+                return True
+
+            except sqlite3.OperationalError as e:
+                if "locked" in str(e).lower() and attempt < DB_RETRY_MAX - 1:
+                    logger.debug(f"DB ロック中。{attempt + 1}/{DB_RETRY_MAX} リトライします...")
+                    time.sleep(0.5)
+                    continue
+                else:
+                    logger.error(f"❌ DB エラー（メタデータ更新失敗）: {video_id} - {e}")
+                    return False
+
+            except Exception as e:
+                logger.error(f"❌ メタデータ更新に予期しないエラー: {video_id} - {e}")
+                return False
+
+        logger.error(f"❌ メタデータ更新に失敗（リトライ上限）: {video_id}")
+        return False
+
     def delete_video(self, video_id: str) -> bool:
         """動画をDBから削除（除外動画リスト連携付き）"""
         for attempt in range(DB_RETRY_MAX):
