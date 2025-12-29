@@ -147,7 +147,7 @@ venv\Scripts\activate
 (venv) C:\Users\YourName\...>
 ```
 
-### macOS / Linux ユーザー向け
+### Linux ユーザー向け
 
 ```bash
 # 仮想環境を作成
