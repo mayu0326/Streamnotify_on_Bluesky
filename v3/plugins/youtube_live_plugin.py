@@ -276,6 +276,14 @@ class YouTubeLivePlugin(NotificationPlugin):
             # SELFPOST 時は個別フラグで投稿判定を行う
             # ★ 重要: updated_count に関係なく、未投稿の live/archive 動画をすべてチェック
             # これにより、既にDBに登録済みでも未投稿の動画を自動投稿できる
+            #
+            # 効率性について:
+            # - DB から全動画を取得するが、以下のフィルタで処理を最小化:
+            #   1. posted_to_bluesky=1 の動画はスキップ
+            #   2. content_type が live/archive 以外はスキップ
+            #   3. _should_autopost_live() で設定に基づき判定
+            # - 通常の YouTube チャンネルでは live/archive 動画は少数のため、
+            #   パフォーマンスへの影響は限定的
             logger.info(f"🚀 YouTube Live 自動投稿処理を開始します（分類更新件数: {updated_count}）")
             try:
                 from config import get_config
@@ -321,6 +329,12 @@ class YouTubeLivePlugin(NotificationPlugin):
                         logger.info(f"📤 YouTube Live 自動投稿: {video['title']} (content_type={content_type}, live_status={live_status})")
                         results = self.plugin_manager.post_video_with_all_enabled(video)
                         logger.debug(f"   投稿結果: {results}")
+                        
+                        # ★ 投稿ステータスについて:
+                        # 現在のアーキテクチャでは、posted_to_bluesky は単一フラグ
+                        # （プラグイン別のステータス管理は未実装）
+                        # いずれかのプラグインで投稿成功すれば posted とマーク
+                        # 今後の改善: プラグイン別の投稿ステータス管理
                         if any(results.values()):
                             self.db.mark_as_posted(video_id)
                             autopost_count += 1
@@ -586,7 +600,11 @@ class YouTubeLivePlugin(NotificationPlugin):
             logger.info(f"📡 ライブ開始自動投稿を実行します: {video.get('title')}")
             results = self.plugin_manager.post_video_with_all_enabled(video_copy)
             
-            # いずれかのプラグインで投稿成功すれば True
+            # ★ 投稿ステータスについて:
+            # 現在のアーキテクチャでは、posted_to_bluesky は単一フラグ
+            # （プラグイン別のステータス管理は未実装）
+            # いずれかのプラグインで投稿成功すれば posted とマーク
+            # 今後の改善: プラグイン別の投稿ステータス管理
             success = any(results.values())
             if success:
                 # DB の投稿フラグを更新
@@ -625,7 +643,11 @@ class YouTubeLivePlugin(NotificationPlugin):
             logger.info(f"📡 ライブ終了自動投稿を実行します: {video.get('title')}")
             results = self.plugin_manager.post_video_with_all_enabled(video_copy)
             
-            # いずれかのプラグインで投稿成功すれば True
+            # ★ 投稿ステータスについて:
+            # 現在のアーキテクチャでは、posted_to_bluesky は単一フラグ
+            # （プラグイン別のステータス管理は未実装）
+            # いずれかのプラグインで投稿成功すれば posted とマーク
+            # 今後の改善: プラグイン別の投稿ステータス管理
             success = any(results.values())
             if success:
                 # DB の投稿フラグを更新
