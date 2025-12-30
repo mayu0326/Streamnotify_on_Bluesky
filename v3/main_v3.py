@@ -145,19 +145,19 @@ def main():
             # WebSub モード（Websubサーバー HTTP API 経由）
             logger.info("[YouTube] YouTube WebSub の取得を準備しています...")
             try:
-                from youtube_websub import get_youtube_websub
+                from youtube_core.youtube_websub import get_youtube_websub
                 yt_rss = get_youtube_websub(config.youtube_channel_id)
                 logger.info("[YouTube] WebSub の取得準備を完了しました")
             except ImportError:
                 logger.warning("[YouTube] youtube_websub モジュールが見つかりません。RSS モードにフォールバックします。")
                 config.youtube_feed_mode = "poll"
-                from youtube_rss import get_youtube_rss
+                from youtube_core.youtube_rss import get_youtube_rss
                 yt_rss = get_youtube_rss(config.youtube_channel_id)
                 logger.info("[YouTube] RSS の取得準備を完了しました")
         else:
             # RSS ポーリング モード（デフォルト）
             logger.info("[YouTube] YouTubeRSS の取得を準備しています...")
-            from youtube_rss import get_youtube_rss
+            from youtube_core.youtube_rss import get_youtube_rss
             yt_rss = get_youtube_rss(config.youtube_channel_id)
             logger.info("[YouTube] RSS の取得準備を完了しました")
     except Exception as e:
@@ -195,7 +195,7 @@ def main():
 
     # YouTubeAPI プラグインを手動でロード・有効化
     try:
-        plugin_manager.load_plugin("youtube_api_plugin", os.path.join("plugins", "youtube_api_plugin.py"))
+        plugin_manager.load_plugin("youtube_api_plugin", os.path.join("plugins", "youtube", "youtube_api_plugin.py"))
         plugin_manager.enable_plugin("youtube_api_plugin")
         asset_manager.deploy_plugin_assets("youtube_api_plugin")
     except Exception as e:
@@ -203,7 +203,7 @@ def main():
 
     # YouTubeLive 検出プラグインを手動でロード・有効化
     try:
-        plugin_manager.load_plugin("youtube_live_plugin", os.path.join("plugins", "youtube_live_plugin.py"))
+        plugin_manager.load_plugin("youtube_live_plugin", os.path.join("plugins", "youtube", "youtube_live_plugin.py"))
         asset_manager.deploy_plugin_assets("youtube_live_plugin")
 
         # ★ YouTube Live プラグインに依存を注入（自動投稿用）
@@ -359,7 +359,7 @@ def main():
                             # ★ 新: キャッシュ状態に応じて次回のポーリング間隔を選択（動的制御）
                             # Poller が保持するキャッシュ状態に応じて間隔を決定
                             try:
-                                from youtube_live_cache_manager import get_youtube_live_cache
+                                from youtube_core.youtube_live_cache_manager import get_youtube_live_cache
                                 cache = get_youtube_live_cache()
 
                                 # キャッシュのコンテンツを確認

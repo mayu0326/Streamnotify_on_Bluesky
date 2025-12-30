@@ -65,11 +65,11 @@ class StreamNotifyGUI:
         toolbar.pack(side=tk.TOP, fill=tk.X, padx=5, pady=5)
 
         ttk.Button(toolbar, text="🔄 再読込", command=self.refresh_data).pack(side=tk.LEFT, padx=2)
-        
+
         # ★ フィード取得ボタン：websubモード時は「新着取得」、それ以外は「RSS更新」
         feed_button_text = "📡 新着取得" if self.config.youtube_feed_mode == "websub" else "🌐 RSS更新"
         ttk.Button(toolbar, text=feed_button_text, command=self.fetch_rss_manually).pack(side=tk.LEFT, padx=2)
-        
+
         ttk.Button(toolbar, text="🎬 Live判定", command=self.classify_youtube_live_manually).pack(side=tk.LEFT, padx=2)
         ttk.Button(toolbar, text="➕ 動画追加", command=self.add_video_dialog).pack(side=tk.LEFT, padx=2)
         ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=2)
@@ -136,15 +136,15 @@ class StreamNotifyGUI:
         source_combo.grid(row=0, column=5, sticky=tk.W, padx=5, pady=5)
         source_combo.bind("<<ComboboxSelected>>", lambda e: self.apply_filters())
 
-        # タイプフィルタ（YouTube: 動画/アーカイブ/Live/プレミア）
+        # タイプフィルタ（5カテゴリ対応: 動画/アーカイブ/放送予約/放送中/放送終了/プレミア）
         ttk.Label(filter_frame, text="タイプ:").grid(row=0, column=6, sticky=tk.W, padx=5, pady=5)
         self.filter_type_var = tk.StringVar(value="全て")
         type_combo = ttk.Combobox(
             filter_frame,
             textvariable=self.filter_type_var,
-            values=["全て", "🎬 動画", "📹 アーカイブ", "🔴 配信", "🎆 プレミア"],
+            values=["全て", "🎬 動画", "📹 アーカイブ", "📅 放送予約", "🔴 放送中", "⏹️ 放送終了", "🎆 プレミア"],
             state="readonly",
-            width=15
+            width=20
         )
         type_combo.grid(row=0, column=7, sticky=tk.W, padx=5, pady=5)
         type_combo.bind("<<ComboboxSelected>>", lambda e: self.apply_filters())
@@ -244,8 +244,8 @@ class StreamNotifyGUI:
     def fetch_rss_manually(self):
         """RSS フィードを手動で今すぐ取得・更新"""
         try:
-            from youtube_rss import YouTubeRSS
-            from youtube_websub import YouTubeWebSub
+            from youtube_core.youtube_rss import YouTubeRSS
+            from youtube_core.youtube_websub import YouTubeWebSub
             from config import Config
             from plugin_manager import PluginManager
 
@@ -258,7 +258,7 @@ class StreamNotifyGUI:
 
             # フィード取得モード判定
             feed_mode = config.youtube_feed_mode
-            
+
             if feed_mode == "websub":
                 # WebSub モード時はWebSubサーバーから新着確認
                 messagebox.showinfo("RSS更新", "WebSub サーバーから新着を確認中...\n（ウィンドウを閉じないでください）")
@@ -388,9 +388,9 @@ DB を再読込みします。
             if source_filter_lower != "全て" and source != source_filter_lower:
                 continue
 
-            # タイプフィルタ（動画/アーカイブ/Live/プレミア）
+            # タイプフィルタ（5カテゴリ: 動画/アーカイブ/放送予約/放送中/放送終了/プレミア）
             if type_filter != "全て":
-                # 表示用のタイプを計算
+                # 表示用のタイプを計算（新分類対応）
                 content_type = video.get("content_type", "video")
                 is_premiere = video.get("is_premiere", 0)
                 source_for_display = video.get("source", "").lower()
@@ -401,8 +401,12 @@ DB を再読込みします。
                     display_type = "🎬 動画"
                 elif content_type == "archive":
                     display_type = "📹 アーカイブ"
+                elif content_type == "schedule":
+                    display_type = "📅 放送予約"
                 elif content_type == "live":
-                    display_type = "🔴 配信"
+                    display_type = "🔴 放送中"
+                elif content_type == "completed":
+                    display_type = "⏹️ 放送終了"
                 else:
                     display_type = "🎬 動画"
 
@@ -427,7 +431,7 @@ DB を再読込みします。
             image_mode = video.get("image_mode") or ""
             image_filename = video.get("image_filename") or ""
 
-            # 分類情報を取得
+            # 分類情報を取得（5カテゴリ対応）
             content_type = video.get("content_type", "video")
             is_premiere = video.get("is_premiere", 0)
             if is_premiere:
@@ -436,8 +440,12 @@ DB を再読込みします。
                 display_type = "🎬 動画"
             elif content_type == "archive":
                 display_type = "📹 アーカイブ"
+            elif content_type == "schedule":
+                display_type = "📅 放送予約"
             elif content_type == "live":
-                display_type = "🔴 配信"
+                display_type = "🔴 放送中"
+            elif content_type == "completed":
+                display_type = "⏹️ 放送終了"
             else:
                 display_type = "🎬 動画"
 
@@ -2203,11 +2211,11 @@ YouTube:      {youtube_count} 件 (投稿済み: {youtube_posted})
         published_entry.grid(row=3, column=1, sticky=tk.EW, padx=5, pady=5)
         published_entry.insert(0, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
-        # コンテンツタイプ
+        # コンテンツタイプ（5カテゴリ対応）
         ttk.Label(form_frame, text="コンテンツ種別:").grid(row=4, column=0, sticky=tk.W, pady=5)
         content_type_var = tk.StringVar(value="video")
         content_combo = ttk.Combobox(form_frame, textvariable=content_type_var, state="readonly", width=47)
-        content_combo['values'] = ("video", "live", "archive", "none")
+        content_combo['values'] = ("video", "archive", "schedule", "live", "completed")
         content_combo.grid(row=4, column=1, sticky=tk.EW, padx=5, pady=5)
 
         # ライブ配信状態

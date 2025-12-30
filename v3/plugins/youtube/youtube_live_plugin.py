@@ -21,21 +21,19 @@ import logging
 from typing import Dict, Any, Optional
 from pathlib import Path
 
+# v3 ルートへのパスを追加
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
 from plugin_interface import NotificationPlugin
 from database import Database, get_database
-from plugins.youtube_api_plugin import YouTubeAPIPlugin
-from youtube_live_cache import get_youtube_live_cache
+from youtube_core.youtube_live_cache import get_youtube_live_cache
+from plugins.youtube.youtube_api_plugin import YouTubeAPIPlugin
 
-# プラグインディレクトリを sys.path に追加（内部モジュール読み込み用）
-plugin_dir = str(Path(__file__).parent)
-if plugin_dir not in sys.path:
-    sys.path.insert(0, plugin_dir)
-
-# 4層モジュール
-from youtube_live_classifier import YouTubeLiveClassifier
-from youtube_live_store import YouTubeLiveStore
-from youtube_live_poller import YouTubeLivePoller
-from youtube_live_auto_poster import YouTubeLiveAutoPoster
+# 同じパッケージ内の4層モジュール（絶対インポート）
+from plugins.youtube.youtube_live_classifier import YouTubeLiveClassifier
+from plugins.youtube.youtube_live_store import YouTubeLiveStore
+from plugins.youtube.youtube_live_poller import YouTubeLivePoller
+from plugins.youtube.youtube_live_auto_poster import YouTubeLiveAutoPoster
 
 logger = logging.getLogger("AppLogger")
 
@@ -150,6 +148,30 @@ class YouTubeLivePlugin(NotificationPlugin):
         if self.poller:
             self.poller.set_config(config)
 
+    def _update_unclassified_videos(self) -> int:
+        """
+        未分類動画（content_type="video"）を自動判定して更新
+
+        RSS で登録された動画のコンテンツ種別を自動判定し、
+        YouTube Live（upcoming/live/completed）かどうかを分類します。
+
+        Returns:
+            int: 更新された動画数
+        """
+        if not self.is_available():
+            logger.warning("⚠️ YouTubeLivePlugin は利用できません（api_key/channel_id 不足）")
+            return 0
+
+        # ★ Poller に委譲: 未分類動画の自動判定
+        updated_count = self.poller.poll_unclassified_videos()
+
+        if updated_count > 0:
+            logger.info(f"✅ {updated_count} 個の動画を自動判定して更新しました")
+        else:
+            logger.debug("ℹ️ 自動判定結果: 更新対象の動画はありません")
+
+        return updated_count
+
     def on_enable(self) -> None:
         """
         プラグイン有効化時に実行
@@ -163,13 +185,8 @@ class YouTubeLivePlugin(NotificationPlugin):
             logger.warning("⚠️ YouTubeLivePlugin は利用できません（api_key/channel_id 不足）")
             return
 
-        # ★ Poller に委譲: 未分類動画の自動判定
-        updated_count = self.poller.poll_unclassified_videos()
-
-        if updated_count > 0:
-            logger.info(f"✅ {updated_count} 個の動画を自動判定して更新しました")
-        else:
-            logger.info("ℹ️ 自動判定結果: 更新対象の動画はありません")
+        # ★ 未分類動画を自動判定
+        self._update_unclassified_videos()
 
     def poll_live_status(self) -> None:
         """

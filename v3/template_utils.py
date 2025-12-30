@@ -57,8 +57,25 @@ def _format_datetime_filter(value=None, format_str="%Y年%m月%d日 %H:%M") -> s
         value = datetime.now()
     elif isinstance(value, str):
         try:
+            # ★ ニコニコ形式 '2025-09-17T19:03+0900' に対応
+            # ISO 8601 形式で :00 がない場合は補完
+            if '+' in value or value.endswith('Z'):
+                # タイムゾーン形式を正規化
+                if value.count('+') == 1 and ':' not in value.split('+')[1]:
+                    # +0900 形式を +09:00 に変換
+                    parts = value.split('+')
+                    tz = parts[1]
+                    if len(tz) == 4:  # 0900 → 09:00
+                        value = f"{parts[0]}+{tz[:2]}:{tz[2:]}"
+                elif value.count('-') >= 3:  # -09:00 形式をチェック
+                    # タイムゾーンが -0900 形式の場合も同様に処理
+                    if value[-5] in ['+', '-'] and ':' not in value[-5:]:
+                        tz_part = value[-4:]
+                        value = value[:-4] + f"{value[-5]}{tz_part[:2]}:{tz_part[2:]}"
+
             value = datetime.fromisoformat(value)
-        except:
+        except Exception as e:
+            logger.debug(f"⚠️ 日時パース失敗: {value} - {e}")
             return str(value)
 
     if isinstance(value, datetime):

@@ -14,12 +14,16 @@ YouTube Data API プラグイン（クォータ対応版）
 - videos.list（詳細取得）: 1ユニット（最大50件/リクエスト）
 """
 import os
+import sys
 import logging
 import time
 import json
 from typing import Dict, Any, Optional, Tuple, List
 from pathlib import Path
 import requests
+
+# 相対インポート対応（親パッケージから）
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from plugin_interface import NotificationPlugin
 from database import Database
@@ -30,7 +34,7 @@ logger = logging.getLogger("AppLogger")
 API_BASE = "https://www.googleapis.com/youtube/v3"
 
 # キャッシュファイルのパス（絶対パス対応）
-_SCRIPT_DIR = Path(__file__).parent.parent  # v3/ ディレクトリ
+_SCRIPT_DIR = Path(__file__).parent.parent.parent.parent  # v3/ ディレクトリ
 CHANNEL_ID_CACHE_FILE = str(_SCRIPT_DIR / "data" / "youtube_channel_cache.json")
 VIDEO_DETAIL_CACHE_FILE = str(_SCRIPT_DIR / "data" / "youtube_video_detail_cache.json")
 CACHE_EXPIRY_DAYS = 7  # キャッシュの有効期限（日数）
@@ -261,9 +265,11 @@ class YouTubeAPIPlugin(NotificationPlugin):
         return None
 
     def _cache_video_detail(self, video_id: str, details: Dict[str, Any]) -> None:
-        """ビデオ詳細をキャッシュに保存"""
+        """ビデオ詳細をキャッシュに保存（メモリのみ、ファイルはバッチ保存）"""
         self.video_detail_cache[video_id] = details
         self.cache_timestamps[video_id] = time.time()
+        # ★ 修正: ファイル保存は update_video_detail_cache() または明示的な呼び出しで実施
+        # （毎回保存するとI/Oが多発するため、バッチ完了時に保存する）
 
     def update_video_detail_cache(self, video_id: str, video_details: dict):
         """動画詳細キャッシュを更新"""
@@ -539,8 +545,12 @@ class YouTubeAPIPlugin(NotificationPlugin):
                     video_id = item.get("id")
                     if video_id:
                         results[video_id] = item
-                        # キャッシュに保存
+                        # キャッシュに保存（メモリのみ）
                         self._cache_video_detail(video_id, item)
+
+        # ★ 修正: バッチ完了後にまとめてファイルに保存（I/O削減）
+        if to_fetch:
+            self._save_video_detail_cache()
 
         return results
 
@@ -646,8 +656,19 @@ class YouTubeAPIPlugin(NotificationPlugin):
         """
         【統合分類ロジック】動画の種別と状態を判別（content_type, live_status, is_premiere）
 
-        新しい分類メソッド（is_pure_video, is_live_archive）と
-        既存の時間情報ベース判定を組み合わせた統合分類ロジックです。
+        ★ v3.3.0 から 5カテゴリ統一分類に対応：
+          - "video": 通常動画
+          - "archive": LIVE終了後のアーカイブ
+          - "schedule": LIVE予約枠（upcoming）
+          - "live": LIVE配信中
+          - "completed": LIVE終了後（配信終了）
+
+        実際の YouTube API 戻り値 (content_type, live_status) に対応：
+          - ("video", None) → "video"
+          - ("archive", "completed") → "archive"
+          - ("live", "upcoming") → "schedule"
+          - ("live", "live") → "live"
+          - ("live", "completed") → "completed"
 
         ★ 判定優先度（上から順）:
           1. 新規フロー: is_pure_video() → "video"
@@ -661,8 +682,8 @@ class YouTubeAPIPlugin(NotificationPlugin):
 
         Returns:
             (content_type, live_status, is_premiere)
-              - content_type: "video" | "live" | "archive"
-              - live_status: None | "upcoming" | "live" | "completed"
+              - content_type: "video" | "archive" | "schedule" | "live" | "completed"
+              - live_status: None | "upcoming" | "live" | "completed" (互換性のため保持)
               - is_premiere: bool
         """
         video_id = details.get("id", "unknown")
@@ -697,17 +718,17 @@ class YouTubeAPIPlugin(NotificationPlugin):
 
             # タイムスタンプから状態判定（精度優先）
             if live.get("actualEndTime"):
-                # 配信終了 → アーカイブ
-                logger.debug(f"  📌 {video_id}: 分類フロー3 = actualEndTime あり → 'archive'")
-                return "archive", "completed", is_premiere
+                # 配信終了 → "completed"
+                logger.debug(f"  📌 {video_id}: 分類フロー3 = actualEndTime あり → 'completed'")
+                return "completed", "completed", is_premiere
             elif live.get("actualStartTime"):
-                # 配信中
+                # 配信中 → "live"
                 logger.debug(f"  📌 {video_id}: 分類フロー3 = actualStartTime あり → 'live'")
                 return "live", "live", is_premiere
             elif live.get("scheduledStartTime"):
-                # 配信予定
-                logger.debug(f"  📌 {video_id}: 分類フロー3 = scheduledStartTime あり → 'live (upcoming)'")
-                return "live", "upcoming", is_premiere
+                # 配信予約 → "schedule"
+                logger.debug(f"  📌 {video_id}: 分類フロー3 = scheduledStartTime あり → 'schedule'")
+                return "schedule", "upcoming", is_premiere
 
         # ★ 判定フロー 4: liveBroadcastContent ベース（補助判定）
         broadcast_type = snippet.get("liveBroadcastContent", "none")
@@ -715,11 +736,11 @@ class YouTubeAPIPlugin(NotificationPlugin):
             logger.debug(f"  📌 {video_id}: 分類フロー4 = liveBroadcastContent='live' → 'live'")
             return "live", "live", False
         elif broadcast_type == "upcoming":
-            logger.debug(f"  📌 {video_id}: 分類フロー4 = liveBroadcastContent='upcoming' → 'live (upcoming)'")
-            return "live", "upcoming", False
+            logger.debug(f"  📌 {video_id}: 分類フロー4 = liveBroadcastContent='upcoming' → 'schedule'")
+            return "schedule", "upcoming", False
         elif broadcast_type == "completed":
-            logger.debug(f"  📌 {video_id}: 分類フロー4 = liveBroadcastContent='completed' → 'archive'")
-            return "archive", "completed", False
+            logger.debug(f"  📌 {video_id}: 分類フロー4 = liveBroadcastContent='completed' → 'completed'")
+            return "completed", "completed", False
 
         # ★ デフォルト
         logger.debug(f"  📌 {video_id}: デフォルト → 'video'")

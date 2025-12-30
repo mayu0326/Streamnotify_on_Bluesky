@@ -45,6 +45,10 @@ class PluginManager:
         1. ファイル名が "_" で始まらない
         2. NotificationPlugin を継承したクラスが定義されている
 
+        検出対象:
+        - plugins/*.py (ルートレベルプラグイン)
+        - plugins/*/plugin_name.py (パッケージプラグイン、youtube など)
+
         Returns:
             List[Tuple[str, str]]: (プラグイン名, ファイルパス) のリスト
         """
@@ -53,6 +57,8 @@ class PluginManager:
             return []
 
         plugins = []
+
+        # 1. ルートレベルのプラグイン (plugins/*.py)
         for file_path in self.plugins_dir.glob("*.py"):
             if file_path.name.startswith("_"):
                 continue
@@ -66,6 +72,34 @@ class PluginManager:
 
             plugins.append((plugin_name, str(file_path)))
             logger.info(f"📦 プラグイン検出: {plugin_name} ({file_path})")
+
+        # 2. サブディレクトリ内のプラグイン (plugins/*/plugin_name.py)
+        # 対象: youtube/youtube_api_plugin.py, youtube/youtube_live_plugin.py など
+        for subdir in self.plugins_dir.iterdir():
+            if not subdir.is_dir() or subdir.name.startswith("_"):
+                continue
+
+            # サブディレクトリ内で plugins_name.py の形式を探す
+            # 例: youtube/ の中で youtube_api_plugin.py, youtube_live_plugin.py
+            subdir_name = subdir.name
+            for file_path in subdir.glob("*.py"):
+                if file_path.name.startswith("_"):
+                    continue
+
+                # プラグイン名: youtube/youtube_api_plugin.py → youtube_api_plugin
+                plugin_name = file_path.stem
+
+                # 同じ名前の file_path がルートに存在しないかチェック
+                if (self.plugins_dir / f"{plugin_name}.py").exists():
+                    continue
+
+                # ★ 事前チェック: NotificationPlugin を継承したクラスが定義されているか
+                if not self._is_valid_plugin_file(file_path, plugin_name):
+                    logger.debug(f"⏭️  スキップ: {plugin_name} (NotificationPlugin 非実装)")
+                    continue
+
+                plugins.append((plugin_name, str(file_path)))
+                logger.info(f"📦 プラグイン検出: {plugin_name} ({file_path})")
 
         return plugins
 

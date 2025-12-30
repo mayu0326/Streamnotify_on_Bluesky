@@ -109,18 +109,20 @@ class YouTubeLivePoller:
 
     # ==================== キャッシュ対応ヘルパー ====================
 
-    def _get_video_detail_with_cache(self, video_id: str) -> Optional[Dict[str, Any]]:
+    def _get_video_detail_with_cache(self, video_id: str, bypass_cache: bool = False) -> Optional[Dict[str, Any]]:
         """
         YouTubeLive 専用キャッシュ + YouTube Data API をラップした取得関数
 
         優先順位:
-        1) api_plugin._get_cached_video_detail(video_id) でキャッシュを確認
-        2) キャッシュがなければ api_plugin._fetch_video_detail(video_id) で取得
-        3) 初回取得した詳細が LIVE（特に upcoming）であれば、
+        1) bypass_cache=True の場合、キャッシュをスキップして API から直接取得
+        2) api_plugin._get_cached_video_detail(video_id) でキャッシュを確認
+        3) キャッシュがなければ api_plugin._fetch_video_detail(video_id) で取得
+        4) 初回取得した詳細が LIVE（特に upcoming）であれば、
            キャッシュに登録（初期化時の登録）
 
         Args:
             video_id: 動画ID
+            bypass_cache: キャッシュをバイパスして API から直接取得するか
 
         Returns:
             YouTube API 詳細データ、取得失敗時 None
@@ -130,6 +132,15 @@ class YouTubeLivePoller:
             return None
 
         try:
+            # ★ ステップ 0: キャッシュバイパスオプション
+            if bypass_cache:
+                logger.debug(f"🔄 キャッシュをバイパスして API から取得: {video_id}")
+                api_details = self.api_plugin._fetch_video_detail_bypass_cache(video_id)
+                if api_details is None:
+                    logger.warning(f"⚠️ API 詳細取得失敗 (bypass): {video_id}")
+                    return None
+                return api_details
+
             # ステップ 1: キャッシュを確認
             cached_details = self.api_plugin._get_cached_video_detail(video_id)
             if cached_details is not None:
@@ -161,21 +172,23 @@ class YouTubeLivePoller:
             logger.error(f"❌ 動画詳細取得エラー: {video_id} - {e}")
             return None
 
-    def _get_videos_detail_with_cache_batch(self, video_ids: List[str]) -> Dict[str, Dict[str, Any]]:
+    def _get_videos_detail_with_cache_batch(self, video_ids: List[str], bypass_cache: bool = False) -> Dict[str, Dict[str, Any]]:
         """
-        ★ バッチ処理用ラッパー: キャッシュ + YouTube Data API バッチ取得
+        ★ バッチ処理用ラップ: キャッシュ + YouTube Data API バッチ取得
 
         複数の動画IDに対して、キャッシュ優先でデータを取得します。
         キャッシュにない分だけ API バッチ呼び出しを行い、API コストを削減します。
 
         実装戦略:
-        1. キャッシュから取得可能な video_id を抽出
-        2. キャッシュミスの video_id をリストアップ
-        3. キャッシュミス分を fetch_video_details_batch() で一括取得（1ユニット/50本）
-        4. キャッシュヒット + API 結果をマージして返却
+        1. bypass_cache=True の場合、全ビデオを API から直接取得
+        2. キャッシュから取得可能な video_id を抽出
+        3. キャッシュミスの video_id をリストアップ
+        4. キャッシュミス分を fetch_video_details_batch() で一括取得（1ユニット/50本）
+        5. キャッシュヒット + API 結果をマージして返却
 
         Args:
             video_ids: 取得対象の動画ID リスト
+            bypass_cache: キャッシュをバイパスして API から直接取得するか
 
         Returns:
             {video_id: details} の辞書（キャッシュと API結果を統合）
@@ -188,6 +201,17 @@ class YouTubeLivePoller:
             return {}
 
         results = {}
+
+        # ★ ステップ 0: キャッシュバイパスオプション
+        if bypass_cache:
+            logger.debug(f"🔄 キャッシュをバイパスして API から直接取得: {len(video_ids)} 件")
+            try:
+                api_results = self.api_plugin.fetch_video_details_batch(video_ids)
+                return api_results
+            except Exception as e:
+                logger.error(f"❌ バッチ API 取得失敗: {e}")
+                return {}
+
         cache_hits = []
         cache_misses = []
 
@@ -347,7 +371,10 @@ class YouTubeLivePoller:
             logger.debug(f"📦 バッチ処理開始: LIVE 動画 {len(video_ids)} 件")
 
             # ★ ステップ 2: バッチで詳細データ取得（キャッシュ + API）
-            details_map = self._get_videos_detail_with_cache_batch(video_ids)
+            # ⭐ upcoming/live は最新データが必須のため bypass_cache=True
+            has_active_live = len(upcoming_videos) > 0 or len(live_videos) > 0
+            bypass_cache = has_active_live  # upcoming/live がある場合は必ず最新データを取得
+            details_map = self._get_videos_detail_with_cache_batch(video_ids, bypass_cache=bypass_cache)
 
             # ★ ステップ 3: 状態遷移検出と処理
             for video in all_videos:
@@ -389,7 +416,7 @@ class YouTubeLivePoller:
                         logger.info(f"📹 アーカイブ公開を検出: {video_id}")
                         # キャッシュ削除: アーカイブ化時（LIVE キャッシュは不要になる）
                         try:
-                            if self.store.cache_manager:
+                            if self.store and self.store.cache_manager:
                                 self.store.cache_manager.remove_video(video_id)
                                 logger.debug(f"💾 キャッシュ削除: {video_id} (アーカイブ化)")
                         except Exception as e:
@@ -492,11 +519,23 @@ class YouTubeLivePoller:
                 events["is_archived"] = True
                 logger.debug(f"状態遷移: {video_id} live → archive")
 
+            elif old_content_type == "live" and new_content_type == "completed":
+                # ★ 新規: LIVE 配信 → completed（配信終了・新分類形式）
+                # v3.3.0 から content_type が 5カテゴリに統一されたため、このパターンが追加
+                events["is_live_ended"] = True
+                logger.debug(f"状態遷移: {video_id} live → completed (新分類形式)")
+
             elif old_content_type == "live" and new_live_status == "completed":
                 # LIVE ステータス: live → completed（配信終了）
                 if old_live_status != "completed":
                     events["is_live_ended"] = True
                     logger.debug(f"状態遷移: {video_id} live_status={old_live_status} → completed")
+
+            elif old_content_type == "schedule" and new_content_type == "live":
+                # ★ 新規: 予約枠 → LIVE 配信中（配信開始）
+                if new_live_status == "live":
+                    events["is_live_started"] = True
+                    logger.debug(f"状態遷移: {video_id} schedule → live")
 
             else:
                 # その他の状態変化
@@ -571,8 +610,9 @@ class YouTubeLivePoller:
 
                         # キャッシュから削除
                         try:
-                            self.store.cache_manager.remove_video(video_id)
-                            logger.debug(f"💾 キャッシュ削除: {video_id} (アーカイブ化確認)")
+                            if self.store and self.store.cache_manager:
+                                self.store.cache_manager.remove_video(video_id)
+                                logger.debug(f"💾 キャッシュ削除: {video_id} (アーカイブ化確認)")
                         except Exception as e:
                             logger.warning(f"⚠️ キャッシュ削除失敗: {video_id} - {e}")
 

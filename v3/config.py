@@ -54,7 +54,9 @@ class Config:
         # YouTubeAPI連携プラグイン導入フラグ（importlibで自動判定＋APIキー必須）
         try:
             import importlib.util
-            plugin_exists = importlib.util.find_spec("plugins.youtube_api_plugin") is not None
+            # ★ v3.2.0以降: youtube_api_plugin は plugins/youtube/ に移動
+            plugin_exists = (importlib.util.find_spec("plugins.youtube.youtube_api_plugin") is not None or
+                            importlib.util.find_spec("plugins.youtube_api_plugin") is not None)
         except Exception:
             plugin_exists = False
 

@@ -50,6 +50,26 @@ class YouTubeLiveAutoPoster:
         self.store = store
         self.config = config
 
+    def set_plugin_manager(self, plugin_manager) -> None:
+        """
+        plugin_manager を注入（YouTubeLivePlugin.on_enable() 時に呼ばれる）
+
+        Args:
+            plugin_manager: PluginManager インスタンス
+        """
+        self.plugin_manager = plugin_manager
+        logger.debug(f"✅ YouTubeLiveAutoPoster に plugin_manager を注入しました")
+
+    def set_config(self, config) -> None:
+        """
+        config を注入（YouTubeLivePlugin.on_enable() 時に呼ばれる）
+
+        Args:
+            config: Config インスタンス
+        """
+        self.config = config
+        logger.debug(f"✅ YouTubeLiveAutoPoster に config を注入しました")
+
     def on_live_started(self, video_id: str, video: Dict[str, Any]) -> bool:
         """
         ライブ配信開始イベントハンドラ
@@ -66,16 +86,15 @@ class YouTubeLiveAutoPoster:
         """
         logger.info(f"🔴 [イベント] ライブ配信開始: {video_id}")
 
-        if self.plugin_manager is None or self.store is None or self.config is None:
-            logger.error("❌ 必要なコンポーネントが未設定です")
+        # ★ 自動投稿判定が False なら早期リターン（コンポーネント未設定含む）
+        if not self._should_autopost_event("live_started"):
+            return False
+
+        if self.plugin_manager is None or self.store is None:
+            logger.error("❌ plugin_manager または store が未設定です")
             return False
 
         try:
-            # 自動投稿判定
-            if not self._should_autopost_event("live_started"):
-                logger.debug(f"⏭️ 自動投稿スキップ（設定により）")
-                return False
-
             # 動画データ構築
             post_data = self._build_post_data(video, event_type="live_started")
             if post_data is None:
@@ -114,16 +133,15 @@ class YouTubeLiveAutoPoster:
         """
         logger.info(f"🔴 [イベント] ライブ配信終了: {video_id}")
 
-        if self.plugin_manager is None or self.store is None or self.config is None:
-            logger.error("❌ 必要なコンポーネントが未設定です")
+        # ★ 自動投稿判定が False なら早期リターン（コンポーネント未設定含む）
+        if not self._should_autopost_event("live_ended"):
+            return False
+
+        if self.plugin_manager is None or self.store is None:
+            logger.error("❌ plugin_manager または store が未設定です")
             return False
 
         try:
-            # 自動投稿判定
-            if not self._should_autopost_event("live_ended"):
-                logger.debug(f"⏭️ 自動投稿スキップ（設定により）")
-                return False
-
             # 動画データ構築
             post_data = self._build_post_data(video, event_type="live_ended")
             if post_data is None:
@@ -162,16 +180,15 @@ class YouTubeLiveAutoPoster:
         """
         logger.info(f"📹 [イベント] アーカイブ公開: {video_id}")
 
-        if self.plugin_manager is None or self.store is None or self.config is None:
-            logger.error("❌ 必要なコンポーネントが未設定です")
+        # ★ 自動投稿判定が False なら早期リターン（コンポーネント未設定含む）
+        if not self._should_autopost_event("archive_available"):
+            return False
+
+        if self.plugin_manager is None or self.store is None:
+            logger.error("❌ plugin_manager または store が未設定です")
             return False
 
         try:
-            # 自動投稿判定
-            if not self._should_autopost_event("archive_available"):
-                logger.debug(f"⏭️ 自動投稿スキップ（設定により）")
-                return False
-
             # 動画データ構築
             post_data = self._build_post_data(video, event_type="archive_available")
             if post_data is None:

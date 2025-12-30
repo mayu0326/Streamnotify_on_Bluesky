@@ -286,6 +286,18 @@ class YouTubeLiveCacheManager:
             logger.error(f"❌ キャッシュクリアエラー: {e}")
             return False
 
+    def remove_video(self, video_id: str) -> bool:
+        """
+        キャッシュから動画を削除（delete_live_video() のエイリアス）
+
+        Args:
+            video_id: 動画ID
+
+        Returns:
+            bool: 成功フラグ
+        """
+        return self.delete_live_video(video_id)
+
     def _now_str(self) -> str:
         """現在時刻を ISO 8601 形式で取得"""
         from datetime import datetime

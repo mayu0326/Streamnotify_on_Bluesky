@@ -12,9 +12,13 @@ import os
 # プロジェクトルートを検索パスに追加
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
 from database import Database
 from deleted_video_cache import get_deleted_video_cache
-from youtube_dedup_priority import get_video_priority
+from youtube_core.youtube_dedup_priority import get_video_priority
 
 def test_dedup_registration():
     """優先度ロジックで削除された動画が deleted_videos.json に登録されるか検証"""

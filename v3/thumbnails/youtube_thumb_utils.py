@@ -16,7 +16,7 @@ import os
 # 親ディレクトリをパスに追加
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from youtube_rss import YouTubeRSS
+from youtube_core.youtube_rss import YouTubeRSS
 from image_manager import get_image_manager
 from database import get_database
 

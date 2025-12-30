@@ -50,6 +50,13 @@ def check_duplicate_videos(db_path=None, limit=20):
     if db_path is None:
         db_path = _get_db_path()
 
+    # v3 ルートをパスに追加（youtube_dedup_priority インポート用）
+    import sys
+    from pathlib import Path
+    v3_root = Path(__file__).parent.parent.parent
+    if str(v3_root) not in sys.path:
+        sys.path.insert(0, str(v3_root))
+
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
@@ -143,8 +150,8 @@ def cleanup_youtube_duplicates_with_priority(db_path=None):
     """
     import sys
     from pathlib import Path
-    sys.path.insert(0, str(Path(__file__).parent))
-    from youtube_dedup_priority import get_video_priority, select_best_video
+    sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+    from youtube_core.youtube_dedup_priority import get_video_priority, select_best_video
 
     if db_path is None:
         db_path = _get_db_path()

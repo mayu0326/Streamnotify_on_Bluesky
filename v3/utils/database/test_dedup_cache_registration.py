@@ -7,9 +7,13 @@ YouTube重複排除の削除積み上げ実装テスト
 """
 
 import sqlite3
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
 import json
 from datetime import datetime, timedelta
-from youtube_dedup_priority import get_video_priority
+from youtube_core.youtube_dedup_priority import get_video_priority
 
 def test_dedup_with_cache_registration():
     """削除積み上げテスト"""
