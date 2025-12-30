@@ -271,75 +271,71 @@ class YouTubeLivePlugin(NotificationPlugin):
 
             logger.info(f"✅ 自動判定完了: 更新 {updated_count} 件、キャッシュなし {skipped_no_cache} 件、非ライブ {skipped_no_live} 件")
 
-            # ★ 新: 判定後、自動投稿対象を検査して投稿を実行
+            # ★ 修正: 自動投稿対象を検査して投稿を実行
             # APP_MODE に応じて、AUTOPOST 時は YOUTUBE_LIVE_AUTO_POST_MODE で、
             # SELFPOST 時は個別フラグで投稿判定を行う
-            # 注: 新規判定があった場合（updated_count > 0）のみ自動投稿処理を実行
-            if updated_count > 0:  # 新規判定があった場合のみ投稿判定を実行
-                logger.info(f"🚀 YouTube Live 自動投稿処理を開始します（更新件数: {updated_count}）")
-                try:
-                    from config import get_config
-                    config = get_config("settings.env")
+            # ★ 重要: updated_count に関係なく、未投稿の live/archive 動画をすべてチェック
+            # これにより、既にDBに登録済みでも未投稿の動画を自動投稿できる
+            logger.info(f"🚀 YouTube Live 自動投稿処理を開始します（分類更新件数: {updated_count}）")
+            try:
+                from config import get_config
+                config = get_config("settings.env")
 
-                    # ★ plugin_manager が注入されていることを確認
-                    if not hasattr(self, 'plugin_manager') or not self.plugin_manager:
-                        logger.warning("⚠️ YouTube Live 自動投稿: plugin_manager が未初期化です（スキップ）")
-                        logger.warning(f"   hasattr(self, 'plugin_manager')={hasattr(self, 'plugin_manager')}")
-                        logger.warning(f"   self.plugin_manager={getattr(self, 'plugin_manager', None)}")
-                        return updated_count
+                # ★ plugin_manager が注入されていることを確認
+                if not hasattr(self, 'plugin_manager') or not self.plugin_manager:
+                    logger.warning("⚠️ YouTube Live 自動投稿: plugin_manager が未初期化です（スキップ）")
+                    logger.warning(f"   hasattr(self, 'plugin_manager')={hasattr(self, 'plugin_manager')}")
+                    logger.warning(f"   self.plugin_manager={getattr(self, 'plugin_manager', None)}")
+                    return updated_count
 
-                    logger.debug(f"✅ plugin_manager 初期化確認: {self.plugin_manager}")
+                logger.debug(f"✅ plugin_manager 初期化確認: {self.plugin_manager}")
 
-                    # ★ 判定後、DB から fresh に全動画を取得（更新された content_type/live_status を反映）
-                    all_videos_fresh = self.db.get_all_videos()
-                    logger.debug(f"📊 fresh 取得動画数: {len(all_videos_fresh)}")
-                    autopost_count = 0
+                # ★ 判定後、DB から fresh に全動画を取得（更新された content_type/live_status を反映）
+                all_videos_fresh = self.db.get_all_videos()
+                logger.debug(f"📊 fresh 取得動画数: {len(all_videos_fresh)}")
+                autopost_count = 0
 
-                    for video in all_videos_fresh:
-                        video_id = video.get("video_id")
-                        if not video_id:
-                            continue
+                for video in all_videos_fresh:
+                    video_id = video.get("video_id")
+                    if not video_id:
+                        continue
 
-                        # 既投稿はスキップ
-                        if video.get("posted_to_bluesky"):
-                            logger.debug(f"⏭️ スキップ（既投稿）: {video_id}")
-                            continue
+                    # 既投稿はスキップ
+                    if video.get("posted_to_bluesky"):
+                        logger.debug(f"⏭️ スキップ（既投稿）: {video_id}")
+                        continue
 
-                        content_type = video.get("content_type")
-                        live_status = video.get("live_status")
+                    content_type = video.get("content_type")
+                    live_status = video.get("live_status")
 
-                        # ★ 「今回の判定で更新された動画のみ」処理対象
-                        # live または archive のみ対象
-                        if content_type not in ("live", "archive"):
-                            logger.debug(f"⏭️ スキップ（content_type={content_type}）: {video_id}")
-                            continue
+                    # ★ live または archive のみ対象
+                    if content_type not in ("live", "archive"):
+                        logger.debug(f"⏭️ スキップ（content_type={content_type}）: {video_id}")
+                        continue
 
-                        # 自動投稿判定（APP_MODE に応じて自動切り替え）
-                        should_post = self._should_autopost_live(content_type, live_status, config)
-                        logger.debug(f"📋 投稿判定: {video_id} → should_post={should_post}, content_type={content_type}, live_status={live_status}")
+                    # 自動投稿判定（APP_MODE に応じて自動切り替え）
+                    should_post = self._should_autopost_live(content_type, live_status, config)
+                    logger.debug(f"📋 投稿判定: {video_id} → should_post={should_post}, content_type={content_type}, live_status={live_status}")
 
-                        if should_post:
-                            logger.info(f"📤 YouTube Live 自動投稿: {video['title']} (content_type={content_type}, live_status={live_status})")
-                            results = self.plugin_manager.post_video_with_all_enabled(video)
-                            logger.debug(f"   投稿結果: {results}")
-                            if any(results.values()):
-                                self.db.mark_as_posted(video_id)
-                                autopost_count += 1
-                                logger.info(f"✅ YouTube Live 自動投稿成功: {video['title']}")
-                            else:
-                                logger.warning(f"⚠️ YouTube Live 自動投稿失敗: {video['title']}")
+                    if should_post:
+                        logger.info(f"📤 YouTube Live 自動投稿: {video['title']} (content_type={content_type}, live_status={live_status})")
+                        results = self.plugin_manager.post_video_with_all_enabled(video)
+                        logger.debug(f"   投稿結果: {results}")
+                        if any(results.values()):
+                            self.db.mark_as_posted(video_id)
+                            autopost_count += 1
+                            logger.info(f"✅ YouTube Live 自動投稿成功: {video['title']}")
                         else:
-                            logger.debug(f"⏭️ 投稿判定NG（フラグ未設定か APP_MODE が合致）: {video_id}")
-
-                    if autopost_count > 0:
-                        logger.info(f"✅ YouTube Live 自動投稿完了: {autopost_count} 件を投稿しました")
+                            logger.warning(f"⚠️ YouTube Live 自動投稿失敗: {video['title']}")
                     else:
-                        logger.info(f"ℹ️ YouTube Live 自動投稿完了: 投稿対象なし")
-                except Exception as e:
-                    logger.exception(f"❌ YouTube Live 自動投稿エラー（判定は完了）: {e}")
-            else:
-                logger.debug(f"ℹ️ 自動投稿スキップ: updated_count={updated_count} (新規判定がなかったため)")
+                        logger.debug(f"⏭️ 投稿判定NG（フラグ未設定か APP_MODE が合致）: {video_id}")
 
+                if autopost_count > 0:
+                    logger.info(f"✅ YouTube Live 自動投稿完了: {autopost_count} 件を投稿しました")
+                else:
+                    logger.info(f"ℹ️ YouTube Live 自動投稿完了: 投稿対象なし")
+            except Exception as e:
+                logger.exception(f"❌ YouTube Live 自動投稿エラー（判定は完了）: {e}")
 
             return updated_count
 
@@ -577,13 +573,9 @@ class YouTubeLivePlugin(NotificationPlugin):
             投稿成功フラグ
         """
         try:
-            # Bluesky プラグインを取得
-            from plugin_manager import PluginManager
-            pm = PluginManager()
-            bluesky_plugin = pm.get_plugin("bluesky_plugin")
-
-            if not bluesky_plugin or not bluesky_plugin.is_available():
-                logger.warning("⚠️ Bluesky プラグインが利用不可です")
+            # ★ 修正: plugin_manager を使用して全プラグインに投稿
+            if not hasattr(self, 'plugin_manager') or not self.plugin_manager:
+                logger.warning("⚠️ YouTube Live 自動投稿: plugin_manager が未初期化です")
                 return False
 
             # ライブ開始テンプレート指定
@@ -592,7 +584,18 @@ class YouTubeLivePlugin(NotificationPlugin):
             video_copy["live_status"] = "live"
 
             logger.info(f"📡 ライブ開始自動投稿を実行します: {video.get('title')}")
-            return bluesky_plugin.post_video(video_copy)
+            results = self.plugin_manager.post_video_with_all_enabled(video_copy)
+            
+            # いずれかのプラグインで投稿成功すれば True
+            success = any(results.values())
+            if success:
+                # DB の投稿フラグを更新
+                self.db.mark_as_posted(video.get("video_id"))
+                logger.info(f"✅ ライブ開始投稿成功: {video.get('title')}")
+            else:
+                logger.warning(f"⚠️ ライブ開始投稿失敗: {video.get('title')}")
+            
+            return success
 
         except Exception as e:
             logger.error(f"❌ ライブ開始投稿エラー: {e}")
@@ -609,13 +612,9 @@ class YouTubeLivePlugin(NotificationPlugin):
             投稿成功フラグ
         """
         try:
-            # Bluesky プラグインを取得
-            from plugin_manager import PluginManager
-            pm = PluginManager()
-            bluesky_plugin = pm.get_plugin("bluesky_plugin")
-
-            if not bluesky_plugin or not bluesky_plugin.is_available():
-                logger.warning("⚠️ Bluesky プラグインが利用不可です")
+            # ★ 修正: plugin_manager を使用して全プラグインに投稿
+            if not hasattr(self, 'plugin_manager') or not self.plugin_manager:
+                logger.warning("⚠️ YouTube Live 自動投稿: plugin_manager が未初期化です")
                 return False
 
             # ライブ終了テンプレート指定
@@ -624,7 +623,18 @@ class YouTubeLivePlugin(NotificationPlugin):
             video_copy["live_status"] = "completed"
 
             logger.info(f"📡 ライブ終了自動投稿を実行します: {video.get('title')}")
-            return bluesky_plugin.post_video(video_copy)
+            results = self.plugin_manager.post_video_with_all_enabled(video_copy)
+            
+            # いずれかのプラグインで投稿成功すれば True
+            success = any(results.values())
+            if success:
+                # DB の投稿フラグを更新
+                self.db.mark_as_posted(video.get("video_id"))
+                logger.info(f"✅ ライブ終了投稿成功: {video.get('title')}")
+            else:
+                logger.warning(f"⚠️ ライブ終了投稿失敗: {video.get('title')}")
+            
+            return success
 
         except Exception as e:
             logger.error(f"❌ ライブ終了投稿エラー: {e}")

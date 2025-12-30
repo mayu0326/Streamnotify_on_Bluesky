@@ -173,6 +173,7 @@ class YouTubeLivePlugin(NotificationPlugin):
         return self.api_plugin._classify_video_core(details)
 
     # --- ライブ自動投稿ロジック ---
+    # 注: v2 は簡易実装。v3 では plugin_manager を使用した統合投稿ロジックに変更されています
     def auto_post_live_start(self, video: Dict[str, Any]) -> bool:
         """
         ライブ開始時の自動投稿
