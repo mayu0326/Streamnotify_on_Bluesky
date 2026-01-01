@@ -268,7 +268,7 @@ def main():
         logger.info(f"✅ Bluesky 拡張機能プラグインを有効化しました（画像添付機能: 有効）")
     except Exception as e:
         logger.warning(f"⚠️  Bluesky 拡張機能プラグインの導入に失敗しました: {e}")
-        logger.info(f"ℹ️ プラグインがない場合でも、コア機能（テキスト投稿 + URLリンク化）は利用可能です")
+        logger.info(f"ℹ️ Bluesky投稿機能をコア機能のみで起動します。(プラグイン未導入)")
 
     if config.niconico_plugin_exists:
         try:
