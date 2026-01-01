@@ -31,6 +31,55 @@ __copyright__ = "Copyright (C) 2025 mayuneco(mayunya)"
 __license__ = "GPLv2"
 
 
+class CreateToolTip:
+    """ウィジェットにツールチップを作成する"""
+    def __init__(self, widget, text):
+        self.widget = widget
+        self.text = text
+        self.widget.bind("<Enter>", self.enter)
+        self.widget.bind("<Leave>", self.leave)
+        self.id = None
+        self.tw = None
+
+    def enter(self, event=None):
+        self.schedule()
+
+    def leave(self, event=None):
+        self.unschedule()
+        self.hidetip()
+
+    def schedule(self):
+        self.unschedule()
+        self.id = self.widget.after(500, self.showtip)
+
+    def unschedule(self):
+        id = self.id
+        self.id = None
+        if id:
+            self.widget.after_cancel(id)
+
+    def showtip(self, event=None):
+        x = y = 0
+        x, y, cx, cy = self.widget.bbox("insert")
+        x += self.widget.winfo_rootx() + 25
+        y += self.widget.winfo_rooty() + 20
+        # creates a toplevel window
+        self.tw = tk.Toplevel(self.widget)
+        # Leaves only the label and removes the app window
+        self.tw.wm_overrideredirect(True)
+        self.tw.wm_geometry(f"+{x}+{y}")
+        label = tk.Label(self.tw, text=self.text, justify='left',
+                       background="#ffffe0", relief='solid', borderwidth=1,
+                       font=("tahoma", "8", "normal"))
+        label.pack(ipadx=1)
+
+    def hidetip(self):
+        tw = self.tw
+        self.tw = None
+        if tw:
+            tw.destroy()
+
+
 class StreamNotifyGUI:
     """Stream notify GUI（統合版, プラグイン対応）"""
 
@@ -323,12 +372,10 @@ DB を再読込みします。"""
 
             if not youtube_live_plugin:
                 messagebox.showwarning("警告", "YouTube Live プラグインがロードされていません。")
-                logger.warning("⚠️ YouTube Live プラグインが見つかりません")
                 return
 
             if not youtube_live_plugin.is_available():
                 messagebox.showwarning("警告", "YouTube Live プラグインが利用不可です。\n（YouTube API キーが設定されていない可能性があります）")
-                logger.warning("⚠️ YouTube Live プラグインが利用不可")
                 return
 
             # 判定開始を通知
@@ -1281,6 +1328,17 @@ YouTube:      {youtube_count} 件 (投稿済み: {youtube_posted})
 
     def youtube_live_settings(self):
         """YouTube Live 投稿設定パネル"""
+        # ★ YouTube Live プラグインの存在をチェック
+        youtube_live_plugin = self.plugin_manager.get_plugin("youtube_live_plugin")
+
+        if not youtube_live_plugin:
+            messagebox.showwarning("警告", "YouTube Live プラグインがロードされていません。")
+            return
+
+        if not youtube_live_plugin.is_available():
+            messagebox.showwarning("警告", "YouTube Live プラグインが利用不可です。\n（YouTube API キーが設定されていない可能性があります）")
+            return
+
         settings_window = tk.Toplevel(self.root)
         settings_window.title("YouTube Live 投稿設定")
         settings_window.geometry("500x600")
@@ -1768,7 +1826,19 @@ YouTube:      {youtube_count} 件 (投稿済み: {youtube_posted})
         platform_frame.pack(padx=10, pady=5, fill=tk.X)
 
         ttk.Radiobutton(platform_frame, text="YouTube", variable=platform_var, value="YouTube").pack(side=tk.LEFT, padx=5)
-        ttk.Radiobutton(platform_frame, text="ニコニコ", variable=platform_var, value="Niconico").pack(side=tk.LEFT, padx=5)
+
+        # --- ニコニコプラグインのチェックとボタン生成 ---
+        niconico_plugin_enabled = False
+        if self.plugin_manager:
+            niconico_plugin = self.plugin_manager.get_plugin("niconico_plugin")
+            if niconico_plugin and niconico_plugin.is_available():
+                niconico_plugin_enabled = True
+
+        niconico_radio_button = ttk.Radiobutton(platform_frame, text="ニコニコ", variable=platform_var, value="Niconico")
+        if not niconico_plugin_enabled:
+            niconico_radio_button.config(state=tk.DISABLED)
+            CreateToolTip(niconico_radio_button, "ニコニコプラグインが導入されていないため無効です")
+        niconico_radio_button.pack(side=tk.LEFT, padx=5)
 
         # === 説明 ===
         description_frame = ttk.Frame(dialog)

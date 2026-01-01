@@ -291,7 +291,7 @@ def main():
         except Exception as e:
             logger.warning(f"[ニコニコ連携] 初期化エラー: {type(e).__name__}: {e}", exc_info=True)
     else:
-        logger.info("[ニコニコ連携] ニコニコ連携プラグインは導入されていません。")
+        logger.info("ニコニコプラグインが導入されていないため、ニコニコ関連機能は無効化されます。")
 
     stop_event = threading.Event()
     gui_thread = threading.Thread(target=run_gui, args=(db, plugin_manager, stop_event, bluesky_core), daemon=True)
