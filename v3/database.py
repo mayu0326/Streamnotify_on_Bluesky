@@ -25,8 +25,13 @@ DB_PATH = "data/video_list.db"
 DB_TIMEOUT = 10
 DB_RETRY_MAX = 3
 
-# バリデーション用の許可リスト
-VALID_CONTENT_TYPES = {"video", "live", "archive", "none"}
+# バリデーション用の許可リスト（v3.3.0: 5カテゴリ対応）
+# - "video": 通常動画
+# - "archive": LIVE終了後のアーカイブ
+# - "schedule": LIVE予約枠（upcoming）
+# - "live": LIVE配信中
+# - "completed": LIVE配信終了
+VALID_CONTENT_TYPES = {"video", "archive", "schedule", "live", "completed", "none"}
 VALID_LIVE_STATUSES = {None, "none", "upcoming", "live", "completed"}
 
 
@@ -68,6 +73,13 @@ class Database:
 
         Returns:
             正規化されたcontent_type（デフォルト値は "video"）
+
+        対応値:
+            - "video": 通常動画
+            - "archive": LIVE終了後のアーカイブ
+            - "schedule": LIVE予約枠（upcoming）
+            - "live": LIVE配信中
+            - "completed": LIVE配信終了
         """
         if content_type not in VALID_CONTENT_TYPES:
             logger.warning(f"⚠️ 不正な content_type: '{content_type}' → デフォルト値 'video' に置き換えます")
@@ -199,8 +211,8 @@ class Database:
             try:
                 import sys
                 from pathlib import Path
-                sys.path.insert(0, str(Path(__file__).parent / 'utils' / 'database'))
-                from youtube_dedup_priority import get_video_priority, should_keep_video
+                sys.path.insert(0, str(Path(__file__).parent))
+                from youtube_core.youtube_dedup_priority import get_video_priority, should_keep_video
 
                 conn = self._get_connection()
                 conn.row_factory = sqlite3.Row
@@ -507,6 +519,34 @@ class Database:
             logger.error(f"live_status={live_status} の動画取得に失敗: {e}")
             return []
 
+    def get_videos_by_content_type(self, content_type: str):
+        """
+        指定された content_type の動画を取得
+
+        Args:
+            content_type: "video" / "archive" / "schedule" / "live" / "completed" / "none"
+
+        Returns:
+            List[Dict]: 該当する動画情報リスト
+        """
+        try:
+            conn = self._get_connection()
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT * FROM videos WHERE content_type = ?
+                ORDER BY published_at DESC
+                """,
+                (content_type,)
+            )
+            videos = [dict(row) for row in cursor.fetchall()]
+            conn.close()
+            return videos
+        except Exception as e:
+            logger.error(f"content_type={content_type} の動画取得に失敗: {e}")
+            return []
+
     def mark_as_posted(self, video_id):
         """動画を投稿済みにマーク"""
         try:
@@ -782,6 +822,77 @@ class Database:
                 return False
 
         logger.error(f"❌ published_at 更新に失敗（リトライ上限）: {video_id}")
+        return False
+
+    def update_video_metadata(self, video_id: str, **metadata) -> bool:
+        """
+        ★ API から取得したメタデータを更新
+
+        タイトル、説明、サムネイル URL などの動画メタデータを更新します。
+
+        Args:
+            video_id: 動画ID
+            **metadata: 更新するカラム名と値（例: title="新タイトル", thumbnail_url="..."）
+
+        Returns:
+            更新成功フラグ
+        """
+        if not video_id or not metadata:
+            return False
+
+        # 有効なカラムのみを許可
+        valid_columns = {
+            "title", "channel_name", "thumbnail_url", "is_premiere",
+            "is_short", "is_members_only"
+        }
+        update_data = {k: v for k, v in metadata.items() if k in valid_columns and v is not None}
+
+        if not update_data:
+            return False
+
+        for attempt in range(DB_RETRY_MAX):
+            try:
+                conn = self._get_connection()
+                cursor = conn.cursor()
+
+                # 更新 SQL を動的に構築
+                set_clause = ", ".join([f"{col} = ?" for col in update_data.keys()])
+                values = list(update_data.values()) + [video_id]
+
+                sql = f"UPDATE videos SET {set_clause} WHERE video_id = ?"
+                cursor.execute(sql, values)
+
+                affected_rows = cursor.rowcount
+                conn.commit()
+                conn.close()
+
+                if affected_rows == 0:
+                    logger.debug(f"⚠️ 対象の動画が見つかりません: {video_id}")
+                    return False
+
+                # 更新内容をログ出力
+                for col, val in update_data.items():
+                    if isinstance(val, str) and len(val) > 50:
+                        logger.info(f"✅ {col} を更新: {video_id} → {val[:50]}...")
+                    else:
+                        logger.info(f"✅ {col} を更新: {video_id} → {val}")
+
+                return True
+
+            except sqlite3.OperationalError as e:
+                if "locked" in str(e).lower() and attempt < DB_RETRY_MAX - 1:
+                    logger.debug(f"DB ロック中。{attempt + 1}/{DB_RETRY_MAX} リトライします...")
+                    time.sleep(0.5)
+                    continue
+                else:
+                    logger.error(f"❌ DB エラー（メタデータ更新失敗）: {video_id} - {e}")
+                    return False
+
+            except Exception as e:
+                logger.error(f"❌ メタデータ更新に予期しないエラー: {video_id} - {e}")
+                return False
+
+        logger.error(f"❌ メタデータ更新に失敗（リトライ上限）: {video_id}")
         return False
 
     def delete_video(self, video_id: str) -> bool:

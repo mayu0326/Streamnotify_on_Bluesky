@@ -54,7 +54,9 @@ class Config:
         # YouTubeAPI連携プラグイン導入フラグ（importlibで自動判定＋APIキー必須）
         try:
             import importlib.util
-            plugin_exists = importlib.util.find_spec("plugins.youtube_api_plugin") is not None
+            # ★ v3.2.0以降: youtube_api_plugin は plugins/youtube/ に移動
+            plugin_exists = (importlib.util.find_spec("plugins.youtube.youtube_api_plugin") is not None or
+                            importlib.util.find_spec("plugins.youtube_api_plugin") is not None)
         except Exception:
             plugin_exists = False
 
@@ -68,7 +70,7 @@ class Config:
                 self.youtube_api_plugin_enabled = False
         else:
             self.youtube_api_plugin_enabled = False
-            logger.info("YouTubeAPIプラグインが導入されていません。RSS取得のみで動作します。")
+            logger.info("[YouTubeAPI]プラグインが導入されていません。")
 
         if not self.youtube_channel_id:
             logger.error("YOUTUBE_CHANNEL_ID が未設定です。settings.env を確認してください。")
@@ -76,9 +78,9 @@ class Config:
 
         # YouTubeAPI未導入時（バリデーション段階ではINFOのみ出力。WARNINGはmain_v3で出力）
         if not plugin_exists:
-            logger.info("YouTubeAPI連携プラグインが未導入です。UCから始まるチャンネルIDのみ利用可能です。")
+            logger.info("[YouTubeAPI]プラグイン未導入のため、UCから始まるIDのみ利用可能です。")
             if not self.youtube_channel_id.startswith("UC"):
-                logger.error(f"YouTubeAPI未導入時はUCから始まるIDのみ許可されます。現在のID: {self.youtube_channel_id}")
+                logger.error(f"[YouTubeAPI]プラグイン未導入のため、現在のID: {self.youtube_channel_id}は利用不可能です。")
                 raise ValueError("YouTubeAPI未導入時はUCから始まるIDのみ許可されます。設定を確認してください。")
 
         # Bluesky ユーザー名

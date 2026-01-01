@@ -20,7 +20,7 @@
 
 | 項目 | 要件 |
 |:--|:--|
-| **OS** | Windows 10以降 / macOS 10.15以降 / Linux（Debian/Ubuntu等） |
+| **OS** | Windows 10以降 / Linux（Debian/Ubuntu等） |
 | **Python** | 3.10 以上（3.11+ 推奨） |
 | **メモリ** | 最小 512MB（推奨 1GB以上） |
 | **ディスク容量** | 100MB以上の空き容量 |
@@ -80,27 +80,7 @@
 5. インストール完了を待つ
 ```
 
-### macOS ユーザー向け
-
-#### 方法 A: Homebrew を使用（推奨）
-
-```bash
-# Homebrew をインストール（未導入の場合）
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-
-# Python をインストール
-brew install python@3.11
-
-# 確認
-python3 --version
-```
-
-#### 方法 B: Python.org から直接ダウンロード
-
-1. https://www.python.org/downloads/ を開く
-2. macOS インストーラをダウンロード
-3. ダブルクリックして実行
-4. ウィザードに従ってインストール
+---
 
 ### Linux ユーザー向け（Debian/Ubuntu）
 
@@ -133,8 +113,7 @@ python3 --version
 
 ```bash
 # リポジトリをクローン
-git clone https://git.neco-server.net/mayuneco/Streamnotify_on_Bluesky.git
-
+git clone https://github.com/mayu0326/Streamnotify_on_Bluesky.git
 # ディレクトリに移動
 cd Streamnotify_on_Bluesky/v3
 ```
@@ -142,7 +121,7 @@ cd Streamnotify_on_Bluesky/v3
 ### ZIP ファイルをダウンロードする場合
 
 ```
-1. リポジトリページ（https://...）にアクセス
+1. リポジトリページ https://github.com/mayu0326/Streamnotify_on_Bluesky にアクセス
 2. 「Code」 → 「Download ZIP」をクリック
 3. ZIP ファイルを解凍
 4. cd Streamnotify_on_Bluesky-main/v3
@@ -168,7 +147,7 @@ venv\Scripts\activate
 (venv) C:\Users\YourName\...>
 ```
 
-### macOS / Linux ユーザー向け
+### Linux ユーザー向け
 
 ```bash
 # 仮想環境を作成

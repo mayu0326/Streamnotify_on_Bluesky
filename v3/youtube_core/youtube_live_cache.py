@@ -9,6 +9,7 @@ YouTubeLive キャッシュ管理モジュール
 
 import json
 import logging
+import time
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, List, Optional
@@ -21,6 +22,11 @@ __license__ = "GPLv2"
 
 CACHE_DIR = Path("data")
 CACHE_FILE = CACHE_DIR / "youtube_live_cache.json"
+
+# ★新: LIVE キャッシュの有効期限（5分 = 300秒）
+# ポーリング中のライブ動画のキャッシュは5分で期限切れになり、
+# 期限切れのエントリは DB にポーリング結果を反映しない
+LIVE_CACHE_EXPIRY_SECONDS = 5 * 60  # 5分
 
 
 class YouTubeLiveCache:
@@ -58,6 +64,41 @@ class YouTubeLiveCache:
             return True
         except Exception as e:
             logger.error(f"❌ LIVE キャッシュ保存エラー: {e}")
+            return False
+
+    def _is_cache_entry_valid(self, video_id: str) -> bool:
+        """
+        ★新: キャッシュエントリの有効期限をチェック（5分）
+
+        Args:
+            video_id: 動画 ID
+
+        Returns:
+            有効期限内: True、期限切れ/未検出: False
+        """
+        if video_id not in self.cache_data:
+            return False
+
+        entry = self.cache_data[video_id]
+        cached_at_str = entry.get("cached_at")
+
+        if not cached_at_str:
+            return False
+
+        try:
+            # ISO形式の日時文字列をパース
+            cached_at = datetime.fromisoformat(cached_at_str)
+            # 現在時刻との差分を秒で計算
+            elapsed_seconds = (datetime.now() - cached_at).total_seconds()
+
+            if elapsed_seconds < LIVE_CACHE_EXPIRY_SECONDS:
+                logger.debug(f"📦 キャッシュエントリが有効（{elapsed_seconds:.0f}秒経過）: {video_id}")
+                return True
+            else:
+                logger.debug(f"🗑️ キャッシュエントリが期限切れ（{elapsed_seconds:.0f}秒 > {LIVE_CACHE_EXPIRY_SECONDS}秒）: {video_id}")
+                return False
+        except Exception as e:
+            logger.warning(f"⚠️ キャッシュ期限チェックエラー: {e}")
             return False
 
     def add_live_video(
@@ -195,7 +236,10 @@ class YouTubeLiveCache:
         Returns:
             キャッシュエントリ、または None（見つからない場合）
         """
-        return self.cache_data.get(video_id)
+        entry = self.cache_data.get(video_id)
+        if entry:
+            logger.debug(f"📦 キャッシュから取得: {video_id} (poll_count={entry.get('poll_count', 0)})")
+        return entry
 
     def get_all_live_videos(self) -> List[Dict[str, Any]]:
         """
@@ -218,9 +262,12 @@ class YouTubeLiveCache:
         """
         return [entry for entry in self.cache_data.values() if entry.get("status") == status]
 
-    def clear_ended_videos(self) -> int:
+    def clear_ended_videos(self, max_age_seconds: int = 3600) -> int:
         """
-        キャッシュから終了済み動画を削除
+        キャッシュから終了済み動画を削除（一定期間経過した場合のみ）
+
+        Args:
+            max_age_seconds: 削除対象の最大経過時間（デフォルト: 1時間）
 
         Returns:
             削除した件数
@@ -231,8 +278,26 @@ class YouTubeLiveCache:
 
             for entry in ended_videos:
                 video_id = entry.get("video_id")
-                if self.remove_live_video(video_id):
-                    count += 1
+                ended_at_str = entry.get("ended_at")
+
+                if not ended_at_str:
+                    # ended_at がない場合はスキップ（安全弁）
+                    continue
+
+                try:
+                    ended_at = datetime.fromisoformat(ended_at_str)
+                    elapsed_seconds = (datetime.now() - ended_at).total_seconds()
+
+                    if elapsed_seconds > max_age_seconds:
+                        # max_age_seconds 以上経過しているなら削除
+                        if self.remove_live_video(video_id):
+                            logger.info(f"🗑️ クリーンアップ: 終了済み動画を削除（経過時間: {elapsed_seconds:.0f}秒）: {video_id}")
+                            count += 1
+                    else:
+                        logger.debug(f"⏳ クリーンアップスキップ: 経過時間が短い（{elapsed_seconds:.0f}秒 < {max_age_seconds}秒）: {video_id}")
+                except Exception as e:
+                    logger.warning(f"⚠️ クリーンアップ処理エラー（{video_id}）: {e}")
+                    continue
 
             logger.info(f"✅ 終了済み動画をキャッシュから削除: {count} 件")
             return count
@@ -244,6 +309,18 @@ class YouTubeLiveCache:
     def get_cache_size(self) -> int:
         """キャッシュ内の動画数を取得"""
         return len(self.cache_data)
+
+    def remove_video(self, video_id: str) -> bool:
+        """
+        キャッシュから動画を削除（remove_live_video() のエイリアス）
+
+        Args:
+            video_id: 動画ID
+
+        Returns:
+            bool: 削除成功フラグ
+        """
+        return self.remove_live_video(video_id)
 
 
 def get_youtube_live_cache() -> YouTubeLiveCache:

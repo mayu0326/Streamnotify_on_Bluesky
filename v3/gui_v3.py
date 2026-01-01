@@ -31,6 +31,55 @@ __copyright__ = "Copyright (C) 2025 mayuneco(mayunya)"
 __license__ = "GPLv2"
 
 
+class CreateToolTip:
+    """ウィジェットにツールチップを作成する"""
+    def __init__(self, widget, text):
+        self.widget = widget
+        self.text = text
+        self.widget.bind("<Enter>", self.enter)
+        self.widget.bind("<Leave>", self.leave)
+        self.id = None
+        self.tw = None
+
+    def enter(self, event=None):
+        self.schedule()
+
+    def leave(self, event=None):
+        self.unschedule()
+        self.hidetip()
+
+    def schedule(self):
+        self.unschedule()
+        self.id = self.widget.after(500, self.showtip)
+
+    def unschedule(self):
+        id = self.id
+        self.id = None
+        if id:
+            self.widget.after_cancel(id)
+
+    def showtip(self, event=None):
+        x = y = 0
+        x, y, cx, cy = self.widget.bbox("insert")
+        x += self.widget.winfo_rootx() + 25
+        y += self.widget.winfo_rooty() + 20
+        # creates a toplevel window
+        self.tw = tk.Toplevel(self.widget)
+        # Leaves only the label and removes the app window
+        self.tw.wm_overrideredirect(True)
+        self.tw.wm_geometry(f"+{x}+{y}")
+        label = tk.Label(self.tw, text=self.text, justify='left',
+                       background="#ffffe0", relief='solid', borderwidth=1,
+                       font=("tahoma", "8", "normal"))
+        label.pack(ipadx=1)
+
+    def hidetip(self):
+        tw = self.tw
+        self.tw = None
+        if tw:
+            tw.destroy()
+
+
 class StreamNotifyGUI:
     """Stream notify GUI（統合版, プラグイン対応）"""
 
@@ -65,11 +114,11 @@ class StreamNotifyGUI:
         toolbar.pack(side=tk.TOP, fill=tk.X, padx=5, pady=5)
 
         ttk.Button(toolbar, text="🔄 再読込", command=self.refresh_data).pack(side=tk.LEFT, padx=2)
-        
+
         # ★ フィード取得ボタン：websubモード時は「新着取得」、それ以外は「RSS更新」
         feed_button_text = "📡 新着取得" if self.config.youtube_feed_mode == "websub" else "🌐 RSS更新"
         ttk.Button(toolbar, text=feed_button_text, command=self.fetch_rss_manually).pack(side=tk.LEFT, padx=2)
-        
+
         ttk.Button(toolbar, text="🎬 Live判定", command=self.classify_youtube_live_manually).pack(side=tk.LEFT, padx=2)
         ttk.Button(toolbar, text="➕ 動画追加", command=self.add_video_dialog).pack(side=tk.LEFT, padx=2)
         ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=2)
@@ -136,15 +185,15 @@ class StreamNotifyGUI:
         source_combo.grid(row=0, column=5, sticky=tk.W, padx=5, pady=5)
         source_combo.bind("<<ComboboxSelected>>", lambda e: self.apply_filters())
 
-        # タイプフィルタ（YouTube: 動画/アーカイブ/Live/プレミア）
+        # タイプフィルタ（5カテゴリ対応: 動画/アーカイブ/放送予約/放送中/放送終了/プレミア）
         ttk.Label(filter_frame, text="タイプ:").grid(row=0, column=6, sticky=tk.W, padx=5, pady=5)
         self.filter_type_var = tk.StringVar(value="全て")
         type_combo = ttk.Combobox(
             filter_frame,
             textvariable=self.filter_type_var,
-            values=["全て", "🎬 動画", "📹 アーカイブ", "🔴 配信", "🎆 プレミア"],
+            values=["全て", "🎬 動画", "📹 アーカイブ", "📅 放送予約", "🔴 放送中", "⏹️ 放送終了", "🎆 プレミア"],
             state="readonly",
-            width=15
+            width=20
         )
         type_combo.grid(row=0, column=7, sticky=tk.W, padx=5, pady=5)
         type_combo.bind("<<ComboboxSelected>>", lambda e: self.apply_filters())
@@ -244,8 +293,8 @@ class StreamNotifyGUI:
     def fetch_rss_manually(self):
         """RSS フィードを手動で今すぐ取得・更新"""
         try:
-            from youtube_rss import YouTubeRSS
-            from youtube_websub import YouTubeWebSub
+            from youtube_core.youtube_rss import YouTubeRSS
+            from youtube_core.youtube_websub import YouTubeWebSub
             from config import Config
             from plugin_manager import PluginManager
 
@@ -258,7 +307,7 @@ class StreamNotifyGUI:
 
             # フィード取得モード判定
             feed_mode = config.youtube_feed_mode
-            
+
             if feed_mode == "websub":
                 # WebSub モード時はWebSubサーバーから新着確認
                 messagebox.showinfo("RSS更新", "WebSub サーバーから新着を確認中...\n（ウィンドウを閉じないでください）")
@@ -323,12 +372,10 @@ DB を再読込みします。"""
 
             if not youtube_live_plugin:
                 messagebox.showwarning("警告", "YouTube Live プラグインがロードされていません。")
-                logger.warning("⚠️ YouTube Live プラグインが見つかりません")
                 return
 
             if not youtube_live_plugin.is_available():
                 messagebox.showwarning("警告", "YouTube Live プラグインが利用不可です。\n（YouTube API キーが設定されていない可能性があります）")
-                logger.warning("⚠️ YouTube Live プラグインが利用不可")
                 return
 
             # 判定開始を通知
@@ -388,9 +435,9 @@ DB を再読込みします。
             if source_filter_lower != "全て" and source != source_filter_lower:
                 continue
 
-            # タイプフィルタ（動画/アーカイブ/Live/プレミア）
+            # タイプフィルタ（5カテゴリ: 動画/アーカイブ/放送予約/放送中/放送終了/プレミア）
             if type_filter != "全て":
-                # 表示用のタイプを計算
+                # 表示用のタイプを計算（新分類対応）
                 content_type = video.get("content_type", "video")
                 is_premiere = video.get("is_premiere", 0)
                 source_for_display = video.get("source", "").lower()
@@ -401,8 +448,12 @@ DB を再読込みします。
                     display_type = "🎬 動画"
                 elif content_type == "archive":
                     display_type = "📹 アーカイブ"
+                elif content_type == "schedule":
+                    display_type = "📅 放送予約"
                 elif content_type == "live":
-                    display_type = "🔴 配信"
+                    display_type = "🔴 放送中"
+                elif content_type == "completed":
+                    display_type = "⏹️ 放送終了"
                 else:
                     display_type = "🎬 動画"
 
@@ -427,7 +478,7 @@ DB を再読込みします。
             image_mode = video.get("image_mode") or ""
             image_filename = video.get("image_filename") or ""
 
-            # 分類情報を取得
+            # 分類情報を取得（5カテゴリ対応）
             content_type = video.get("content_type", "video")
             is_premiere = video.get("is_premiere", 0)
             if is_premiere:
@@ -436,8 +487,12 @@ DB を再読込みします。
                 display_type = "🎬 動画"
             elif content_type == "archive":
                 display_type = "📹 アーカイブ"
+            elif content_type == "schedule":
+                display_type = "📅 放送予約"
             elif content_type == "live":
-                display_type = "🔴 配信"
+                display_type = "🔴 放送中"
+            elif content_type == "completed":
+                display_type = "⏹️ 放送終了"
             else:
                 display_type = "🎬 動画"
 
@@ -1273,6 +1328,17 @@ YouTube:      {youtube_count} 件 (投稿済み: {youtube_posted})
 
     def youtube_live_settings(self):
         """YouTube Live 投稿設定パネル"""
+        # ★ YouTube Live プラグインの存在をチェック
+        youtube_live_plugin = self.plugin_manager.get_plugin("youtube_live_plugin")
+
+        if not youtube_live_plugin:
+            messagebox.showwarning("警告", "YouTube Live プラグインがロードされていません。")
+            return
+
+        if not youtube_live_plugin.is_available():
+            messagebox.showwarning("警告", "YouTube Live プラグインが利用不可です。\n（YouTube API キーが設定されていない可能性があります）")
+            return
+
         settings_window = tk.Toplevel(self.root)
         settings_window.title("YouTube Live 投稿設定")
         settings_window.geometry("500x600")
@@ -1760,7 +1826,19 @@ YouTube:      {youtube_count} 件 (投稿済み: {youtube_posted})
         platform_frame.pack(padx=10, pady=5, fill=tk.X)
 
         ttk.Radiobutton(platform_frame, text="YouTube", variable=platform_var, value="YouTube").pack(side=tk.LEFT, padx=5)
-        ttk.Radiobutton(platform_frame, text="ニコニコ", variable=platform_var, value="Niconico").pack(side=tk.LEFT, padx=5)
+
+        # --- ニコニコプラグインのチェックとボタン生成 ---
+        niconico_plugin_enabled = False
+        if self.plugin_manager:
+            niconico_plugin = self.plugin_manager.get_plugin("niconico_plugin")
+            if niconico_plugin and niconico_plugin.is_available():
+                niconico_plugin_enabled = True
+
+        niconico_radio_button = ttk.Radiobutton(platform_frame, text="ニコニコ", variable=platform_var, value="Niconico")
+        if not niconico_plugin_enabled:
+            niconico_radio_button.config(state=tk.DISABLED)
+            CreateToolTip(niconico_radio_button, "ニコニコプラグインが導入されていないため無効です")
+        niconico_radio_button.pack(side=tk.LEFT, padx=5)
 
         # === 説明 ===
         description_frame = ttk.Frame(dialog)
@@ -2203,11 +2281,11 @@ YouTube:      {youtube_count} 件 (投稿済み: {youtube_posted})
         published_entry.grid(row=3, column=1, sticky=tk.EW, padx=5, pady=5)
         published_entry.insert(0, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
-        # コンテンツタイプ
+        # コンテンツタイプ（5カテゴリ対応）
         ttk.Label(form_frame, text="コンテンツ種別:").grid(row=4, column=0, sticky=tk.W, pady=5)
         content_type_var = tk.StringVar(value="video")
         content_combo = ttk.Combobox(form_frame, textvariable=content_type_var, state="readonly", width=47)
-        content_combo['values'] = ("video", "live", "archive", "none")
+        content_combo['values'] = ("video", "archive", "schedule", "live", "completed")
         content_combo.grid(row=4, column=1, sticky=tk.EW, padx=5, pady=5)
 
         # ライブ配信状態

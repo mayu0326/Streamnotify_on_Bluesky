@@ -51,17 +51,22 @@ def get_video_priority(video: Dict[str, Any]) -> tuple:
             premiere_priority = 1  # パース失敗時は通常動画扱い
 
     # 優先度を計算（大きいほど優先度が高い）
-    # アーカイブ > ライブ > プレミア公開（開始予定/近い） > 通常動画
-    if content_type == 'archive' or live_status == 'completed':
-        priority = 4
-    elif content_type == 'live' or live_status in ('live', 'upcoming'):
-        priority = 3
+    # v3.3.0: 5カテゴリ対応
+    # 優先度: archive(4) > schedule(3) > live(3) > completed(2) > video(1)
+    if content_type == 'archive':
+        priority = 4  # アーカイブ（LIVE終了後の録画）
+    elif content_type == 'schedule':
+        priority = 3  # 放送予約（upcoming）
+    elif content_type == 'live':
+        priority = 3  # 放送中
+    elif content_type == 'completed':
+        priority = 2  # 放送終了
     elif is_premiere and premiere_priority == 3:
-        priority = 3
+        priority = 3  # プレミア公開（開始予定/近い）
     elif is_premiere and premiere_priority == 1:
-        priority = 1
+        priority = 1  # プレミア公開（10分以上過去）
     else:  # video
-        priority = 1
+        priority = 1  # 通常動画
 
     # (優先度, コンテンツ種別, video_id) を返す
     return (priority, content_type, video_id)
