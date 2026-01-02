@@ -346,8 +346,9 @@ def main():
                 # WebSub: ProductionServerAPI 経由で動画情報を取得
                 from youtube_core.youtube_websub import YouTubeWebSub
                 yt_websub = YouTubeWebSub(config.youtube_channel_id)
-                saved_count = yt_websub.save_to_db(db)
-                logger.info(f"[YouTube] WebSub DB保存完了: {saved_count} 件")
+                # ★ 修正: classifier と live_module を渡す
+                saved_count, live_count = yt_websub.save_to_db(db, classifier=classifier, live_module=live_module)
+                logger.info(f"[YouTube] WebSub DB保存完了: {saved_count} 件（Live登録: {live_count} 件）")
 
                 # ★ 重要: WebSub から取得した動画のサムネイルを処理
                 # 新規動画は thumb_mgr.ensure_websub_images で即座に処理
@@ -377,58 +378,14 @@ def main():
             else:
                 logger.info("[YouTube] YouTubeRSS から情報を取得しています...")
                 # RSS ポーリング: RSS フェッチ・DB 保存・画像自動処理を一体実行
-                saved_count = thumb_mgr.fetch_and_ensure_images(config.youtube_channel_id)
+                # ★ 修正: classifier と live_module を渡す
+                from youtube_core.youtube_rss import YouTubeRSS
+                yt_rss = YouTubeRSS(config.youtube_channel_id)
+                saved_count, live_count = yt_rss.save_to_db(db, classifier=classifier, live_module=live_module)
+                logger.info(f"[YouTube] RSS DB保存完了: {saved_count} 件（Live登録: {live_count} 件）")
 
-            # ★ 新: 新規登録動画を YouTubeVideoClassifier で分類・処理
-            # 取得した動画の video_id に対して分類を実施し、Live関連なら LiveModule で処理
-            if saved_count > 0 and classifier and live_module:
-                logger.info(f"[YouTube] 取得した {saved_count} 個の新規動画を分類しています...")
-                classified_live_count = 0
-                classified_normal_count = 0
-
-                # DB から未分類（content_type="video" のまま）の新規動画を取得
-                all_videos = db.get_all_videos()
-                recent_videos = [
-                    v for v in all_videos
-                    if v.get("source") == "youtube" and
-                       v.get("content_type") == "video" and
-                       v.get("created_at") and
-                       (datetime.now() - datetime.fromisoformat(v.get("created_at", "").replace('Z', '+00:00'))).total_seconds() < 600  # 過去10分以内
-                ]
-
-                for video in recent_videos:
-                    video_id = video.get("video_id")
-                    if not video_id:
-                        continue
-
-                    try:
-                        # YouTubeVideoClassifier で分類
-                        result = classifier.classify_video(video_id)
-                        if not result.get("success"):
-                            logger.debug(f"⏭️  分類失敗（既存処理で続行）: {video_id}")
-                            classified_normal_count += 1
-                            continue
-
-                        video_type = result.get("type")
-
-                        # Live 関連 vs 通常動画 の分岐
-                        if video_type in ["schedule", "live", "completed", "archive"]:
-                            # Live 関連 → LiveModule で処理
-                            logger.info(f"🎬 Live関連動画を分類: {video.get('title')} (type={video_type})")
-                            live_count = live_module.register_from_classified(result)
-                            if live_count > 0:
-                                classified_live_count += 1
-                        else:
-                            # 通常動画またはプレミア → 既存処理で続行（何もしない）
-                            logger.debug(f"📹 通常動画を分類（既存処理で続行）: {video.get('title')} (type={video_type})")
-                            classified_normal_count += 1
-
-                    except Exception as e:
-                        logger.debug(f"⚠️ 分類エラー（スキップ）: {video_id} - {e}")
-                        classified_normal_count += 1
-
-                logger.info(f"✅ 新規動画の分類完了: Live {classified_live_count} 件、通常 {classified_normal_count} 件")
-
+                # ★ サムネイル処理：fetch_and_ensure_images の結果をマージ
+                thumb_mgr.fetch_and_ensure_images(config.youtube_channel_id)
 
             # ★ 新: Live ポーリング（Live関連動画の状態遷移を検知・自動投稿）
             if live_module:

@@ -203,6 +203,7 @@ class YouTubeVideoClassifier:
         snippet = video_data.get("snippet", {})
         title = snippet.get("title", "Unknown")
         description = snippet.get("description", "")
+        channel_name = snippet.get("channelTitle", "")  # ★ 【新】channel_name を追加
         thumbnails = snippet.get("thumbnails", {})
         thumbnail_url = thumbnails.get("high", {}).get("url") or thumbnails.get("medium", {}).get("url")
         published_at = snippet.get("publishedAt", "")
@@ -221,36 +222,46 @@ class YouTubeVideoClassifier:
         is_premiere = False
         is_scheduled_start_time = False
 
+        # ★ 【新】基準時刻の計算用変数
+        scheduled_start_time = None
+        actual_start_time = None
+        actual_end_time = None
+        representative_time_utc = None
+
         # 1. liveStreamingDetails が存在 → Live関連
         if live_details:
             is_live = True
-            upcoming_start = live_details.get("scheduledStartTime")
-            actual_start = live_details.get("actualStartTime")
-            actual_end = live_details.get("actualEndTime")
+
+            # ★ 【新】時刻情報を取得
+            scheduled_start_time = live_details.get("scheduledStartTime")
+            actual_start_time = live_details.get("actualStartTime")
+            actual_end_time = live_details.get("actualEndTime")
+
+            upcoming_start = scheduled_start_time
+            actual_start = actual_start_time
+            actual_end = actual_end_time
 
             if upcoming_start and not actual_start:
                 # スケジュール済みだが未開始
                 video_type = VIDEO_TYPE_SCHEDULED
                 live_status = "upcoming"
                 is_scheduled_start_time = True
+                # ★ 【新】基準時刻：scheduledStartTime
+                representative_time_utc = scheduled_start_time
             elif actual_start and not actual_end:
                 # 配信中
                 video_type = VIDEO_TYPE_LIVE
                 live_status = "live"
+                # ★ 【新】基準時刻：actualStartTime
+                representative_time_utc = actual_start_time
             elif actual_end:
-                # ★ 判定の強化：配信終了 vs アーカイブ
-                # duration が確定しており、かつ liveBroadcastContent が none ならアーカイブとみなす
-                is_duration_fixed = duration not in ["PT0S", "P0D", ""]
-                is_broadcast_none = live_broadcast_content == "none"
-
-                if is_duration_fixed and is_broadcast_none:
-                    # YouTube 側で「動画」としての処理が完了している状態
-                    video_type = VIDEO_TYPE_ARCHIVE
-                    live_status = None  # アーカイブは live_status を持たない運用
-                else:
-                    # 配信は終了ボタンが押されたが、まだ動画処理中の状態
-                    video_type = VIDEO_TYPE_COMPLETED
-                    live_status = "completed"
+                # ★ 【重要】actualEndTime が存在 = 配信完全終了 = 常にアーカイブ
+                # liveBroadcastContent の値は関係なく、actual_end が存在すればアーカイブ
+                video_type = VIDEO_TYPE_ARCHIVE
+                live_status = None  # アーカイブは live_status を持たない
+                # ★ 【新】基準時刻：actualEndTime
+                representative_time_utc = actual_end_time
+                logger.debug(f"✅ アーカイブ判定: {video_id} (actualEndTime={actual_end})")
             else:
                 # 判定不可だが live_details が存在
                 logger.warning(f"⚠️ ライブステータス判定不可（{video_id}）: {live_details}")
@@ -260,10 +271,14 @@ class YouTubeVideoClassifier:
         elif snippet.get("liveBroadcastContent") == "premiere":
             video_type = VIDEO_TYPE_PREMIERE
             is_premiere = True
+            # ★ 【新】基準時刻：published_at（プレミアも通常動画と同じ）
+            representative_time_utc = published_at
 
         # 3. 上記いずれでもない → 通常動画
         else:
             video_type = VIDEO_TYPE_NORMAL
+            # ★ 【新】基準時刻：published_at
+            representative_time_utc = published_at
 
         return {
             "success": True,
@@ -271,6 +286,7 @@ class YouTubeVideoClassifier:
             "type": video_type,
             "title": title,
             "description": description,
+            "channel_name": channel_name,  # ★ 【新】channel_name を返却
             "thumbnail_url": thumbnail_url,
             "is_premiere": is_premiere,
             "is_live": is_live,
@@ -279,6 +295,11 @@ class YouTubeVideoClassifier:
             "published_at": published_at,
             "duration": duration,                           # ★ 【新】ISO 8601 形式
             "live_broadcast_content": live_broadcast_content,  # ★ 【新】"none"/"live"/"upcoming"
+            # ★ 【新】時刻情報を返却
+            "scheduled_start_time": scheduled_start_time,
+            "actual_start_time": actual_start_time,
+            "actual_end_time": actual_end_time,
+            "representative_time_utc": representative_time_utc,
             "error": None
         }
 

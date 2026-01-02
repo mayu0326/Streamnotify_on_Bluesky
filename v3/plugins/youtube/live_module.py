@@ -80,6 +80,7 @@ class LiveModule:
                        "thumbnail_url": str,
                        "published_at": str,
                        "live_status": str or None,
+                       "representative_time_utc": str,  # ★ 【新】基準時刻（UTC）
                        ...
                    }
 
@@ -98,12 +99,55 @@ class LiveModule:
             logger.debug(f"⏭️  非Live動画（登録スキップ）: {video_type}")
             return 0
 
+        # ★ 【重要】既存チェック: 同じ video_id が既に DB に存在する場合はスキップ
+        try:
+            existing = self.db.get_video_by_id(video_id)
+            if existing:
+                logger.debug(
+                    f"⏭️  既存のLive動画のため新規登録スキップ: {video_id} "
+                    f"(既存: type={existing.get('content_type')}, status={existing.get('live_status')})"
+                )
+                return 0
+        except Exception as e:
+            logger.warning(f"⚠️ 既存チェック中にエラー（続行）: {video_id} - {e}")
+            # エラー時は続行して登録を試みる（DB エラーなど）
+
         # 基本情報を抽出
         title = result.get("title", "【ライブ】")
         channel_name = result.get("channel_name", "")
         published_at = result.get("published_at", "")
         thumbnail_url = result.get("thumbnail_url", "")
         is_premiere = result.get("is_premiere", False)
+
+        # ★ 【新】基準時刻（UTC）を取得
+        representative_time_utc = result.get("representative_time_utc")
+
+        # ★ 【重要】published_at のタイムゾーン変換
+        # YouTubeAPI は UTC で返すため、環境変数 TIMEZONE で指定されたタイムゾーンに変換する
+        # （デフォルト: system タイムゾーン。TIMEZONE=Asia/Tokyo で JST になる）
+        if published_at:
+            try:
+                from utils_v3 import format_datetime_filter
+                # format_datetime_filter は ISO 8601 形式を環境変数 TIMEZONE で指定されたタイムゾーンに変換
+                # fmt="%Y-%m-%d %H:%M:%S" で日時形式（タイムゾーン情報なし、Tをスペースに置き換え）で返す
+                published_at_converted = format_datetime_filter(published_at, fmt="%Y-%m-%d %H:%M:%S")
+                logger.debug(f"📡 published_at を変換: {published_at} → {published_at_converted}")
+                published_at = published_at_converted
+            except Exception as e:
+                logger.warning(f"⚠️ published_at の変換失敗、元の値を使用: {e}")
+                # 失敗時は元の値を使用
+
+        # ★ 【新】representative_time_utc を JST に変換
+        representative_time_jst = None
+        if representative_time_utc:
+            try:
+                from utils_v3 import format_datetime_filter
+                representative_time_jst = format_datetime_filter(representative_time_utc, fmt="%Y-%m-%d %H:%M:%S")
+                logger.debug(f"📡 representative_time_utc を JST に変換: {representative_time_utc} → {representative_time_jst}")
+            except Exception as e:
+                logger.warning(f"⚠️ representative_time_utc の変換失敗: {e}")
+                # 失敗時は representative_time_utc をそのまま使用
+                representative_time_jst = representative_time_utc
 
         # video_url を構築
         video_url = f"https://www.youtube.com/watch?v={video_id}"
@@ -133,11 +177,16 @@ class LiveModule:
                 live_status=live_status,
                 is_premiere=is_premiere,
                 source="youtube",
-                skip_dedup=True  # LIVE は重複排除をスキップ（複数登録可）
+                skip_dedup=True,  # LIVE は重複排除をスキップ（複数登録可）
+                # ★ 【新】基準時刻を保存
+                representative_time_utc=representative_time_utc,
+                representative_time_jst=representative_time_jst
             )
 
             if success:
                 logger.info(f"✅ Live動画を登録しました: {title}")
+                logger.info(f"   representative_time_utc: {representative_time_utc}")
+                logger.info(f"   representative_time_jst: {representative_time_jst}")
                 return 1
             else:
                 logger.debug(f"⏭️  既に登録済み（スキップ）: {video_id}")
