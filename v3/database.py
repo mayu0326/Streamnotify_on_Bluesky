@@ -251,34 +251,48 @@ class Database:
                             if get_video_priority(v) < new_priority
                         ]
                         if ids_to_delete:
+                            # ★ 修正2: YouTube重複排除ロジックの DELETE 処理を分離
                             try:
                                 from deleted_video_cache import get_deleted_video_cache
                                 deleted_cache = get_deleted_video_cache()
                             except ImportError:
                                 deleted_cache = None
 
-                            conn = self._get_connection()
-                            cursor = conn.cursor()
+                            # ★ 重要: DELETE を別の接続で実行
                             for del_id in ids_to_delete:
-                                # video_id を取得してから削除
-                                cursor.execute("SELECT video_id FROM videos WHERE id=?", (del_id,))
-                                row = cursor.fetchone()
-                                if row:
-                                    deleted_video_id = row[0]
+                                try:
+                                    # 新しい接続を開く
+                                    delete_conn = self._get_connection()
+                                    delete_cursor = delete_conn.cursor()
 
-                                    # DB から削除
-                                    cursor.execute("DELETE FROM videos WHERE id=?", (del_id,))
-                                    logger.debug(f"✅ 削除: 優先度が低い動画 ID={del_id}, video_id={deleted_video_id}")
+                                    # video_id を取得
+                                    delete_cursor.execute("SELECT video_id FROM videos WHERE id=?", (del_id,))
+                                    row = delete_cursor.fetchone()
 
-                                    # deleted_videos.json に登録
-                                    if deleted_cache:
+                                    if row:
+                                        deleted_video_id = row[0]
+
+                                        # DB から削除
+                                        delete_cursor.execute("DELETE FROM videos WHERE id=?", (del_id,))
+                                        delete_conn.commit()  # ★ 即座にコミット
+                                        logger.debug(f"✅ 削除: 優先度が低い動画 ID={del_id}, video_id={deleted_video_id}")
+
+                                        # deleted_videos.json に登録
+                                        if deleted_cache:
+                                            try:
+                                                deleted_cache.add_deleted_video(deleted_video_id, source=source)
+                                            except Exception as e:
+                                                logger.warning(f"削除動画キャッシュへの登録失敗: {e}")
+
+                                    delete_conn.close()  # ★ 接続を閉じる
+
+                                except Exception as del_e:
+                                    logger.error(f"❌ 優先度の低い動画削除に失敗: ID={del_id}, error={del_e}")
+                                    if 'delete_conn' in locals():
                                         try:
-                                            deleted_cache.add_deleted_video(deleted_video_id, source=source)
-                                        except Exception as e:
-                                            logger.warning(f"削除動画キャッシュへの登録失敗: {e}")
-
-                            conn.commit()
-                            conn.close()
+                                            delete_conn.close()
+                                        except:
+                                            pass
                     else:
                         # 優先度が同じか低い場合はスキップ
                         return False
@@ -304,8 +318,26 @@ class Database:
                 logger.info(f"動画を保存しました: {title}")
                 return True
 
-            except sqlite3.IntegrityError:
+            except sqlite3.IntegrityError as ie:
                 conn.close()
+                # ★ 修正1: IntegrityError のハンドリング強化
+                logger.error(f"❌ IntegrityError 発生: video_id={video_id}, error={ie}")
+
+                # DB を確認して詳細をログ出力
+                try:
+                    check_conn = self._get_connection()
+                    cursor = check_conn.cursor()
+                    cursor.execute("SELECT COUNT(*) FROM videos WHERE video_id = ?", (video_id,))
+                    count = cursor.fetchone()[0]
+                    check_conn.close()
+
+                    if count > 0:
+                        logger.error(f"   警告: DB に既に存在します（DELETE に失敗している可能性）")
+                    else:
+                        logger.error(f"   別の UNIQUE 制約が競合している可能性")
+                except Exception as check_e:
+                    logger.error(f"   確認クエリエラー: {check_e}")
+
                 logger.debug(f"動画は既に保存されています: {video_id}")
                 return False
 

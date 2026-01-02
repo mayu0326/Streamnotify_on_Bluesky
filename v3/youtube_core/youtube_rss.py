@@ -209,27 +209,48 @@ class YouTubeRSS:
                     saved_count += 1
                     youtube_logger.debug(f"[YouTube RSS] 新動画を DB に保存しました: {video['title']}")
                 else:
-                    existing_count += 1
-                    # 既存動画の場合、API データで published_at を上書き（★ 重要: API が RSS より優先）
-                    # API から scheduledStartTime/actualStartTime が取得できた場合は、DB の値を上書き
-                    if api_scheduled_start_time:
-                        # DB の既存 published_at と異なる場合のみ上書き（無駄な更新を避ける）
-                        try:
-                            conn = database._get_connection()
-                            conn.row_factory = sqlite3.Row
-                            cursor = conn.cursor()
-                            cursor.execute("SELECT published_at FROM videos WHERE video_id = ?", (video["video_id"],))
-                            row = cursor.fetchone()
-                            conn.close()
+                    # ★ 修正3: is_new = False の場合のイベント判定ロジック改善
+                    # DB に実際に存在するかを確認
+                    try:
+                        check_conn = database._get_connection()
+                        check_cursor = check_conn.cursor()
+                        check_cursor.execute("SELECT COUNT(*) FROM videos WHERE video_id = ?", (video["video_id"],))
+                        db_count = check_cursor.fetchone()[0]
+                        check_conn.close()
 
-                            if row:
-                                db_published_at = row[0] if isinstance(row, tuple) else row["published_at"]
-                                if api_scheduled_start_time != db_published_at:
-                                    database.update_published_at(video["video_id"], api_scheduled_start_time)
-                                    youtube_logger.info(f"✅ 既存動画の published_at を API データで上書きしました: {video['title']}")
-                                    youtube_logger.debug(f"   旧: {db_published_at} → 新: {api_scheduled_start_time}")
-                        except Exception as e:
-                            youtube_logger.warning(f"⚠️ 既存動画の published_at 上書きに失敗: {e}")
+                        if db_count > 0:
+                            # ★ DB に存在 → 既存動画として扱う
+                            existing_count += 1
+                            youtube_logger.debug(f"[YouTube RSS] 既存動画です: {video['title']}")
+
+                            # 既存動画の場合、API データで published_at を上書き（★ 重要: API が RSS より優先）
+                            # API から scheduledStartTime/actualStartTime が取得できた場合は、DB の値を上書き
+                            if api_scheduled_start_time:
+                                # DB の既存 published_at と異なる場合のみ上書き（無駄な更新を避ける）
+                                try:
+                                    conn = database._get_connection()
+                                    conn.row_factory = sqlite3.Row
+                                    cursor = conn.cursor()
+                                    cursor.execute("SELECT published_at FROM videos WHERE video_id = ?", (video["video_id"],))
+                                    row = cursor.fetchone()
+                                    conn.close()
+
+                                    if row:
+                                        db_published_at = row[0] if isinstance(row, tuple) else row["published_at"]
+                                        if api_scheduled_start_time != db_published_at:
+                                            database.update_published_at(video["video_id"], api_scheduled_start_time)
+                                            youtube_logger.info(f"✅ 既存動画の published_at を API データで上書きしました: {video['title']}")
+                                            youtube_logger.debug(f"   旧: {db_published_at} → 新: {api_scheduled_start_time}")
+                                except Exception as e:
+                                    youtube_logger.warning(f"⚠️ 既存動画の published_at 上書きに失敗: {e}")
+                        else:
+                            # ★ DB に不存在 → 削除済み動画として扱う
+                            blacklist_skip_count += 1
+                            youtube_logger.info(f"↩️ 削除済み動画のため、スキップしました: {video['title']}")
+                    except Exception as e:
+                        youtube_logger.warning(f"⚠️ DB 確認処理でエラー: {e}")
+                        # フォールバック: 既存動画として扱う
+                        existing_count += 1
 
             summary = f"✅ 保存完了: 新規 {saved_count}, 既存 {existing_count}"
             if blacklist_skip_count > 0:
