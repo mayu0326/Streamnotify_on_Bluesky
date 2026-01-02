@@ -36,7 +36,8 @@ def get_youtube_thumbnail_url(video_id: str) -> Optional[str]:
     YouTube のサムネイル URL を複数品質から取得
 
     複数の品質レベルを試行し、最初に取得できた URL を返す。
-    API 呼び出しは不要で、HTTP ステータスコードで品質確認。
+    ★ v3.3.0+: パフォーマンス最適化 - デフォルト URL を直接返す
+    （HTTP リクエストなしで URL を構築）
 
     優先度: maxres (1280x720) → sd (640x480) → hq (480x360) →
             mq (320x180) → default (120x90)
@@ -50,28 +51,13 @@ def get_youtube_thumbnail_url(video_id: str) -> Optional[str]:
     if not video_id:
         return None
 
+    # ★ 修正: デフォルト URL を直接返す（sddefault は常に存在）
+    # HTTP リクエスト不要のため、WebSub 処理が迅速化
     base = f"https://i.ytimg.com/vi/{video_id}"
-    candidates = [
-        "maxresdefault.jpg",  # 1280x720 - 最高品質
-        "sddefault.jpg",      # 640x480
-        "hqdefault.jpg",      # 480x360
-        "mqdefault.jpg",      # 320x180
-        "default.jpg",        # 120x90 - 常に存在
-    ]
+    default_url = f"{base}/sddefault.jpg"
 
-    for name in candidates:
-        url = f"{base}/{name}"
-        try:
-            response = requests.get(url, timeout=5)
-            if response.status_code == 200:
-                logger.debug(f"✅ YouTube サムネイル取得: {video_id} -> {name}")
-                return url
-        except Exception as e:
-            logger.debug(f"⚠️ YouTube サムネイル試行失敗: {name} - {e}")
-            continue
-
-    logger.warning(f"⚠️ YouTube サムネイル取得失敗: {video_id}")
-    return None
+    logger.debug(f"✅ YouTube サムネイル URL 構築: {video_id} -> sddefault.jpg")
+    return default_url
 
 
 class ImageManager:
