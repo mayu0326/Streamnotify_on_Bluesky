@@ -14,7 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from database import get_database
-from plugins.youtube_api_plugin import YouTubeAPIPlugin
+from plugins.youtube.youtube_api_plugin import YouTubeAPIPlugin
 from plugins.youtube_live_plugin import YouTubeLivePlugin
 
 VIDEO_ID = "q-qavmJ5FjM"

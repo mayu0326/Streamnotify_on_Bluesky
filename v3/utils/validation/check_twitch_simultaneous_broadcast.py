@@ -12,7 +12,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from database import get_database
-from plugins.youtube_api_plugin import YouTubeAPIPlugin
+from plugins.youtube.youtube_api_plugin import YouTubeAPIPlugin
 
 def check_twitch_simultaneous_broadcast():
     """「Twitch同時配信」と書かれている動画を確認"""

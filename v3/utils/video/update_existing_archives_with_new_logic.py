@@ -106,7 +106,7 @@ def determine_archive_published_at(details: dict) -> str:
 
 def update_existing_archives():
     """既存のアーカイブデータを新ロジックで更新"""
-    from plugins.youtube_api_plugin import YouTubeAPIPlugin
+    from plugins.youtube.youtube_api_plugin import YouTubeAPIPlugin
 
     try:
         api_plugin = YouTubeAPIPlugin()

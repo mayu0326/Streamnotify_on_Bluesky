@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 def test_classify_video_core_exists():
     """_classify_video_core() が存在するか確認"""
-    from plugins.youtube_api_plugin import YouTubeAPIPlugin
+    from plugins.youtube.youtube_api_plugin import YouTubeAPIPlugin
 
     # スタティックメソッドとして存在するか
     assert hasattr(YouTubeAPIPlugin, '_classify_video_core'), \
@@ -47,7 +47,7 @@ def test_youtube_live_delegates_to_core():
 
 def test_classify_video_core_implementation():
     """_classify_video_core() の実装を検証"""
-    from plugins.youtube_api_plugin import YouTubeAPIPlugin
+    from plugins.youtube.youtube_api_plugin import YouTubeAPIPlugin
     import inspect
 
     source = inspect.getsource(YouTubeAPIPlugin._classify_video_core)
@@ -87,7 +87,7 @@ def test_template_files_exist_and_valid():
 
 def test_classification_logic():
     """分類ロジックの実装を確認"""
-    from plugins.youtube_api_plugin import YouTubeAPIPlugin
+    from plugins.youtube.youtube_api_plugin import YouTubeAPIPlugin
 
     # テストケース: 通常動画
     details_video = {

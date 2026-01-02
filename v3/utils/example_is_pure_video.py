@@ -7,7 +7,7 @@ is_pure_video() 使用例
 
 import json
 from pathlib import Path
-from plugins.youtube_api_plugin import YouTubeAPIPlugin
+from plugins.youtube.youtube_api_plugin import YouTubeAPIPlugin
 
 def example_check_pure_videos():
     """キャッシュから純粋な動画を判定"""

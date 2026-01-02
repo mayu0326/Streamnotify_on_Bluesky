@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import sqlite3
-from plugins.youtube_api_plugin import YouTubeAPIPlugin
+from plugins.youtube.youtube_api_plugin import YouTubeAPIPlugin
 
 db_path = "data/video_list.db"
 video_id = "SaKd1RqfM5A"
