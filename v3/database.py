@@ -205,100 +205,26 @@ class Database:
         content_type = self._validate_content_type(content_type)
         live_status = self._validate_live_status(live_status, content_type)
 
-        # YouTube動画の重複チェック（優先度ロジック適用）
+        # YouTube動画の重複チェック（簡略版）
         # ★ skip_dedup=True なら重複チェックをスキップ（手動追加時の強制挿入）
-        if not skip_dedup and source == "youtube" and title and channel_name:
+        if not skip_dedup and source == "youtube":
             try:
-                import sys
-                from pathlib import Path
-                sys.path.insert(0, str(Path(__file__).parent))
-                from youtube_core.youtube_dedup_priority import get_video_priority, should_keep_video
-
                 conn = self._get_connection()
-                conn.row_factory = sqlite3.Row
                 cursor = conn.cursor()
 
+                # 同じ video_id が既に存在するかチェック
                 cursor.execute("""
-                    SELECT * FROM videos
-                    WHERE source='youtube' AND title=? AND channel_name=?
-                """, (title, channel_name))
+                    SELECT id FROM videos WHERE source='youtube' AND video_id=?
+                """, (video_id,))
 
-                existing_videos = [dict(row) for row in cursor.fetchall()]
+                existing = cursor.fetchone()
                 conn.close()
 
-                if existing_videos:
-                    # 新しい動画の優先度と既存動画の優先度を比較
-                    new_video = {
-                        'video_id': video_id,
-                        'content_type': content_type,
-                        'live_status': live_status,
-                        'is_premiere': 1 if is_premiere else 0,
-                        'published_at': published_at
-                    }
+                if existing:
+                    # 同一 video_id は既存レコードを更新（重複登録を防止）
+                    logger.debug(f"⏭️ YouTube動画の重複登録を検出: video_id={video_id}")
+                    return False
 
-                    if not should_keep_video(new_video, existing_videos):
-                        logger.debug(f"⏭️ YouTube重複排除: より優先度の高い動画が既に登録されています（{title}）")
-                        return False
-
-                    # 優先度が高い場合は既存の低優先度動画を削除
-                    existing_priority = max(get_video_priority(v) for v in existing_videos)
-                    new_priority = get_video_priority(new_video)
-
-                    if new_priority > existing_priority:
-                        # 既存動画から低優先度のものを削除
-                        ids_to_delete = [
-                            v['id'] for v in existing_videos
-                            if get_video_priority(v) < new_priority
-                        ]
-                        if ids_to_delete:
-                            # ★ 修正2: YouTube重複排除ロジックの DELETE 処理を分離
-                            try:
-                                from deleted_video_cache import get_deleted_video_cache
-                                deleted_cache = get_deleted_video_cache()
-                            except ImportError:
-                                deleted_cache = None
-
-                            # ★ 重要: DELETE を別の接続で実行
-                            for del_id in ids_to_delete:
-                                try:
-                                    # 新しい接続を開く
-                                    delete_conn = self._get_connection()
-                                    delete_cursor = delete_conn.cursor()
-
-                                    # video_id を取得
-                                    delete_cursor.execute("SELECT video_id FROM videos WHERE id=?", (del_id,))
-                                    row = delete_cursor.fetchone()
-
-                                    if row:
-                                        deleted_video_id = row[0]
-
-                                        # DB から削除
-                                        delete_cursor.execute("DELETE FROM videos WHERE id=?", (del_id,))
-                                        delete_conn.commit()  # ★ 即座にコミット
-                                        logger.debug(f"✅ 削除: 優先度が低い動画 ID={del_id}, video_id={deleted_video_id}")
-
-                                        # deleted_videos.json に登録
-                                        if deleted_cache:
-                                            try:
-                                                deleted_cache.add_deleted_video(deleted_video_id, source=source)
-                                            except Exception as e:
-                                                logger.warning(f"削除動画キャッシュへの登録失敗: {e}")
-
-                                    delete_conn.close()  # ★ 接続を閉じる
-
-                                except Exception as del_e:
-                                    logger.error(f"❌ 優先度の低い動画削除に失敗: ID={del_id}, error={del_e}")
-                                    if 'delete_conn' in locals():
-                                        try:
-                                            delete_conn.close()
-                                        except:
-                                            pass
-                    else:
-                        # 優先度が同じか低い場合はスキップ
-                        return False
-
-            except ImportError:
-                logger.warning("youtube_dedup_priority モジュールが見つかりません")
             except Exception as e:
                 logger.warning(f"重複チェック処理でエラー: {e}")
                 # エラー時は続行して挿入を試みる
@@ -320,25 +246,7 @@ class Database:
 
             except sqlite3.IntegrityError as ie:
                 conn.close()
-                # ★ 修正1: IntegrityError のハンドリング強化
-                logger.error(f"❌ IntegrityError 発生: video_id={video_id}, error={ie}")
-
-                # DB を確認して詳細をログ出力
-                try:
-                    check_conn = self._get_connection()
-                    cursor = check_conn.cursor()
-                    cursor.execute("SELECT COUNT(*) FROM videos WHERE video_id = ?", (video_id,))
-                    count = cursor.fetchone()[0]
-                    check_conn.close()
-
-                    if count > 0:
-                        logger.error(f"   警告: DB に既に存在します（DELETE に失敗している可能性）")
-                    else:
-                        logger.error(f"   別の UNIQUE 制約が競合している可能性")
-                except Exception as check_e:
-                    logger.error(f"   確認クエリエラー: {check_e}")
-
-                logger.debug(f"動画は既に保存されています: {video_id}")
+                logger.debug(f"重複登録を検出（スキップ）: video_id={video_id}")
                 return False
 
             except sqlite3.OperationalError as e:
@@ -497,6 +405,7 @@ class Database:
             where_clauses.append(f"({type_filter})")
 
             # DELETE された動画を除外
+            deleted_ids = []
             from deleted_video_cache import get_deleted_video_cache
             try:
                 deleted_cache = get_deleted_video_cache()
@@ -504,8 +413,13 @@ class Database:
                 if deleted_ids:
                     placeholders = ",".join("?" * len(deleted_ids))
                     where_clauses.append(f"video_id NOT IN ({placeholders})")
+                    logger.debug(f"除外動画リスト: {len(deleted_ids)} 件を除外フィルタに適用")
             except ImportError:
-                pass  # モジュールなければスキップ
+                logger.debug("deleted_video_cache モジュールが見つかりません")
+            except AttributeError as ae:
+                logger.warning(f"⚠️ get_deleted_video_ids() 呼び出しエラー: {ae}")
+            except Exception as e:
+                logger.warning(f"⚠️ 除外動画リスト取得エラー: {e}")
 
             where_clause = " AND ".join(where_clauses)
 
@@ -513,7 +427,7 @@ class Database:
                 SELECT * FROM videos
                 WHERE {where_clause}
                 ORDER BY published_at DESC
-            """, deleted_ids if 'deleted_ids' in locals() else [])
+            """, deleted_ids)
 
             videos = [dict(row) for row in cursor.fetchall()]
             conn.close()
