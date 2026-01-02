@@ -326,31 +326,8 @@ class StreamNotifyGUI:
                 messagebox.showinfo("RSS更新完了", "新着動画は検出されませんでした。")
                 return
 
-            # ★ 新: YouTube Live プラグインで自動分類を実行
-            # 新規追加動画をYouTube Liveプラグインで分類
-            youtube_live_classified = 0
-            if added_count > 0:
-                try:
-                    pm = PluginManager()
-                    live_plugin = pm.get_plugin("youtube_live_plugin")
-                    if live_plugin and live_plugin.is_available():
-                        logger.info(f"🔍 YouTube Live プラグイン: 新規追加動画 {added_count} 件を自動分類します...")
-                        youtube_live_classified = live_plugin._update_unclassified_videos()
-                        logger.info(f"✅ YouTube Live 自動分類完了: {youtube_live_classified} 件更新")
-                except Exception as e:
-                    logger.warning(f"⚠️ YouTube Live プラグインでの自動分類に失敗: {e}")
-                    # エラーでも処理を続行
 
-            # 結果をメッセージボックスで表示
-            result_msg = f"""✅ フィード更新完了
-
-フィード取得モード: {"WebSub" if feed_mode == "websub" else "RSS ポーリング"}
-取得件数: {len(new_videos)}
-新規追加: {added_count}
-Live 自動分類: {youtube_live_classified} 件更新
-
-DB を再読込みします。"""
-            messagebox.showinfo("フィード更新完了", result_msg)
+            # YouTubeLive プラグインは v3.3.0+ で廃止されました
 
             # DB を再読込して表示更新
             self.refresh_data()
@@ -365,13 +342,14 @@ DB を再読込みします。"""
             messagebox.showerror("エラー", f"RSS更新中にエラーが発生しました:\n{e}")
 
     def classify_youtube_live_manually(self):
-        """YouTube Live 判定を手動で今すぐ実行"""
+        """YouTube Live 判定を手動で実行（プラグイン非導入時のメッセージ表示対応）"""
         try:
             # YouTubeLive プラグインを取得
             youtube_live_plugin = self.plugin_manager.get_plugin("youtube_live_plugin")
 
             if not youtube_live_plugin:
-                messagebox.showwarning("警告", "YouTube Live プラグインがロードされていません。")
+                messagebox.showinfo("情報", "YouTube Live プラグインが導入されていません。\n\n将来的に対応予定です。")
+                logger.info("ℹ️ YouTube Live プラグインは導入されていません")
                 return
 
             if not youtube_live_plugin.is_available():
@@ -381,17 +359,15 @@ DB を再読込みします。"""
             # 判定開始を通知
             messagebox.showinfo("YouTube Live判定", "未判定動画のYouTube Live判定を実行中...\n（ウィンドウを閉じないでください）")
 
-            # YouTube Live 判定を実行（on_enable と同じロジック）
+            # YouTube Live 判定を実行
             updated_count = youtube_live_plugin._update_unclassified_videos()
 
             # 結果をメッセージボックスで表示
-            result_msg = f"""
-✅ YouTube Live判定完了
+            result_msg = f"""✅ YouTube Live判定完了
 
 判定結果: {updated_count} 件更新
 
-DB を再読込みします。
-            """
+DB を再読込みします。"""
             messagebox.showinfo("YouTube Live判定完了", result_msg)
 
             # DB を再読込して表示更新
@@ -1327,12 +1303,13 @@ YouTube:      {youtube_count} 件 (投稿済み: {youtube_posted})
         messagebox.showinfo("統計情報", stats)
 
     def youtube_live_settings(self):
-        """YouTube Live 投稿設定パネル"""
-        # ★ YouTube Live プラグインの存在をチェック
+        """YouTube Live 投稿設定パネル（プラグイン非導入対応）"""
+        # YouTubeLive プラグインの存在をチェック
         youtube_live_plugin = self.plugin_manager.get_plugin("youtube_live_plugin")
 
         if not youtube_live_plugin:
-            messagebox.showwarning("警告", "YouTube Live プラグインがロードされていません。")
+            messagebox.showinfo("情報", "YouTube Live プラグインが導入されていません。\n\n将来的に対応予定です。")
+            logger.info("ℹ️ YouTube Live プラグインは導入されていません")
             return
 
         if not youtube_live_plugin.is_available():
@@ -2221,7 +2198,6 @@ YouTube:      {youtube_count} 件 (投稿済み: {youtube_posted})
             """API からメタデータを取得して自動入力"""
             try:
                 from plugins.youtube.youtube_api_plugin import YouTubeAPIPlugin
-                from plugins.youtube_live_plugin import YouTubeLivePlugin
 
                 api_plugin = YouTubeAPIPlugin()
                 if not api_plugin.is_available():

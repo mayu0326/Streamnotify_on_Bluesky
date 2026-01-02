@@ -175,7 +175,7 @@ def main():
     auto_plugins = plugin_manager.discover_plugins()
     for plugin_name, plugin_path in auto_plugins:
         # 除外リスト（明示的にロード）
-        if plugin_name in ("bluesky_plugin", "niconico_plugin", "youtube_api_plugin", "youtube_live_plugin"):
+        if plugin_name in ("bluesky_plugin", "niconico_plugin", "youtube_api_plugin"):
             continue
 
         if plugin_name in loaded_names:
@@ -201,31 +201,14 @@ def main():
     except Exception as e:
         logger.debug(f"YouTubeAPI プラグインのロード失敗: {e}")
 
-    # YouTubeLive 検出プラグインを手動でロード・有効化
-    try:
-        plugin_manager.load_plugin("youtube_live_plugin", os.path.join("plugins", "youtube", "youtube_live_plugin.py"))
-        asset_manager.deploy_plugin_assets("youtube_live_plugin")
-
-        # ★ YouTube Live プラグインに依存を注入（自動投稿用）
-        # ★ IMPORTANT: enable_plugin() より前に注入する必要がある（on_enable で自動投稿ロジックが実行されるため）
-        live_plugin = plugin_manager.get_plugin("youtube_live_plugin")
-        if live_plugin:
-            live_plugin.set_plugin_manager(plugin_manager)
-            live_plugin.set_config(config)  # ★ 新: config も注入（AutoPoster / Poller が使用）
-
-        # ★ 注入完了後に有効化（on_enable() が呼ばれる）
-        plugin_manager.enable_plugin("youtube_live_plugin")
-
-        # ★ プラグイン判定後に GUI を自動リロード
-        if gui_instance:
-            logger.debug("🔄 YouTube Live プラグイン判定後、GUI を再読込します...")
-            try:
-                gui_instance.refresh_data()
-                logger.info("✅ GUI を自動更新しました")
-            except Exception as e:
-                logger.debug(f"⚠️ GUI 自動更新に失敗（無視）: {e}")
-    except Exception as e:
-        logger.debug(f"YouTubeLive 検出プラグインのロード失敗: {e}")
+    # GUI インスタンスがあれば自動リロード
+    if gui_instance:
+        try:
+            logger.debug("🔄 プラグイン判定後、GUI を再読込します...")
+            gui_instance.refresh_data()
+            logger.info("✅ GUI を自動更新しました")
+        except Exception as e:
+            logger.debug(f"⚠️ GUI 自動更新に失敗（無視）: {e}")
 
 
     if config.youtube_api_plugin_exists:
@@ -297,118 +280,6 @@ def main():
     gui_thread = threading.Thread(target=run_gui, args=(db, plugin_manager, stop_event, bluesky_core), daemon=True)
     gui_thread.start()
     logger.info("✅ アプリケーションの起動が完了しました。 管理画面を開きます。")
-
-    # ===== YouTube Live 終了検知用の定期ポーリングスレッド =====
-    def start_youtube_live_polling():
-        """YouTubeLive ライブ終了検知の定期ポーリングを開始
-
-        仕様 v1.0 セクション 5 に基づき、動的にポーリング間隔を調整します：
-        - LIVE 配信中（キャッシュに upcoming/live がある）: POLL_INTERVAL_ACTIVE （最短5分）
-        - LIVE 完了直後（キャッシュに completed がある）: POLL_INTERVAL_COMPLETED （推奨15分）
-        - LIVE なし（キャッシュが空）: POLL_INTERVAL_NO_LIVE （推奨30分、省リソース）
-        """
-        import time
-
-        # 動的ポーリング間隔の取得（仕様 v1.0 セクション 5）
-        poll_interval_active = int(os.getenv("YOUTUBE_LIVE_POLL_INTERVAL_ACTIVE", "5"))
-        poll_interval_completed = int(os.getenv("YOUTUBE_LIVE_POLL_INTERVAL_COMPLETED", "15"))
-        poll_interval_no_live = int(os.getenv("YOUTUBE_LIVE_POLL_INTERVAL_NO_LIVE", "30"))
-
-        # バリデーション：有効範囲 5～60分
-        for name, val in [("ACTIVE", poll_interval_active), ("COMPLETED", poll_interval_completed), ("NO_LIVE", poll_interval_no_live)]:
-            if val < 5 or val > 60:
-                logger.warning(f"⚠️ YOUTUBE_LIVE_POLL_INTERVAL_{name}={val} は範囲外です（有効: 5～60分）")
-
-        poll_interval_active = max(5, min(60, poll_interval_active))
-        poll_interval_completed = max(5, min(60, poll_interval_completed))
-        poll_interval_no_live = max(5, min(60, poll_interval_no_live))
-
-        # ★ 修正: 旧フラグではなく新 MODE 変数で判定
-        # YOUTUBE_LIVE_AUTO_POST_MODE が "all" または "live" の場合のみポーリング有効
-        mode = os.getenv("YOUTUBE_LIVE_AUTO_POST_MODE", "off").lower()
-        if mode not in ("all", "live"):
-            logger.info(f"ℹ️ YOUTUBE_LIVE_AUTO_POST_MODE={mode} のためライブ終了検知は無効です")
-            return
-
-        logger.info(f"📡 YouTubeLive 動的ポーリングを開始します（アクティブ: {poll_interval_active}分、完了: {poll_interval_completed}分、非アクティブ: {poll_interval_no_live}分）")
-
-        last_poll_time = 0
-        current_interval = poll_interval_no_live  # 初期値は非アクティブ状態
-        consecutive_errors = 0
-        max_consecutive_errors = 3
-
-        while not stop_event.is_set():
-            try:
-                current_time = time.time()
-
-                # ★ 修正: ポーリング間隔に達したかチェック（秒単位）
-                if current_time - last_poll_time >= current_interval * 60:
-                    live_plugin = plugin_manager.get_plugin("youtube_live_plugin")
-                    if live_plugin and live_plugin.is_available():
-                        logger.info(f"🔄 YouTubeLive ポーリング実行...（現在の間隔: {current_interval} 分）")
-
-                        try:
-                            # ★ Issue #2 修正: 両メソッドを呼び出す
-                            live_plugin.poll_live_status()
-                            live_plugin.process_ended_cache_entries()
-
-                            last_poll_time = current_time
-                            consecutive_errors = 0
-                            logger.info("✅ YouTubeLive ポーリング完了（polling + processing）")
-
-                            # ★ 新: キャッシュ状態に応じて次回のポーリング間隔を選択（動的制御）
-                            # Poller が保持するキャッシュ状態に応じて間隔を決定
-                            try:
-                                from youtube_core.youtube_live_cache_manager import get_youtube_live_cache
-                                cache = get_youtube_live_cache()
-
-                                # キャッシュのコンテンツを確認
-                                has_upcoming_or_live = any(
-                                    v.get("live_status") in ("upcoming", "live")
-                                    for v in cache.get_all().values()
-                                )
-                                has_completed = any(
-                                    v.get("live_status") == "completed"
-                                    for v in cache.get_all().values()
-                                )
-
-                                if has_upcoming_or_live:
-                                    current_interval = poll_interval_active
-                                    logger.debug(f"🔴 LIVE キャッシュあり → 短い間隔でポーリング（{poll_interval_active}分）")
-                                elif has_completed:
-                                    current_interval = poll_interval_completed
-                                    logger.debug(f"🟡 Completed キャッシュあり → 中間の間隔でポーリング（{poll_interval_completed}分）")
-                                else:
-                                    current_interval = poll_interval_no_live
-                                    logger.debug(f"⚪ LIVE キャッシュなし → 長い間隔でポーリング（{poll_interval_no_live}分、省リソース）")
-                            except ImportError:
-                                logger.debug("youtube_live_cache_manager が見つかりません。デフォルト間隔を使用します")
-                                current_interval = poll_interval_no_live
-
-                        except Exception as poll_error:
-                            consecutive_errors += 1
-                            logger.error(f"❌ ポーリング処理エラー（{consecutive_errors}/{max_consecutive_errors}）: {poll_error}")
-
-                            # ★ 連続エラーが多い場合は警告
-                            if consecutive_errors >= max_consecutive_errors:
-                                logger.warning(f"⚠️ ポーリングが {consecutive_errors} 回連続でエラーになっています。API キー・ネットワーク接続を確認してください。")
-                    else:
-                        if not live_plugin:
-                            logger.warning("⚠️ YouTubeLive プラグインが取得できません")
-                        else:
-                            logger.debug("ℹ️ YouTubeLive プラグインが利用不可（API キーなし）")
-                        last_poll_time = current_time
-                        consecutive_errors = 0
-            except Exception as e:
-                logger.error(f"❌ ポーリングスレッドエラー: {e}")
-                consecutive_errors += 1
-
-            # ★ 修正: 短い間隔で stop_event をチェック（レスポンシブなシャットダウンのため）
-            time.sleep(1)  # 1秒ごとにチェック
-
-    # ライブ終了検知スレッド開始
-    live_polling_thread = threading.Thread(target=start_youtube_live_polling, daemon=True)
-    live_polling_thread.start()
 
     polling_count = 0
     last_post_time = None
@@ -485,21 +356,9 @@ def main():
                 # RSS ポーリング: RSS フェッチ・DB 保存・画像自動処理を一体実行
                 saved_count = thumb_mgr.fetch_and_ensure_images(config.youtube_channel_id)
 
-            # ★ 新: YouTube RSS 取得後、YouTube Live プラグインで自動分類を実行
-            # 配信予定枠などが正しく content_type="live", live_status="upcoming" として分類される
-            # ★ 重要: collect モード時は判定処理をスキップ（collect は投稿機能を一切実行しない）
-            if config.is_collect_mode:
-                logger.info("[モード] 収集モード のため、判定・投稿処理をスキップします。")
-            elif saved_count > 0 or polling_count == 1:  # 新規動画があるか初回ポーリング時に実行
-                try:
-                    live_plugin = plugin_manager.get_plugin("youtube_live_plugin")
-                    if live_plugin and live_plugin.is_available():
-                        logger.info(f"🔍 YouTube Live プラグイン: 未判定動画を自動分類中...")
-                        updated = live_plugin._update_unclassified_videos()
-                        if updated > 0:
-                            logger.info(f"✅ YouTube Live 自動分類: {updated} 件更新（配信予定枠など検出）")
-                except Exception as e:
-                    logger.debug(f"⚠️ YouTube Live プラグインの自動分類エラー: {e}")
+
+            # YouTubeLive プラグインは v3.3.0+ で廃止されました
+
 
             if config.is_collect_mode:
                 logger.info("[モード] 収集モード のため、投稿処理をスキップします。")
