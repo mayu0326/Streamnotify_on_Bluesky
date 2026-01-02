@@ -20,7 +20,17 @@ from youtube_core.youtube_rss import YouTubeRSS
 from image_manager import get_image_manager
 from database import get_database
 
-logger = logging.getLogger("AppLogger")
+# ★ v3.4.0: ロギングプラグイン導入時はThumbnailsLogger、未導入時はAppLoggerにフォールバック
+def _get_logger():
+    """ロギングプラグイン対応のロガー取得（ThumbnailsLogger優先、未導入時はAppLogger）"""
+    thumbnails_logger = logging.getLogger("ThumbnailsLogger")
+    # ThumbnailsLogger にハンドラーが存在する = プラグイン導入時
+    if thumbnails_logger.handlers:
+        return thumbnails_logger
+    # プラグイン未導入時は AppLogger にフォールバック
+    return logging.getLogger("AppLogger")
+
+logger = _get_logger()
 
 
 class YouTubeThumbManager:

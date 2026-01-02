@@ -31,7 +31,17 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from database import get_database
 from image_manager import get_image_manager
 
-logger = logging.getLogger(__name__)
+# ★ v3.4.0: ロギングプラグイン導入時はThumbnailsLogger、未導入時はAppLoggerにフォールバック
+def _get_logger():
+    """ロギングプラグイン対応のロガー取得（ThumbnailsLogger優先、未導入時はAppLogger）"""
+    thumbnails_logger = logging.getLogger("ThumbnailsLogger")
+    # ThumbnailsLogger にハンドラーが存在する = プラグイン導入時
+    if thumbnails_logger.handlers:
+        return thumbnails_logger
+    # プラグイン未導入時は AppLogger にフォールバック
+    return logging.getLogger("AppLogger")
+
+logger = _get_logger()
 
 
 def fetch_thumbnail_url(video_id: str) -> str | None:
@@ -47,7 +57,7 @@ def fetch_thumbnail_url(video_id: str) -> str | None:
 
         soup = BeautifulSoup(resp.text, 'html.parser')
         og_image = soup.find('meta', property='og:image')
-        
+
         if og_image and og_image.get('content'):
             ogp_url = og_image.get('content')
             logger.debug(f"[OGP取得] {video_id} -> {ogp_url}")
@@ -151,4 +161,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
