@@ -449,14 +449,21 @@ def main():
 
             if config.youtube_feed_mode == "websub":
                 logger.info("[YouTube] WebSub から情報を取得しています...")
-                # WebSub: API 経由で動画情報を取得
-                saved_count = yt_rss.save_to_db(db)
+                # WebSub: ProductionServerAPI 経由で動画情報を取得
+                from youtube_core.youtube_websub import YouTubeWebSub
+                yt_websub = YouTubeWebSub(config.youtube_channel_id)
+                saved_count = yt_websub.save_to_db(db)
+                logger.info(f"[YouTube] WebSub DB保存完了: {saved_count} 件")
 
-                # ★ 重要: WebSub でも API から取得した動画のサムネイル処理が必要
+                # ★ 重要: WebSub から取得した動画のサムネイルを直接処理
                 if saved_count > 0:
                     logger.info(f"[YouTube] 取得した {saved_count} 個の動画のサムネイルを処理しています...")
-                    thumb_saved = thumb_mgr.fetch_and_ensure_images(config.youtube_channel_id)
-                    logger.debug(f"[YouTube] サムネイル処理完了: {thumb_saved} 件")
+                    # WebSub から取得した動画情報（thumbnail_url を含む）
+                    websub_videos = yt_websub.fetch_feed()
+                    logger.debug(f"[YouTube] WebSub fetch_feed() 完了: {len(websub_videos)} 件")
+                    # WebSub 動画のサムネイル処理専用メソッドを使用
+                    thumb_saved = thumb_mgr.ensure_websub_images(websub_videos)
+                    logger.info(f"[YouTube] サムネイル処理完了: {thumb_saved} 件")
             else:
                 logger.info("[YouTube] YouTubeRSS から情報を取得しています...")
                 # RSS ポーリング: RSS フェッチ・DB 保存・画像自動処理を一体実行
