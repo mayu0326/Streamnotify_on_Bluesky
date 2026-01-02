@@ -17,7 +17,7 @@ except Exception:
     sys.exit(1)
 
 from database import get_database
-from plugins.youtube_api_plugin import YouTubeAPIPlugin
+from plugins.youtube.youtube_api_plugin import YouTubeAPIPlugin
 
 print("=" * 80)
 print("YouTube API ビデオ詳細キャッシング機能テスト")

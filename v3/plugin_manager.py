@@ -74,13 +74,13 @@ class PluginManager:
             logger.info(f"📦 プラグイン検出: {plugin_name} ({file_path})")
 
         # 2. サブディレクトリ内のプラグイン (plugins/*/plugin_name.py)
-        # 対象: youtube/youtube_api_plugin.py, youtube/youtube_live_plugin.py など
+        # 対象: youtube/youtube_api_plugin.py など
         for subdir in self.plugins_dir.iterdir():
             if not subdir.is_dir() or subdir.name.startswith("_"):
                 continue
 
             # サブディレクトリ内で plugins_name.py の形式を探す
-            # 例: youtube/ の中で youtube_api_plugin.py, youtube_live_plugin.py
+            # 例: youtube/ の中で youtube_api_plugin.py
             subdir_name = subdir.name
             for file_path in subdir.glob("*.py"):
                 if file_path.name.startswith("_"):

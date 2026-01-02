@@ -12,9 +12,6 @@ YouTube Core - YouTube 共通ユーティリティライブラリ
 モジュール:
   - youtube_rss: YouTube RSS フィード取得・パース・DB保存
   - youtube_websub: YouTube WebSub (PubSubHubbub) 対応
-  - youtube_live_cache: YouTubeLive ポーリング用キャッシュ
-  - youtube_live_cache_manager: キャッシュ管理インターフェース
-  - youtube_archive_cache_manager: アーカイブ動画キャッシュ管理
   - youtube_dedup_priority: YouTube 優先度ベース重複排除ロジック
 """
 

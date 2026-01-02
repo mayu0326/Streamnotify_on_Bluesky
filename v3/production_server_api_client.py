@@ -228,8 +228,8 @@ class ProductionServerAPIClient:
             headers = {
             "X-Client-API-Key": client_api_key,
             }
-            
-            logger.info(f"WebSub register: url={url} payload={payload}")
+
+            logger.debug(f"WebSub register: url={url} payload={payload}")
             response = requests.post(
               url,
               json=payload,
@@ -243,7 +243,7 @@ class ProductionServerAPIClient:
             data = response.json()
             status = data.get("status")
             if status == "ok":
-                logger.info("WebSub register: success")
+                logger.debug("WebSub register: success")
                 return True
             else:
                 logger.warning(f"WebSub register: unexpected response: {data}")

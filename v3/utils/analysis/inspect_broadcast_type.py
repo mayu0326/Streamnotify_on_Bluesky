@@ -22,7 +22,7 @@ print("=" * 80)
 
 # プラグインをローカルスコープで使用
 try:
-    from plugins.youtube_api_plugin import YouTubeAPIPlugin
+    from plugins.youtube.youtube_api_plugin import YouTubeAPIPlugin
     api_plugin = YouTubeAPIPlugin()
 
     if not api_plugin.is_available():

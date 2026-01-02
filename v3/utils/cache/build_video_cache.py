@@ -10,7 +10,7 @@ from config import get_config
 config = get_config('v3/settings.env')
 
 from database import get_database
-from plugins.youtube_api_plugin import YouTubeAPIPlugin
+from plugins.youtube.youtube_api_plugin import YouTubeAPIPlugin
 
 print("=" * 80)
 print("本番 DB の動画詳細をキャッシュに保存")

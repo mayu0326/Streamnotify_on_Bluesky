@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from database import get_database
-from plugins.youtube_api_plugin import YouTubeAPIPlugin
+from plugins.youtube.youtube_api_plugin import YouTubeAPIPlugin
 
 db = get_database()
 api_plugin = YouTubeAPIPlugin()

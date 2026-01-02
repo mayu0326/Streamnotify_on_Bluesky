@@ -10,6 +10,8 @@ WebSub（Webhook）経由で本番サーバーから動画情報を取得・DB �
 """
 
 import logging
+import os
+import sqlite3
 from typing import List, Dict
 from datetime import datetime, timedelta, timezone
 from image_manager import get_youtube_thumbnail_url
@@ -18,7 +20,7 @@ logger = logging.getLogger("AppLogger")
 
 __author__ = "mayuneco(mayunya)"
 __copyright__ = "Copyright (C) 2025 mayuneco(mayunya)"
-__license__ = "GPLv3"
+__license__ = "GPLv2"
 
 class YouTubeWebSub:
     """YouTube WebSub 取得・管理クラス（ProductionServerAPIClient を使用）"""
@@ -90,10 +92,13 @@ class YouTubeWebSub:
             return
 
         if ok:
-            logger.info(
-                f"✅ WebSub register 成功: clientid={clientid}, "
-                f"channelid={self.channel_id}, callbackurl={callbackurl}"
-            )
+            # debugモードに応じたログ出力
+            debug_mode = os.getenv("DEBUG_MODE", "false").lower() == "true"
+            if debug_mode:
+                logger.info(
+                    f"✅ WebSub register 成功: clientid={clientid}, "
+                    f"channelid={self.channel_id}, callbackurl={callbackurl}"
+                )
             self._websub_registered = True
         else:
             logger.warning("⚠️ WebSub register が失敗しました（ログを確認してください）")
@@ -149,20 +154,32 @@ class YouTubeWebSub:
                     # 形式を統一するため、必要に応じて JST に変換
                     published_at_jst = self._ensure_jst_format(published_at)
 
+                    # ★ 重要: サムネイル URL を取得
+                    thumbnail_url = get_youtube_thumbnail_url(video_id)
+                    if not thumbnail_url:
+                        logger.warning(f"⚠️ WebSub {video_id}: サムネイル URL が取得できませんでした")
+                    else:
+                        logger.debug(f"✅ WebSub {video_id}: サムネイル URL 取得完了")
+
                     video = {
                         "video_id": video_id,
                         "title": title,
                         "video_url": video_url,
                         "published_at": published_at_jst,
                         "channel_name": channel_name,
+                        "thumbnail_url": thumbnail_url,
                     }
                     videos.append(video)
+                    logger.debug(f"[WebSub parse] {video_id}: video辞書作成完了 - thumbnail_url: {thumbnail_url}")
 
                 except Exception as e:
                     logger.warning(f"⚠️ WebSub アイテムのパース失敗: {e}")
                     continue
 
             youtube_logger.info(f"📡 WebSub から {len(videos)} 個の動画を取得しました")
+            # ★ デバッグ: 各動画の thumbnail_url を確認
+            for v in videos[:3]:  # 最初の 3 件
+                logger.debug(f"[WebSub fetch_feed] {v.get('video_id')}: thumbnail_url = {v.get('thumbnail_url')}")
             return videos
 
         except Exception as e:
@@ -347,27 +364,48 @@ class YouTubeWebSub:
                     saved_count += 1
                     youtube_logger.debug(f"[YouTube WebSub] 新規動画を保存: {video['title']}")
                 else:
-                    existing_count += 1
-                    # 既存動画の場合、API データで published_at を上書き（★ 重要: API が WebSub より優先）
-                    # API から scheduledStartTime/actualStartTime が取得できた場合は、DB の値を上書き
-                    if api_scheduled_start_time:
-                        # DB の既存 published_at と異なる場合のみ上書き（無駄な更新を避ける）
-                        try:
-                            conn = database._get_connection()
-                            conn.row_factory = sqlite3.Row
-                            cursor = conn.cursor()
-                            cursor.execute("SELECT published_at FROM videos WHERE video_id = ?", (video["video_id"],))
-                            row = cursor.fetchone()
-                            conn.close()
+                    # ★ 修正3: is_new = False の場合のイベント判定ロジック改善
+                    # DB に実際に存在するかを確認
+                    try:
+                        check_conn = database._get_connection()
+                        check_cursor = check_conn.cursor()
+                        check_cursor.execute("SELECT COUNT(*) FROM videos WHERE video_id = ?", (video["video_id"],))
+                        db_count = check_cursor.fetchone()[0]
+                        check_conn.close()
 
-                            if row:
-                                db_published_at = row[0] if isinstance(row, tuple) else row["published_at"]
-                                if api_scheduled_start_time != db_published_at:
-                                    database.update_published_at(video["video_id"], api_scheduled_start_time)
-                                    youtube_logger.info(f"✅ 既存動画の published_at を API データで上書きしました: {video['title']}")
-                                    youtube_logger.debug(f"   旧: {db_published_at} → 新: {api_scheduled_start_time}")
-                        except Exception as e:
-                            youtube_logger.warning(f"⚠️ 既存動画の published_at 上書きに失敗: {e}")
+                        if db_count > 0:
+                            # ★ DB に存在 → 既存動画として扱う
+                            existing_count += 1
+                            youtube_logger.debug(f"[YouTube WebSub] 既存動画です: {video['title']}")
+
+                            # 既存動画の場合、API データで published_at を上書き（★ 重要: API が WebSub より優先）
+                            # API から scheduledStartTime/actualStartTime が取得できた場合は、DB の値を上書き
+                            if api_scheduled_start_time:
+                                # DB の既存 published_at と異なる場合のみ上書き（無駄な更新を避ける）
+                                try:
+                                    conn = database._get_connection()
+                                    conn.row_factory = sqlite3.Row
+                                    cursor = conn.cursor()
+                                    cursor.execute("SELECT published_at FROM videos WHERE video_id = ?", (video["video_id"],))
+                                    row = cursor.fetchone()
+                                    conn.close()
+
+                                    if row:
+                                        db_published_at = row[0] if isinstance(row, tuple) else row["published_at"]
+                                        if api_scheduled_start_time != db_published_at:
+                                            database.update_published_at(video["video_id"], api_scheduled_start_time)
+                                            youtube_logger.info(f"✅ 既存動画の published_at を API データで上書きしました: {video['title']}")
+                                            youtube_logger.debug(f"   旧: {db_published_at} → 新: {api_scheduled_start_time}")
+                                except Exception as e:
+                                    youtube_logger.warning(f"⚠️ 既存動画の published_at 上書きに失敗: {e}")
+                        else:
+                            # ★ DB に不存在 → 削除済み動画として扱う
+                            blacklist_skip_count += 1
+                            youtube_logger.info(f"↩️ 削除済み動画のため、スキップしました: {video['title']}")
+                    except Exception as e:
+                        youtube_logger.warning(f"⚠️ DB 確認処理でエラー: {e}")
+                        # フォールバック: 既存動画として扱う
+                        existing_count += 1
 
             summary = f"✅ 保存完了: 新規 {saved_count}, 既存 {existing_count}"
             if blacklist_skip_count > 0:

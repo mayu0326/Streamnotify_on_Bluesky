@@ -168,35 +168,54 @@ def setup_logging(debug_mode=False):
     logger.addHandler(error_fh)
     logger.addHandler(ch)
 
-    # PostLogger の設定（プラグイン層で使用）
-    post_logger = logging.getLogger("PostLogger")
-    post_logger.setLevel(logging.DEBUG if debug_mode else logging.INFO)
+    # ★ v3 デフォルト: 他のロガーも設定（プラグイン非導入時のログ出力対応）
+    # 以下のロガーはプラグイン導入時に上書きされるため、ここでの設定は無駄にならない
+    loggers_to_setup = [
+        "PostLogger",           # 投稿ログ
+        "YouTubeLogger",        # YouTube 関連ログ
+        "NiconicoLogger",       # ニコニコ関連ログ
+        "GUILogger",            # GUI操作ログ
+        "ThumbnailsLogger",     # サムネイル処理ログ
+        "AuditLogger",          # 監査ログ
+        "TunnelLogger",         # トンネル接続ログ
+        "PostErrorLogger",      # 投稿エラーログ
+    ]
 
-    # 既存のハンドラを削除（重複防止）
-    for handler in post_logger.handlers[:]:
-        post_logger.removeHandler(handler)
+    for logger_name in loggers_to_setup:
+        target_logger = logging.getLogger(logger_name)
+        target_logger.setLevel(logging.DEBUG if debug_mode else logging.INFO)
+        target_logger.propagate = False
 
-    post_logger.addHandler(app_fh)
-    post_logger.addHandler(error_fh)
-    post_logger.addHandler(ch)
+        # 既存のハンドラを削除（重複防止）
+        for handler in target_logger.handlers[:]:
+            target_logger.removeHandler(handler)
 
-    # 親ロガーへの伝播を無効化（親の設定に影響されない）
-    post_logger.propagate = False
+        # ハンドラーを追加
+        target_logger.addHandler(app_fh)
+        target_logger.addHandler(error_fh)
+        target_logger.addHandler(ch)
 
     mode_msg = "デバッグモード" if debug_mode else "デフォルトのロギング設定"
     logger.info(f"ℹ️  {mode_msg}を使用しています")
+    logger.debug(f"🔧 複数ロガーを初期化しました: {', '.join(loggers_to_setup)}")
 
     return logger
 
 
-def get_logger():
+def get_logger(name: str = "AppLogger"):
     """
-    設定済みのAppLoggerを取得
+    設定済みのロガーを取得
+
+    Args:
+        name: ロガー名（デフォルト: "AppLogger"）
+              指定可能: AppLogger, PostLogger, YouTubeLogger, NiconicoLogger,
+                      GUILogger, ThumbnailsLogger, AuditLogger, TunnelLogger,
+                      PostErrorLogger
 
     Returns:
-        logging.Logger: AppLoggerインスタンス
+        logging.Logger: 指定されたロガーインスタンス
     """
-    return logging.getLogger("AppLogger")
+    return logging.getLogger(name)
 
 
 def _apply_debug_mode(logger):

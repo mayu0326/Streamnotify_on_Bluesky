@@ -16,7 +16,7 @@ sys.path.insert(0, str(v2_path))
 os.chdir(str(v2_path))
 
 # v2 ディレクトリから相対的にインポート
-from v3.plugins.youtube_api_plugin import YouTubeAPIPlugin
+from v3.plugins.youtube.youtube_api_plugin import YouTubeAPIPlugin
 from v3.plugins.youtube_live_plugin import YouTubeLivePlugin
 from v3.plugins.niconico_plugin import NiconicoPlugin
 from v3.plugin_manager import PluginManager

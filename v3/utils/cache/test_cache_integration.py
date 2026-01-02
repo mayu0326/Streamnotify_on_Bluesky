@@ -10,7 +10,7 @@ from config import get_config
 config = get_config('v2/settings.env')
 
 from database import get_database
-from plugins.youtube_api_plugin import YouTubeAPIPlugin
+from plugins.youtube.youtube_api_plugin import YouTubeAPIPlugin
 
 print("=" * 80)
 print("キャッシング機能 統合テスト")
@@ -75,7 +75,7 @@ from pathlib import Path
 cache_file = Path(api_plugin.VIDEO_DETAIL_CACHE_FILE if hasattr(api_plugin, 'VIDEO_DETAIL_CACHE_FILE') else 'v2/data/youtube_video_detail_cache.json')
 
 # グローバル変数から取得
-from plugins.youtube_api_plugin import VIDEO_DETAIL_CACHE_FILE
+from plugins.youtube.youtube_api_plugin import VIDEO_DETAIL_CACHE_FILE
 cache_file = Path(VIDEO_DETAIL_CACHE_FILE)
 
 if cache_file.exists():

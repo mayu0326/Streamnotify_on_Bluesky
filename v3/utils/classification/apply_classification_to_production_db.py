@@ -21,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 env_path = Path(__file__).parent.parent.parent / "settings.env"
 load_dotenv(env_path)
 
-from plugins.youtube_api_plugin import YouTubeAPIPlugin
+from plugins.youtube.youtube_api_plugin import YouTubeAPIPlugin
 
 
 def classify_video(details):
