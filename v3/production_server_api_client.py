@@ -199,6 +199,70 @@ class ProductionServerAPIClient:
             logger.debug(f"⚠️ ヘルスチェックエラー（無視）: {e}")
             return False
 
+    def register_websub_client(self,
+        clientid: str,
+        channelid: str,
+        callbackurl: str,
+    ) -> bool:
+        """
+        WebSub サーバーの /register に購読登録を投げる。
+        成功したら True、失敗したら False を返す。
+        """
+
+        # 環境変数から client 用 API キーを取得
+        client_api_key = os.getenv("WEBSUB_CLIENT_API_KEY")
+        if not client_api_key:
+           logger.error(
+             "WebSub register skipped: WEBSUB_CLIENT_API_KEY is not set "
+             f"(client_id={clientid})"
+           )
+           return False
+
+        try:
+            url = f"{self.base_url}/register"
+            payload = {
+                "client_id": clientid,
+                "channel_id": channelid,
+                "callback_url": callbackurl,
+            }
+            headers = {
+            "X-Client-API-Key": client_api_key,
+            }
+            
+            logger.info(f"WebSub register: url={url} payload={payload}")
+            response = requests.post(
+              url,
+              json=payload,
+              headers=headers,
+              timeout=self.timeout
+            )
+            # 4xx/5xx のときに例外を出す
+            response.raise_for_status()
+
+            # FastAPI 側は {"status": "ok"} を返している想定 [file:22][file:21]
+            data = response.json()
+            status = data.get("status")
+            if status == "ok":
+                logger.info("WebSub register: success")
+                return True
+            else:
+                logger.warning(f"WebSub register: unexpected response: {data}")
+                return False
+
+        except requests.exceptions.HTTPError as e:
+            logger.error(f"WebSub register HTTP {e.response.status_code} - {e}")
+            logger.error(f"URL: {e.response.request.url}")
+            logger.error(e.response.text[:300] if e.response.text else "empty")
+            return False
+        except requests.exceptions.Timeout:
+            logger.error(f"WebSub register timeout: {self.timeout}")
+            return False
+        except requests.exceptions.ConnectionError as e:
+            logger.error(f"WebSub register connection error: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"WebSub register error: {e}")
+            return False
 
 # ===== シングルトンインスタンス管理 =====
 
