@@ -11,6 +11,7 @@ WebSub（Webhook）経由で本番サーバーから動画情報を取得・DB �
 
 import logging
 import os
+import sqlite3
 from typing import List, Dict
 from datetime import datetime, timedelta, timezone
 from image_manager import get_youtube_thumbnail_url
@@ -19,7 +20,7 @@ logger = logging.getLogger("AppLogger")
 
 __author__ = "mayuneco(mayunya)"
 __copyright__ = "Copyright (C) 2025 mayuneco(mayunya)"
-__license__ = "GPLv3"
+__license__ = "GPLv2"
 
 class YouTubeWebSub:
     """YouTube WebSub 取得・管理クラス（ProductionServerAPIClient を使用）"""
