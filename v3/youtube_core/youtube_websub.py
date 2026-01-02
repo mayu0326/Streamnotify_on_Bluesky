@@ -10,8 +10,6 @@ WebSub（Webhook）経由で本番サーバーから動画情報を取得・DB �
 """
 
 import logging
-import requests
-import sqlite3
 from typing import List, Dict
 from datetime import datetime, timedelta, timezone
 from image_manager import get_youtube_thumbnail_url
@@ -21,7 +19,6 @@ logger = logging.getLogger("AppLogger")
 __author__ = "mayuneco(mayunya)"
 __copyright__ = "Copyright (C) 2025 mayuneco(mayunya)"
 __license__ = "GPLv3"
-
 
 class YouTubeWebSub:
     """YouTube WebSub 取得・管理クラス（ProductionServerAPIClient を使用）"""
@@ -35,6 +32,7 @@ class YouTubeWebSub:
         """
         self.channel_id = channel_id
         self._api_client = None
+        self._websub_registered = False  # WebSub 登録済みフラグ
 
     def _get_api_client(self):
         """ProductionServerAPIClient を取得（遅延初期化）"""
@@ -50,6 +48,56 @@ class YouTubeWebSub:
                 return None
         return self._api_client
 
+    def _ensure_websub_registered(self):
+        """
+        必要なら WebSub サーバーの /register に購読登録を 1 回だけ投げる。
+
+        - settings.env / 環境変数 から:
+          - WEBSUB_CLIENT_ID
+          - WEBSUB_CALLBACK_URL
+          を読み込む前提。
+        """
+        if self._websub_registered:
+            return
+
+        import os
+
+        clientid = os.getenv("WEBSUB_CLIENT_ID")
+        callbackurl = os.getenv("WEBSUB_CALLBACK_URL")
+
+        if not clientid or not callbackurl:
+            logger.warning(
+                "⚠️ WebSub register をスキップ: "
+                "WEBSUBCLIENTID または WEBSUBCALLBACKURL が未設定です"
+            )
+            return
+
+        api_client = self._get_api_client()
+        if api_client is None:
+            logger.error("❌ WebSub register をスキップ: ProductionServerAPIClient が利用不可です")
+            return
+
+        # ProductionServerAPIClient 側の /register 呼び出しメソッドを利用
+        try:
+            ok = api_client.register_websub_client(
+                clientid=clientid,
+                channelid=self.channel_id,
+                callbackurl=callbackurl,
+            )
+        except AttributeError:
+            # メソッドがまだ実装されていないなど
+            logger.error("❌ WebSub register 失敗: register_websub_client メソッドが見つかりません")
+            return
+
+        if ok:
+            logger.info(
+                f"✅ WebSub register 成功: clientid={clientid}, "
+                f"channelid={self.channel_id}, callbackurl={callbackurl}"
+            )
+            self._websub_registered = True
+        else:
+            logger.warning("⚠️ WebSub register が失敗しました（ログを確認してください）")
+
     def fetch_feed(self) -> List[Dict]:
         """
         WebSub（ProductionServerAPI）からビデオ情報を取得・パース
@@ -58,6 +106,9 @@ class YouTubeWebSub:
             新着動画のリスト（最新順）
         """
         try:
+            # まず WebSub 登録を保証する（成功すれば以降の呼び出しではスキップ）
+            self._ensure_websub_registered()
+
             api_client = self._get_api_client()
             if api_client is None:
                 logger.error("❌ ProductionServerAPIClient が利用不可（WebSub経由の取得失敗）")
@@ -69,7 +120,7 @@ class YouTubeWebSub:
             # ProductionServerAPI から動画を取得
             items = api_client.get_websub_videos(
                 channel_id=self.channel_id,
-                limit=15  # 最新 15 件まで
+                limit=15,  # 最新 15 件まで
             )
 
             if not items:
@@ -82,7 +133,11 @@ class YouTubeWebSub:
                     # API レスポンスから必要な情報を抽出
                     video_id = item.get("video_id", "")
                     title = item.get("title", "（タイトル不明）")
-                    video_url = item.get("video_url") or item.get("url") or f"https://www.youtube.com/watch?v={video_id}"
+                    video_url = (
+                        item.get("video_url")
+                        or item.get("url")
+                        or f"https://www.youtube.com/watch?v={video_id}"
+                    )
                     published_at = item.get("published_at", "")
                     channel_name = item.get("channel_name", "")
 
@@ -167,22 +222,25 @@ class YouTubeWebSub:
 
         youtube_logger.info(f"[YouTube WebSub] 取得した {len(videos)} 個の動画を DB に照合しています...")
 
-        # ★ 新: 除外動画リストを取得
+        # 除外動画リストを取得
         try:
             from deleted_video_cache import get_deleted_video_cache
+
             deleted_cache = get_deleted_video_cache()
         except ImportError:
             youtube_logger.warning("deleted_video_cache モジュールが見つかりません")
             deleted_cache = None
 
-        # ★ 新: YouTube API プラグインを取得（API有効時のみ）
+        # YouTube API プラグインを取得（API有効時のみ）
         youtube_api_plugin = None
         try:
             from plugin_manager import get_plugin_manager
             plugin_mgr = get_plugin_manager()
             youtube_api_plugin = plugin_mgr.get_plugin("youtube_api_plugin")
             if youtube_api_plugin and youtube_api_plugin.is_available():
-                youtube_logger.debug("✅ YouTube API プラグイン が利用可能です（WebSub の情報を API で確認します）")
+                youtube_logger.debug(
+                    "✅ YouTube API プラグイン が利用可能です（WebSub の情報を API で確認します）"
+                )
             else:
                 youtube_api_plugin = None
         except Exception as e:
@@ -195,9 +253,11 @@ class YouTubeWebSub:
 
         try:
             for video in videos:
-                # ★ 新: 除外動画リスト確認
+                # 除外動画リスト確認
                 if deleted_cache and deleted_cache.is_deleted(video["video_id"], source="youtube"):
-                    youtube_logger.info(f"⏭️ 除外動画リスト登録済みのため、スキップします: {video['title']}")
+                    youtube_logger.info(
+                        f"⏭️ 除外動画リスト登録済みのため、スキップします: {video['title']}"
+                    )
                     blacklist_skip_count += 1
                     continue
 
@@ -222,43 +282,62 @@ class YouTubeWebSub:
                                 api_published_at = live_details["scheduledStartTime"]
                                 # UTC から JST に変換（+9時間）
                                 try:
-                                    utc_time = datetime.fromisoformat(api_published_at.replace('Z', '+00:00'))
-                                    jst_time = utc_time.astimezone(timezone(timedelta(hours=9))).replace(tzinfo=None)
+                                    utc_time = datetime.fromisoformat(
+                                        api_published_at.replace("Z", "+00:00")
+                                    )
+                                    jst_time = utc_time.astimezone(
+                                        timezone(timedelta(hours=9))
+                                    ).replace(tzinfo=None)
                                     api_published_at_jst = jst_time.isoformat()
-                                    api_scheduled_start_time = api_published_at_jst  # JST 版を保存
-                                    youtube_logger.info(f"📡 API確認: scheduledStartTime を使用（UTC→JST変換）: {api_published_at} → {api_published_at_jst}")
+                                    api_scheduled_start_time = api_published_at_jst
+                                    youtube_logger.info(
+                                        f"📡 API確認: scheduledStartTime を使用（UTC→JST変換）:"
+                                        f" {api_published_at} → {api_published_at_jst}"
+                                    )
                                 except Exception as e:
-                                    api_scheduled_start_time = api_published_at  # 変換失敗時は元の値を使用
-                                    youtube_logger.warning(f"⚠️ UTC→JST変換失敗、元の値を使用: {e}")
+                                    api_scheduled_start_time = api_published_at
+                                    youtube_logger.warning(
+                                        f"⚠️ UTC→JST変換失敗、元の値を使用: {e}"
+                                    )
                             elif live_details.get("actualStartTime"):
                                 api_published_at = live_details["actualStartTime"]
                                 # UTC から JST に変換
                                 try:
-                                    utc_time = datetime.fromisoformat(api_published_at.replace('Z', '+00:00'))
-                                    jst_time = utc_time.astimezone(timezone(timedelta(hours=9))).replace(tzinfo=None)
+                                    utc_time = datetime.fromisoformat(
+                                        api_published_at.replace("Z", "+00:00")
+                                    )
+                                    jst_time = utc_time.astimezone(
+                                        timezone(timedelta(hours=9))
+                                    ).replace(tzinfo=None)
                                     api_published_at_jst = jst_time.isoformat()
-                                    api_scheduled_start_time = api_published_at_jst  # JST 版を保存
-                                    youtube_logger.info(f"📡 API確認: actualStartTime を使用（UTC→JST変換）: {api_published_at} → {api_published_at_jst}")
+                                    api_scheduled_start_time = api_published_at_jst
+                                    youtube_logger.info(
+                                        f"📡 API確認: actualStartTime を使用（UTC→JST変換）:"
+                                        f" {api_published_at} → {api_published_at_jst}"
+                                    )
                                 except Exception as e:
-                                    api_scheduled_start_time = api_published_at  # 変換失敗時は元の値を使用
-                                    youtube_logger.warning(f"⚠️ UTC→JST変換失敗、元の値を使用: {e}")
+                                    api_scheduled_start_time = api_published_at
+                                    youtube_logger.warning(
+                                        f"⚠️ UTC→JST変換失敗、元の値を使用: {e}"
+                                    )
                             elif snippet.get("publishedAt"):
                                 api_published_at = snippet["publishedAt"]
-                                youtube_logger.debug(f"📡 API確認: publishedAt を使用: {api_published_at}")
-                        else:
-                            youtube_logger.warning(f"⚠️ API で {video['video_id']} の詳細が取得できません（WebSub 日時を使用）")
+                                youtube_logger.debug(
+                                    f"📡 API確認: publishedAt を使用: {api_published_at}"
+                                )
                     except Exception as e:
-                        youtube_logger.warning(f"⚠️ API 確認処理でエラー（WebSub日時を使用）: {e}")
+                        youtube_logger.debug(f"⚠️ YouTube API での詳細取得失敗: {e}")
 
-                # DB に保存（published_at は API優先、なければ WebSub）
-                # ★ 重要: JST 変換済みの値を使用（api_scheduled_start_time）、または WebSub の値（既に JST）
-                final_published_at = api_scheduled_start_time if api_scheduled_start_time else video["published_at"]
+                # 最終的に使用する published_at を決定
+                final_published_at = (
+                    api_scheduled_start_time if api_scheduled_start_time else video["published_at"]
+                )
 
                 is_new = database.insert_video(
                     video_id=video["video_id"],
                     title=video["title"],
                     video_url=video["video_url"],
-                    published_at=final_published_at,  # ★ API優先の日時を使用（JST 変換済み）
+                    published_at=final_published_at,
                     channel_name=video["channel_name"],
                     thumbnail_url=thumbnail_url,
                     source="youtube",
@@ -266,7 +345,7 @@ class YouTubeWebSub:
 
                 if is_new:
                     saved_count += 1
-                    youtube_logger.debug(f"[YouTube WebSub] 新動画を DB に保存しました: {video['title']}")
+                    youtube_logger.debug(f"[YouTube WebSub] 新規動画を保存: {video['title']}")
                 else:
                     existing_count += 1
                     # 既存動画の場合、API データで published_at を上書き（★ 重要: API が WebSub より優先）
@@ -305,6 +384,11 @@ class YouTubeWebSub:
             # ロガーを元に戻す
             db_module.logger = original_logger
 
+        summary = f"新規 {saved_count} 件 / 既存 {existing_count} 件"
+        if blacklist_skip_count > 0:
+            summary += f" / 除外 {blacklist_skip_count} 件"
+        youtube_logger.info(f"[YouTube WebSub] 保存結果: {summary}")
+
         return saved_count
 
     def poll_videos(self):
@@ -319,5 +403,5 @@ class YouTubeWebSub:
 
 
 def get_youtube_websub(channel_id: str) -> YouTubeWebSub:
-    """YouTube WebSub オブジェクトを取得"""
+    """YouTubeWebSub インスタンスを取得するヘルパー"""
     return YouTubeWebSub(channel_id)
