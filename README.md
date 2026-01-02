@@ -501,7 +501,7 @@ YouTubeLiveプラグインの実装が完全に完了しました。以下の機
 - **Issue 報告**: 不具合や機能リクエストは Issue セクションでお願いします
 - **Pull Request**: 改善提案や機能追加は PR でお願いします
 
-詳細な開発ガイドは [v3/CONTRIBUTING.md](v3/CONTRIBUTING.md)（v3）または [v2/CONTRIBUTING.md](v2/CONTRIBUTING.md)（v2）を参照してください。
+詳細な開発ガイドは [v3/CONTRIBUTING.md](v3/docs/CONTRIBUTING.md)（v3）または [v2/CONTRIBUTING.md](v2/CONTRIBUTING.md)（v2）を参照してください。
 
 ## サポート
 

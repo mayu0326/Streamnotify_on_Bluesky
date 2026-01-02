@@ -1,6 +1,6 @@
 ﻿# プロジェクト開発ガイドライン
 
-**最終更新**: 2025-12-18
+**最終更新**: 2026-01-03
 
 ---
 
@@ -97,7 +97,7 @@ Streamnotify_on_Bluesky/
   └── ...
 ```
 
-**★** = 今後使用するディレクトリ
+**⭐** = 主要な開発用ディレクトリ
 
 ---
 
@@ -138,7 +138,32 @@ Streamnotify_on_Bluesky/
 
 ---
 
-## 📝 チェックリスト
+## � 開発時のベストプラクティス
+
+### パスの扱い方
+- **絶対パス使用**: ファイル操作では `Path()` を使用して絶対パスを構築
+- **相対パス回避**: スクリプトは実行場所に依らず動作するように実装
+- **パス区切り文字**: 常に `/` を使用（Windows では自動変換される）
+
+### ログ出力
+- **ログレベルの適切な使用**: DEBUG / INFO / WARNING / ERROR / CRITICAL
+- **ログメッセージのフォーマット**: 絵文字プリフィックスで視認性向上
+  - ✅ 成功
+  - ❌ エラー
+  - ⚠️ 警告
+  - ℹ️ 情報
+  - 🔍 デバッグ
+
+### テスト駆動開発（TDD）のすすめ
+1. 修正・実装前に `test_scripts/` でテストを作成
+2. テストが FAIL することを確認
+3. 実装を行う
+4. テストが PASS することを確認
+5. リファクタリング（必要に応じて）
+
+---
+
+## �📝 チェックリスト
 
 新しいタスクを始めるときの確認:
 
@@ -150,15 +175,48 @@ Streamnotify_on_Bluesky/
 
 ---
 
-## 参考
+## 🔗 関連ドキュメント
 
-**現在進行中のタスク**:
-1. YouTube Live 判定ロジック整理
-   - 計画書: `v3/docs/local/youtube_live_classification_plan.md`
+**プロジェクト全体**:
+- [README.md](../../README.md) - プロジェクト概要
+- [ARCHITECTURE_AND_DESIGN.md](../Technical/ARCHITECTURE_AND_DESIGN.md) - アーキテクチャ設計
 
-2. Niconico ID エラーの修正（完了）
-   - 調査: `v3/docs/local/error_investigation_sm45414087.md`
-   - 実装: `v3/docs/local/fix_youtube_video_id_validation.md`
-   - 完了: `v3/docs/local/IMPLEMENTATION_COMPLETE_VIDEO_ID_VALIDATION.md`
-   - テスト: `test_scripts/test_youtube_video_id_validation.py`
+**プラグイン開発**:
+- [PLUGIN_SYSTEM.md](../Technical/PLUGIN_SYSTEM.md) - プラグイン実装ガイド
+- [plugin_interface.py](../../plugin_interface.py) - プラグイン基底クラス
+
+**テンプレート・画像管理**:
+- [TEMPLATE_SYSTEM.md](../Technical/TEMPLATE_SYSTEM.md) - テンプレートシステム
+- [ASSET_MANAGER_INTEGRATION_v3.md](../Technical/ASSET_MANAGER_INTEGRATION_v3.md) - アセット管理
+
+---
+
+## ❓ FAQ
+
+### Q: テストスクリプトを実行するにはどうする？
+
+**A**: ワークスペースルートで以下を実行：
+
+```bash
+python test_scripts/test_youtube_video_id_validation.py
+```
+
+### Q: 新しいプラグインを開発するとき？
+
+**A**: 以下の手順で実施：
+
+1. 計画書作成: `v3/docs/local/plugin_*.md`
+2. プラグインコード実装: `v3/plugins/your_plugin.py`
+3. テストスクリプト作成: `test_scripts/test_your_plugin.py`
+4. `plugin_interface.py` を継承して実装
+5. 完了報告書作成: `v3/docs/local/IMPLEMENTATION_COMPLETE_PLUGIN_*.md`
+
+### Q: ローカルドキュメント（`v3/docs/local/`）は Git で管理する？
+
+**A**: はい、すべて Git 管理下に置きます。実装の背景・意図を記録しておくことで、将来の保守が容易になります。
+
+---
+
+**バージョン**: v3.3.0 以降に対応  
+**ステータス**: ✅ 使用中
 
