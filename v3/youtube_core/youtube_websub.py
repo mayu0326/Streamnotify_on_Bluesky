@@ -10,6 +10,7 @@ WebSub（Webhook）経由で本番サーバーから動画情報を取得・DB �
 """
 
 import logging
+import os
 from typing import List, Dict
 from datetime import datetime, timedelta, timezone
 from image_manager import get_youtube_thumbnail_url
@@ -90,10 +91,15 @@ class YouTubeWebSub:
             return
 
         if ok:
-            logger.info(
-                f"✅ WebSub register 成功: clientid={clientid}, "
-                f"channelid={self.channel_id}, callbackurl={callbackurl}"
-            )
+            # debugモードに応じたログ出力
+            debug_mode = os.getenv("DEBUG_MODE", "false").lower() == "true"
+            if debug_mode:
+                logger.info(
+                    f"✅ WebSub register 成功: clientid={clientid}, "
+                    f"channelid={self.channel_id}, callbackurl={callbackurl}"
+                )
+            else:
+                logger.info("✅ WebSub register 成功: websubサーバーへの登録に成功しました")
             self._websub_registered = True
         else:
             logger.warning("⚠️ WebSub register が失敗しました（ログを確認してください）")
