@@ -275,6 +275,46 @@ class BlueskyImagePlugin(NotificationPlugin):
         live_status = video.get("live_status")
         rendered = ""
 
+        # ★ v3.4.0: channel_name が空の場合のフォールバック処理
+        if not video.get("channel_name") or video.get("channel_name") == "":
+            # YouTube API キャッシュから channelTitle を取得
+            try:
+                from plugins.youtube.youtube_api_plugin import YouTubeAPIPlugin
+                api_plugin = YouTubeAPIPlugin()
+                video_id = video.get("video_id")
+
+                if api_plugin.is_available() and video_id:
+                    # API キャッシュから動画詳細を取得
+                    details = api_plugin.fetch_video_detail(video_id)
+                    if details:
+                        video_info = api_plugin._extract_video_info(details)
+                        channel_name = video_info.get("channel_name", "")
+                        if channel_name:
+                            video["channel_name"] = channel_name
+                            post_logger.info(f"✅ channel_name が空だったため、YouTube API キャッシュから取得: {video['channel_name']}")
+                        else:
+                            raise Exception("API から channel_name を取得できませんでした")
+                    else:
+                        raise Exception("API キャッシュから詳細情報を取得できませんでした")
+                else:
+                    raise Exception("YouTube API プラグインが利用不可")
+            except Exception as e:
+                post_logger.debug(f"⚠️ YouTube API からの channel_name 取得失敗: {e}")
+                # フォールバック: チャンネル ID を使用
+                try:
+                    from config import get_config
+                    config = get_config("settings.env")
+                    channel_id = config.youtube_channel_id if hasattr(config, "youtube_channel_id") else None
+                    if channel_id:
+                        video["channel_name"] = f"Channel ({channel_id[:8]}...)"
+                        post_logger.info(f"✅ channel_name が空だったため、チャンネル ID からフォールバック: {video['channel_name']}")
+                    else:
+                        video["channel_name"] = "Unknown Channel"
+                        post_logger.warning(f"⚠️ channel_name が取得できないため、デフォルト値を使用: {video['channel_name']}")
+                except Exception as e2:
+                    video["channel_name"] = "Unknown Channel"
+                    post_logger.warning(f"⚠️ channel_name フォールバック処理でエラー: {e2}")
+
         # classification_type ベースのテンプレート選択（推奨・優先度高）
         if source == "youtube":
             post_logger.info(f"🔍 テンプレート選択判定開始: classification_type={classification_type}, content_type={content_type}, live_status={live_status}")
