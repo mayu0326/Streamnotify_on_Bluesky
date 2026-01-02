@@ -1,0 +1,27 @@
+# テスト用スクリプト（一時的な検証・デバッグ用）
+test_scripts/
+**/test_settings/*
+**/.venv/*
+**/.vscode/*
+.env
+*.env
+*.log
+**/logs/*
+**/v3/logs/*
+**/v2/logs/*
+**/v1/logs/*
+__pycache__
+**/v1/data/*
+**/v2/data/*
+**/v3/data/*
+**/v2/images/*
+**/v3/images/*
+**/v2/templates/*
+**/v3/templates/*
+**/v2/docs/Local/*
+**/v3/docs/Local/*
+Streamnotify_on_Bluesky.code-workspace
+.editorconfig
+.gitattributes
+**/data/*
+**/.github/**
