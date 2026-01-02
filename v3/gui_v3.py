@@ -1969,7 +1969,7 @@ YouTube:      {youtube_count} 件 (投稿済み: {youtube_posted})
             snippet = video_details.get("snippet", {})
 
             # ★ ライブ判定を実行（API データから）
-            from plugins.youtube_api_plugin import YouTubeAPIPlugin
+            from plugins.youtube.youtube_api_plugin import YouTubeAPIPlugin
             api_plugin = YouTubeAPIPlugin()
             content_type, live_status, is_premiere = api_plugin._classify_video_core(video_details)
 
@@ -2220,7 +2220,7 @@ YouTube:      {youtube_count} 件 (投稿済み: {youtube_posted})
         def on_fetch_from_api():
             """API からメタデータを取得して自動入力"""
             try:
-                from plugins.youtube_api_plugin import YouTubeAPIPlugin
+                from plugins.youtube.youtube_api_plugin import YouTubeAPIPlugin
                 from plugins.youtube_live_plugin import YouTubeLivePlugin
 
                 api_plugin = YouTubeAPIPlugin()
@@ -2250,7 +2250,7 @@ YouTube:      {youtube_count} 件 (投稿済み: {youtube_posted})
                     pass
 
                 # ライブ判定
-                from plugins.youtube_api_plugin import YouTubeAPIPlugin
+                from plugins.youtube.youtube_api_plugin import YouTubeAPIPlugin
                 api_plugin = YouTubeAPIPlugin()
                 content_type, live_status, is_premiere = api_plugin._classify_video_core(details)
 
