@@ -56,7 +56,7 @@ class Config:
             import importlib.util
             # ★ v3.2.0以降: youtube_api_plugin は plugins/youtube/ に移動
             plugin_exists = (importlib.util.find_spec("plugins.youtube.youtube_api_plugin") is not None or
-                            importlib.util.find_spec("plugins.youtube_api_plugin") is not None)
+                            importlib.util.find_spec("plugins.youtube.youtube_api_plugin") is not None)
         except Exception:
             plugin_exists = False
 
