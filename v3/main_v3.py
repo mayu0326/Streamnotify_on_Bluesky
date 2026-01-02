@@ -18,7 +18,7 @@ import logging
 import threading
 import tkinter as tk
 import gc
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # バージョン情報
 from app_version import get_version_info, get_full_version_info
@@ -139,6 +139,24 @@ def main():
     except Exception as e:
         logger.error(f"除外動画リストの初期化に失敗しました: {e}")
 
+    # ★ 新: YouTubeVideoClassifier を初期化
+    try:
+        from youtube_core.youtube_video_classifier import get_video_classifier
+        classifier = get_video_classifier(api_key=config.youtube_api_key)
+        logger.info("✅ YouTube動画分類器を初期化しました")
+    except Exception as e:
+        logger.warning(f"⚠️ YouTube動画分類器の初期化に失敗しました: {e}")
+        classifier = None
+
+    # ★ 新: LiveModule を初期化
+    try:
+        from plugins.youtube.live_module import get_live_module
+        live_module = get_live_module(db=db, plugin_manager=None)  # plugin_manager は後で注入
+        logger.info("✅ YouTubeLiveモジュールを初期化しました")
+    except Exception as e:
+        logger.warning(f"⚠️ YouTubeLiveモジュールの初期化に失敗しました: {e}")
+        live_module = None
+
     # ===== YouTube フィード取得モード分岐 =====
     try:
         if config.youtube_feed_mode == "websub":
@@ -166,6 +184,11 @@ def main():
 
     plugin_manager = PluginManager(plugins_dir="plugins")
     loaded_names = set()
+
+    # ★ 新: LiveModule に plugin_manager を注入
+    if live_module:
+        live_module.set_plugin_manager(plugin_manager)
+        logger.debug("✅ LiveModule に PluginManager を注入しました")
 
     # Asset マネージャーの初期化（プラグイン導入時に資源を配置）
     asset_manager = get_asset_manager()
@@ -356,9 +379,68 @@ def main():
                 # RSS ポーリング: RSS フェッチ・DB 保存・画像自動処理を一体実行
                 saved_count = thumb_mgr.fetch_and_ensure_images(config.youtube_channel_id)
 
+            # ★ 新: 新規登録動画を YouTubeVideoClassifier で分類・処理
+            # 取得した動画の video_id に対して分類を実施し、Live関連なら LiveModule で処理
+            if saved_count > 0 and classifier and live_module:
+                logger.info(f"[YouTube] 取得した {saved_count} 個の新規動画を分類しています...")
+                classified_live_count = 0
+                classified_normal_count = 0
 
-            # YouTubeLive プラグインは v3.3.0+ で廃止されました
+                # DB から未分類（content_type="video" のまま）の新規動画を取得
+                all_videos = db.get_all_videos()
+                recent_videos = [
+                    v for v in all_videos
+                    if v.get("source") == "youtube" and
+                       v.get("content_type") == "video" and
+                       v.get("created_at") and
+                       (datetime.now() - datetime.fromisoformat(v.get("created_at", "").replace('Z', '+00:00'))).total_seconds() < 600  # 過去10分以内
+                ]
 
+                for video in recent_videos:
+                    video_id = video.get("video_id")
+                    if not video_id:
+                        continue
+
+                    try:
+                        # YouTubeVideoClassifier で分類
+                        result = classifier.classify_video(video_id)
+                        if not result.get("success"):
+                            logger.debug(f"⏭️  分類失敗（既存処理で続行）: {video_id}")
+                            classified_normal_count += 1
+                            continue
+
+                        video_type = result.get("type")
+
+                        # Live 関連 vs 通常動画 の分岐
+                        if video_type in ["schedule", "live", "completed", "archive"]:
+                            # Live 関連 → LiveModule で処理
+                            logger.info(f"🎬 Live関連動画を分類: {video.get('title')} (type={video_type})")
+                            live_count = live_module.register_from_classified(result)
+                            if live_count > 0:
+                                classified_live_count += 1
+                        else:
+                            # 通常動画またはプレミア → 既存処理で続行（何もしない）
+                            logger.debug(f"📹 通常動画を分類（既存処理で続行）: {video.get('title')} (type={video_type})")
+                            classified_normal_count += 1
+
+                    except Exception as e:
+                        logger.debug(f"⚠️ 分類エラー（スキップ）: {video_id} - {e}")
+                        classified_normal_count += 1
+
+                logger.info(f"✅ 新規動画の分類完了: Live {classified_live_count} 件、通常 {classified_normal_count} 件")
+
+
+            # ★ 新: Live ポーリング（Live関連動画の状態遷移を検知・自動投稿）
+            if live_module:
+                logger.info("[YouTube] Live動画をポーリング中...")
+                try:
+                    polled_count = live_module.poll_lives()
+                    if polled_count > 0:
+                        logger.info(f"✅ Live ポーリング完了: {polled_count} 件を処理しました")
+                    else:
+                        logger.debug("ℹ️ Live ポーリング: 状態遷移なし")
+                except Exception as e:
+                    logger.error(f"❌ Live ポーリングエラー: {e}")
 
             if config.is_collect_mode:
                 logger.info("[モード] 収集モード のため、投稿処理をスキップします。")
