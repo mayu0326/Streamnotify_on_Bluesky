@@ -103,7 +103,7 @@ class YouTubeArchiveCacheManager:
         """
         try:
             # API から分類情報を取得して検証
-            from plugins.youtube_api_plugin import YouTubeAPIPlugin
+            from plugins.youtube.youtube_api_plugin import YouTubeAPIPlugin
             api_plugin = YouTubeAPIPlugin()
             content_type, live_status, _ = api_plugin._classify_video_core(api_details)
 
