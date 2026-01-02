@@ -178,7 +178,7 @@ Streamnotify_on_Bluesky/
 ## 🔗 関連ドキュメント
 
 **プロジェクト全体**:
-- [README.md](../../README.md) - プロジェクト概要
+- [README.md](../../../README.md) - プロジェクト概要
 - [ARCHITECTURE_AND_DESIGN.md](../Technical/ARCHITECTURE_AND_DESIGN.md) - アーキテクチャ設計
 
 **プラグイン開発**:
@@ -217,6 +217,5 @@ python test_scripts/test_youtube_video_id_validation.py
 
 ---
 
-**バージョン**: v3.3.0 以降に対応  
+**バージョン**: v3.3.0 以降に対応
 **ステータス**: ✅ 使用中
-
