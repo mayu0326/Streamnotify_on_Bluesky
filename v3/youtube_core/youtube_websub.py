@@ -155,20 +155,32 @@ class YouTubeWebSub:
                     # 形式を統一するため、必要に応じて JST に変換
                     published_at_jst = self._ensure_jst_format(published_at)
 
+                    # ★ 重要: サムネイル URL を取得
+                    thumbnail_url = get_youtube_thumbnail_url(video_id)
+                    if not thumbnail_url:
+                        logger.warning(f"⚠️ WebSub {video_id}: サムネイル URL が取得できませんでした")
+                    else:
+                        logger.debug(f"✅ WebSub {video_id}: サムネイル URL 取得完了")
+
                     video = {
                         "video_id": video_id,
                         "title": title,
                         "video_url": video_url,
                         "published_at": published_at_jst,
                         "channel_name": channel_name,
+                        "thumbnail_url": thumbnail_url,
                     }
                     videos.append(video)
+                    logger.debug(f"[WebSub parse] {video_id}: video辞書作成完了 - thumbnail_url: {thumbnail_url}")
 
                 except Exception as e:
                     logger.warning(f"⚠️ WebSub アイテムのパース失敗: {e}")
                     continue
 
             youtube_logger.info(f"📡 WebSub から {len(videos)} 個の動画を取得しました")
+            # ★ デバッグ: 各動画の thumbnail_url を確認
+            for v in videos[:3]:  # 最初の 3 件
+                logger.debug(f"[WebSub fetch_feed] {v.get('video_id')}: thumbnail_url = {v.get('thumbnail_url')}")
             return videos
 
         except Exception as e:
