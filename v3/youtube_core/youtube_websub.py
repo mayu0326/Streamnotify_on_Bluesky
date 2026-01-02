@@ -99,8 +99,6 @@ class YouTubeWebSub:
                     f"✅ WebSub register 成功: clientid={clientid}, "
                     f"channelid={self.channel_id}, callbackurl={callbackurl}"
                 )
-            else:
-                logger.info("✅ WebSub register 成功: websubサーバーへの登録に成功しました")
             self._websub_registered = True
         else:
             logger.warning("⚠️ WebSub register が失敗しました（ログを確認してください）")
