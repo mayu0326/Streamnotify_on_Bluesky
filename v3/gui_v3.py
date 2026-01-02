@@ -1745,6 +1745,7 @@ YouTube:      {youtube_count} 件 (投稿済み: {youtube_posted})
             msg += f"  ... ほか {len(selected) - 5} 件\n"
 
         msg += """
+⚠️ 関連する画像ファイルも削除されます
 この操作は取り消せません。
 本当に削除してもよろしいですか？
         """
@@ -1755,13 +1756,26 @@ YouTube:      {youtube_count} 件 (投稿済み: {youtube_posted})
 
         # 削除実行
         logger.info(f"🗑️ {len(selected)} 件の動画削除を開始します")
-        deleted_count = self.db.delete_videos_batch([v["video_id"] for v in selected])
+        result = self.db.delete_videos_batch([v["video_id"] for v in selected])
+        deleted_count = result.get("deleted_count", 0)
+        deleted_videos = result.get("deleted_videos", [])
 
         if deleted_count > 0:
-            logger.info(f"✅ {deleted_count} 件の動画を削除しました（GUI操作）")
+            # 画像ファイルも削除
+            images_deleted = 0
+            for del_video in deleted_videos:
+                if del_video.get("image_filename"):
+                    try:
+                        site = self._normalize_site_dir(del_video.get("source", "YouTube"))
+                        if self.image_manager.delete_images_by_video_id(site, del_video["image_filename"]):
+                            images_deleted += 1
+                    except Exception as e:
+                        logger.warning(f"⚠️ 画像削除に失敗: {del_video['video_id']} - {e}")
+
+            logger.info(f"✅ {deleted_count} 件の動画を削除しました（画像ファイル {images_deleted} 件も削除）")
             self.selected_rows.clear()
             self.refresh_data()
-            messagebox.showinfo("成功", f"{deleted_count} 件の動画を削除しました。")
+            messagebox.showinfo("成功", f"{deleted_count} 件の動画を削除しました。\n（画像ファイル {images_deleted} 件も削除）")
         else:
             logger.error(f"❌ 動画の削除に失敗しました（{len(selected)}件リクエスト）")
             messagebox.showerror("エラー", "動画の削除に失敗しました。")
@@ -1789,6 +1803,7 @@ YouTube:      {youtube_count} 件 (投稿済み: {youtube_posted})
 タイトル: {video['title'][:60]}...
 動画ID: {item_id}
 
+⚠️ 関連する画像ファイルも削除されます
 この操作は取り消せません。
 削除してもよろしいですか？
         """
@@ -1799,11 +1814,27 @@ YouTube:      {youtube_count} 件 (投稿済み: {youtube_posted})
 
         # 削除実行
         logger.info(f"🗑️ 動画削除を実行: {item_id} ({video['title'][:40]}...)")
-        if self.db.delete_video(item_id):
+        result = self.db.delete_video(item_id)
+
+        if result.get("success"):
+            # 画像ファイルも削除
+            images_deleted = False
+            if result.get("image_filename"):
+                try:
+                    site = self._normalize_site_dir(result.get("source", "YouTube"))
+                    if self.image_manager.delete_images_by_video_id(site, result["image_filename"]):
+                        images_deleted = True
+                except Exception as e:
+                    logger.warning(f"⚠️ 画像削除に失敗: {item_id} - {e}")
+
             logger.info(f"✅ 動画を削除しました: {item_id}（右クリックメニュー操作）")
             self.selected_rows.discard(item_id)
             self.refresh_data()
-            messagebox.showinfo("成功", f"動画を削除しました。\n{item_id}")
+
+            if images_deleted:
+                messagebox.showinfo("成功", f"動画を削除しました。\n{item_id}\n（画像ファイルも削除）")
+            else:
+                messagebox.showinfo("成功", f"動画を削除しました。\n{item_id}")
         else:
             logger.error(f"❌ 動画削除に失敗: {item_id}")
             messagebox.showerror("エラー", "動画の削除に失敗しました。")

@@ -291,6 +291,42 @@ class ImageManager:
             logger.error(f"❌ 画像削除失敗: {file_path} - {e}")
         return False
 
+    def delete_images_by_video_id(self, site: str, image_filename: str) -> bool:
+        """
+        動画に関連するすべての画像ファイルを削除
+
+        ★ 動画削除時に使用：import・autopost 両方のモードから削除
+
+        Args:
+            site: サイト名（YouTube, Niconico, Twitch）
+            image_filename: 削除対象のファイル名
+
+        Returns:
+            いずれかの削除に成功した場合 True、全て失敗した場合 False
+        """
+        if not image_filename:
+            logger.debug("⚠️ 画像ファイル名が指定されていません")
+            return False
+
+        deleted_any = False
+
+        # import モードの画像を削除
+        if self.delete_image(site, "import", image_filename):
+            logger.info(f"✅ import モード画像を削除: {site}/{image_filename}")
+            deleted_any = True
+
+        # autopost モードの画像も削除（存在する場合）
+        autopost_path = self.base_dir / site / "autopost" / image_filename
+        if autopost_path.exists():
+            try:
+                autopost_path.unlink()
+                logger.info(f"✅ autopost モード画像を削除: {site}/{image_filename}")
+                deleted_any = True
+            except Exception as e:
+                logger.warning(f"⚠️ autopost モード画像削除失敗: {autopost_path} - {e}")
+
+        return deleted_any
+
     def get_image_info(self, site: str, mode: str, filename: str) -> Optional[dict]:
         """
         画像ファイルの情報を取得
@@ -688,4 +724,3 @@ def get_image_manager() -> ImageManager:
     if _image_manager_instance is None:
         _image_manager_instance = ImageManager()
     return _image_manager_instance
-

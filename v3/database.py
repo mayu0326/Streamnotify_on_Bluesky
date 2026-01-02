@@ -895,36 +895,60 @@ class Database:
         logger.error(f"❌ メタデータ更新に失敗（リトライ上限）: {video_id}")
         return False
 
-    def delete_video(self, video_id: str) -> bool:
-        """動画をDBから削除（除外動画リスト連携付き）"""
+    def delete_video(self, video_id: str) -> dict:
+        """動画をDBから削除（除外動画リスト連携付き・画像情報付き返却）
+
+        返却される辞書で、呼び出し元（GUI）が画像ファイルの削除を判断できるようにする。
+
+        Returns:
+            {
+                "success": bool,           # 削除成功フラグ
+                "image_filename": str,     # 削除対象の画像ファイル名
+                "source": str,             # 配信元（youtube / niconico など）
+            }
+        """
+        result = {
+            "success": False,
+            "image_filename": None,
+            "source": "youtube"
+        }
+
         for attempt in range(DB_RETRY_MAX):
             try:
                 conn = sqlite3.connect(self.db_path, timeout=DB_TIMEOUT)
                 conn.row_factory = sqlite3.Row
                 cursor = conn.cursor()
 
-                # 削除前に source を取得
-                cursor.execute("SELECT source FROM videos WHERE video_id = ?", (video_id,))
+                # 削除前に video_id, source, image_filename, image_mode を取得
+                cursor.execute(
+                    "SELECT source, image_filename, image_mode FROM videos WHERE video_id = ?",
+                    (video_id,)
+                )
                 row = cursor.fetchone()
-                source = row["source"] if row else "youtube"
+
+                if row:
+                    result["source"] = row["source"] or "youtube"
+                    result["image_filename"] = row["image_filename"]  # None でも OK（呼び出し元で判定）
 
                 # DB から削除
                 cursor.execute("DELETE FROM videos WHERE video_id = ?", (video_id,))
                 conn.commit()
                 conn.close()
 
+                result["success"] = True
+
                 # ★ 新: 除外動画リストに追加
                 try:
                     from deleted_video_cache import get_deleted_video_cache
                     cache = get_deleted_video_cache()
-                    cache.add_deleted_video(video_id, source=source)
+                    cache.add_deleted_video(video_id, source=result["source"])
                 except ImportError:
                     logger.warning("deleted_video_cache モジュールが見つかりません")
                 except Exception as e:
                     logger.error(f"除外動画リスト登録エラー: {video_id} - {e}")
 
                 logger.info(f"✅ 動画を削除しました: {video_id}")
-                return True
+                return result
 
             except sqlite3.OperationalError as e:
                 if "locked" in str(e).lower() and attempt < DB_RETRY_MAX - 1:
@@ -933,29 +957,49 @@ class Database:
                     continue
                 else:
                     logger.error(f"動画削除に失敗: {video_id} - {e}")
-                    return False
+                    return result
 
             except Exception as e:
                 logger.error(f"動画削除エラー: {video_id} - {e}")
-                return False
+                return result
 
-        return False
+        logger.error(f"動画削除に失敗（リトライ上限）: {video_id}")
+        return result
 
-    def delete_videos_batch(self, video_ids: list) -> int:
+    def delete_videos_batch(self, video_ids: list) -> dict:
         """複数の動画をDBから削除
 
         Args:
             video_ids: 削除対象の動画ID リスト
 
         Returns:
-            削除した数
+            {
+                "deleted_count": int,                    # 削除成功件数
+                "deleted_videos": [                      # 削除されたビデオの情報
+                    {
+                        "video_id": str,
+                        "image_filename": str or None,
+                        "source": str
+                    },
+                    ...
+                ]
+            }
         """
-        deleted_count = 0
-        for video_id in video_ids:
-            if self.delete_video(video_id):
-                deleted_count += 1
+        deleted_videos = []
 
-        return deleted_count
+        for video_id in video_ids:
+            result = self.delete_video(video_id)
+            if result["success"]:
+                deleted_videos.append({
+                    "video_id": video_id,
+                    "image_filename": result["image_filename"],
+                    "source": result["source"]
+                })
+
+        return {
+            "deleted_count": len(deleted_videos),
+            "deleted_videos": deleted_videos
+        }
 
 
 def get_database(db_path=DB_PATH) -> Database:
