@@ -67,12 +67,43 @@ class YouTubeRSS:
                     logger.warning(f"⚠️ RSS 日時の JST 変換失敗、元の値を使用: {e}")
                     published_at_jst = rss_published_at
 
+                # ★ v3.4.0: channel_name が空の場合、キャッシュまたは API から取得
+                channel_name = entry.author if hasattr(entry, "author") else ""
+                if not channel_name:
+                    try:
+                        # YouTube API キャッシュから channelTitle を取得
+                        from plugins.youtube.youtube_api_plugin import YouTubeAPIPlugin
+                        api_plugin = YouTubeAPIPlugin()
+
+                        if api_plugin.is_available():
+                            # API から動画詳細を取得
+                            details = api_plugin.fetch_video_detail(entry.yt_videoid)
+                            if details:
+                                video_info = api_plugin._extract_video_info(details)
+                                channel_name = video_info.get("channel_name", "")
+                                if channel_name:
+                                    logger.debug(f"✅ YouTube API から channel_name を取得: {channel_name}")
+                    except Exception as e:
+                        logger.debug(f"⚠️ YouTube API からの channel_name 取得失敗: {e}")
+
+                    # API でも取得できない場合はフォールバック
+                    if not channel_name:
+                        try:
+                            from config import get_config
+                            config = get_config("settings.env")
+                            channel_id = config.youtube_channel_id if hasattr(config, "youtube_channel_id") else ""
+                            if channel_id:
+                                channel_name = f"Channel ({channel_id[:8]}...)"
+                                logger.debug(f"✅ RSS の channel_name が空だったため、チャンネル ID からフォールバック: {channel_name}")
+                        except Exception as e:
+                            logger.debug(f"⚠️ チャンネル ID からのフォールバック失敗: {e}")
+
                 video = {
                     "video_id": entry.yt_videoid,
                     "title": entry.title,
                     "video_url": entry.link,
                     "published_at": published_at_jst,  # ★ JST 変換済みの値を使用
-                    "channel_name": entry.author if hasattr(entry, "author") else "",
+                    "channel_name": channel_name,
                 }
                 videos.append(video)
 

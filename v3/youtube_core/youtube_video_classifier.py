@@ -207,7 +207,11 @@ class YouTubeVideoClassifier:
         thumbnail_url = thumbnails.get("high", {}).get("url") or thumbnails.get("medium", {}).get("url")
         published_at = snippet.get("publishedAt", "")
 
+        # ★ 【新】メタデータ: duration と live_broadcast_content
         content_details = video_data.get("contentDetails", {})
+        duration = content_details.get("duration", "PT0S")  # ISO 8601 形式（例: "PT54M40S"）
+        live_broadcast_content = snippet.get("liveBroadcastContent", "none")  # "none" / "live" / "upcoming"
+
         live_details = video_data.get("liveStreamingDetails", {})
 
         # Live関連の判定
@@ -234,25 +238,30 @@ class YouTubeVideoClassifier:
                 video_type = VIDEO_TYPE_LIVE
                 live_status = "live"
             elif actual_end:
-                # 配信終了
-                video_type = VIDEO_TYPE_COMPLETED
-                live_status = "completed"
+                # ★ 判定の強化：配信終了 vs アーカイブ
+                # duration が確定しており、かつ liveBroadcastContent が none ならアーカイブとみなす
+                is_duration_fixed = duration not in ["PT0S", "P0D", ""]
+                is_broadcast_none = live_broadcast_content == "none"
+
+                if is_duration_fixed and is_broadcast_none:
+                    # YouTube 側で「動画」としての処理が完了している状態
+                    video_type = VIDEO_TYPE_ARCHIVE
+                    live_status = None  # アーカイブは live_status を持たない運用
+                else:
+                    # 配信は終了ボタンが押されたが、まだ動画処理中の状態
+                    video_type = VIDEO_TYPE_COMPLETED
+                    live_status = "completed"
             else:
                 # 判定不可だが live_details が存在
                 logger.warning(f"⚠️ ライブステータス判定不可（{video_id}）: {live_details}")
                 video_type = VIDEO_TYPE_UNKNOWN
 
-        # 2. isLiveContent=true → ライブアーカイブ
-        elif content_details.get("isLiveContent", False):
-            video_type = VIDEO_TYPE_ARCHIVE
-            is_live = True
-
-        # 3. liveBroadcastContent が "premiere" → プレミア公開
+        # 2.  liveBroadcastContent が "premiere" → プレミア公開
         elif snippet.get("liveBroadcastContent") == "premiere":
             video_type = VIDEO_TYPE_PREMIERE
             is_premiere = True
 
-        # 4. 上記いずれでもない → 通常動画
+        # 3. 上記いずれでもない → 通常動画
         else:
             video_type = VIDEO_TYPE_NORMAL
 
@@ -268,6 +277,8 @@ class YouTubeVideoClassifier:
             "live_status": live_status,
             "is_scheduled_start_time": is_scheduled_start_time,
             "published_at": published_at,
+            "duration": duration,                           # ★ 【新】ISO 8601 形式
+            "live_broadcast_content": live_broadcast_content,  # ★ 【新】"none"/"live"/"upcoming"
             "error": None
         }
 
