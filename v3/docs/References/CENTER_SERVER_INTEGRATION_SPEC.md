@@ -1,0 +1,721 @@
+# Streamnotify WebSub センターサーバー統合仕様書
+
+**対象バージョン**: v3.2.0+
+**サーバー実装**: FastAPI WebSub Hub
+**最終更新**: 2026-01-03
+**ステータス**: ✅ 本番稼働中（YouTube WebSub 対応）
+
+---
+
+## 目次
+
+1. [概要](#概要)
+2. [WebSub ワークフロー](#websub-ワークフロー)
+3. [API エンドポイント仕様](#api-エンドポイント仕様)
+4. [エンドポイント詳細](#エンドポイント詳細)
+5. [エラーハンドリング](#エラーハンドリング)
+6. [セキュリティ](#セキュリティ)
+7. [クライアント側実装](#クライアント側実装)
+8. [トラブルシューティング](#トラブルシューティング)
+
+---
+
+## 概要
+
+### 目的
+
+Streamnotify WebSub センターサーバーは、複数のクライアント（ユーザーのローカル環境）に対して、  \
+YouTube の新着動画情報を **PubSubHubbub プロトコル経由で一元配信** するプッシュ通知サーバーです。
+
+### 利点
+
+- ⚡ **リアルタイム検知**: RSS ポーリング（3-5分遅延）ではなく、YouTube から直接プッシュ通知を受け取る
+- 🔄 **一元管理**: 複数のクライアントからの購読を一箇所で管理
+- 📊 **効率性**: YouTube からの API 呼び出しが最小化される
+- 🎯 **スケーラビリティ**: 複数ユーザーへの同時配信に対応
+
+### 対応プラットフォーム
+
+| プラットフォーム | ステータス | 備考 |
+|:--|:--|:--|
+| **YouTube** | ✅ 本番稼働中 | WebSub フルサポート（新着動画検知） |
+| **Niconico** | 🔜 将来実装予定 | - |
+| **Twitch** | 🔜 将来実装予定 | - |
+
+---
+
+## WebSub ワークフロー
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                       YouTube RSS Hub                           │
+│                  (PubSubHubbub Publisher)                       │
+└────────────────┬────────────────────────────────────────────────┘
+                 │
+                 │ (1) Subscribe to channel feed
+                 ▼
+┌─────────────────────────────────────────────────────────────────┐
+│          Streamnotify WebSub Center Server                      │
+│              (PubSubHubbub Hub / Subscriber)                    │
+│                                                                 │
+│  - 購読管理（clients, subscriptions テーブル）               │
+│  - YouTube からの通知受け取り（/pubsub エンドポイント）       │
+│  - クライアント登録（/register エンドポイント）                │
+│  - 動画情報キャッシング（channel_id ごとの SQLite DB）       │
+└────────────────┬────────────────────────────────────────────────┘
+                 │
+        ┌────────┴────────┬────────┬────────┐
+        │                 │        │        │
+   (2) Notify          (3) Store  (4) Push  │
+   video info          in cache    to client│
+        │                 │        │        │
+        ▼                 ▼        ▼        ▼
+    ┌───────────────────────────────────────────────┐
+    │  Client 1              Client 2  ...  Client N  │
+    │  (Streamnotify        (Streamnotify ...        │
+    │   v3.3.0)             v3.3.0)                  │
+    │  WEBSUB_CALLBACK_URL  WEBSUB_CALLBACK_URL      │
+    └───────────────────────────────────────────────┘
+        │                    │
+        ▼                    ▼
+    ┌────────────┐      ┌────────────┐
+    │ Local DB   │      │ Local DB   │
+    │(video_list)│      │(video_list)│
+    └────────────┘      └────────────┘
+```
+
+### フロー詳細
+
+#### Phase 1: 初回購読（Setup）
+
+```
+User A (Local Machine A)
+    │
+    ├─ settings.env で WebSub 設定
+    │  - YOUTUBE_FEED_MODE=websub
+    │  - WEBSUB_CALLBACK_URL=https://user-a-webhook-endpoint.local/webhook
+    │  - WEBSUB_CLIENT_ID=user_a_client
+    │  - WEBSUB_CLIENT_API_KEY=secret_api_key_a
+    │
+    └─→ POST /register
+        ├─ Request:
+        │  {
+        │    "client_id": "user_a_client",
+        │    "channel_id": "UCxxxxxx",
+        │    "callback_url": "https://user-a-webhook-endpoint.local/webhook"
+        │  }
+        │  Header: X-Client-API-Key: secret_api_key_a
+        │
+        └─→ Center Server (DB: subscriptions)
+            ├─ 登録: (user_a_client, UCxxxxxx, webhook_url)
+            └─ Response: {"status": "ok"}
+```
+
+#### Phase 2: 新着動画通知（Push）
+
+```
+YouTube RSS Hub
+    │
+    └─→ POST /pubsub (XML Atom Feed)
+        │
+        ├─ Parse XML:
+        │  - <yt:channelId>UCxxxxxx</yt:channelId>
+        │  - <yt:videoId>dQw4w9WgXcQ</yt:videoId>
+        │  - <title>New Video Title</title>
+        │
+        └─→ Center Server
+            ├─ (1) SQLite に保存
+            │  - DB: /root/data/subscribers/UCxxxxxx.db
+            │  - Table: videos
+            │  - Record: (dQw4w9WgXcQ, title, ...)
+            │
+            ├─ (2) 購読者を検索
+            │  - Query: subscriptions WHERE channel_id = 'UCxxxxxx'
+            │  - Found: [user_a_client, user_b_client, ...]
+            │
+            └─→ (3) 各クライアントに通知
+                ├─→ POST https://user-a-webhook-endpoint.local/webhook
+                │   Body: (channel_id, video_id, title 等)
+                │
+                ├─→ POST https://user-b-webhook-endpoint.local/webhook
+                │   Body: (channel_id, video_id, title 等)
+                │
+                └─→ [Similar for other clients...]
+```
+
+---
+
+## API エンドポイント仕様
+
+### エンドポイント一覧
+
+| メソッド | エンドポイント | 用途 | 認証 |
+|:--|:--|:--|:--|
+| GET/POST | `/pubsub` | WebSub verify/notify（YouTube → Server） | Verify token |
+| POST | `/register` | クライアント登録（Client → Server） | API Key |
+| GET | `/videos` | 動画情報取得（Client → Server） | - |
+| GET | `/health` | ヘルスチェック | - |
+
+---
+
+## エンドポイント詳細
+
+### 1. `/pubsub` - WebSub エンドポイント
+
+YouTube RSS Hub がこのエンドポイントに対して、購読確認と新着動画通知を送信します。
+
+#### 1.1 Verify リクエスト（GET）
+
+YouTube が購読を確認する際に呼び出します。
+
+**リクエスト**:
+```
+GET /pubsub?hub.mode=subscribe&hub.topic=https://www.youtube.com/xml/feeds/videos.xml?channel_id=UCxxxxxx&hub.challenge=xyz&hub.verify_token=neco-verify-token
+```
+
+**パラメータ**:
+| パラメータ | 説明 |
+|:--|:--|
+| `hub.mode` | `subscribe` または `unsubscribe` |
+| `hub.topic` | YouTube RSS フィード URL |
+| `hub.challenge` | 検証用チャレンジトークン |
+| `hub.verify_token` | 検証用トークン（固定値: `neco-verify-token`） |
+
+**レスポンス**:
+```
+HTTP 200 OK
+Content-Type: text/plain
+
+xyz
+```
+
+**実装例** (Python):
+```python
+@app.get("/pubsub", response_class=PlainTextResponse)
+async def pubsub_verify(request: Request):
+    params = dict(request.query_params)
+    challenge = params.get("hub.challenge")
+    verify_token = params.get("hub.verify_token")
+
+    if verify_token != VERIFY_TOKEN:  # VERIFY_TOKEN = "neco-verify-token"
+        raise HTTPException(status_code=403, detail="verify_token mismatch")
+
+    if challenge:
+        return PlainTextResponse(content=challenge, status_code=200)
+
+    raise HTTPException(status_code=400, detail="missing hub.challenge")
+```
+
+#### 1.2 通知リクエスト（POST）
+
+YouTube が新着動画を検知した際に、このエンドポイントに XML フィードを POST します。
+
+**リクエスト**:
+```
+POST /pubsub
+Content-Type: application/atom+xml
+
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"
+      xmlns:yt="http://www.youtube.com/xml/schemas/2015">
+  <title>YouTube Feed</title>
+  <link rel="hub" href="https://pubsubhubbub.appspot.com/"/>
+  <link rel="self" href="https://www.youtube.com/xml/feeds/videos.xml?channel_id=UCxxxxxx"/>
+  <id>yt:channel:UCxxxxxx</id>
+  <updated>2026-01-03T10:30:00+00:00</updated>
+
+  <entry>
+    <id>yt:video:dQw4w9WgXcQ</id>
+    <yt:videoId>dQw4w9WgXcQ</yt:videoId>
+    <yt:channelId>UCxxxxxx</yt:channelId>
+    <title>New Video Title</title>
+    <link rel="alternate" href="https://www.youtube.com/watch?v=dQw4w9WgXcQ"/>
+    <author>
+      <name>Channel Name</name>
+      <uri>http://www.youtube.com/channel/UCxxxxxx</uri>
+    </author>
+    <published>2026-01-03T10:30:00+00:00</published>
+    <updated>2026-01-03T10:30:00+00:00</updated>
+  </entry>
+</feed>
+```
+
+**パース処理**:
+```python
+@app.post("/pubsub")
+async def pubsub_notify(request: Request):
+    body_bytes = await request.body()
+    body_text = body_bytes.decode("utf-8", errors="ignore")
+
+    ns = {
+        "atom": "http://www.w3.org/2005/Atom",
+        "yt": "http://www.youtube.com/xml/schemas/2015",
+    }
+    root = ET.fromstring(body_text)
+
+    for entry in root.findall("{http://www.w3.org/2005/Atom}entry"):
+        # channel_id パース
+        channel_id_elem = entry.find("yt:channelId", ns)
+        if channel_id_elem is not None:
+            channel_id = channel_id_elem.text
+        else:
+            # フォールバック: author URI から抽出
+            author = entry.find("{http://www.w3.org/2005/Atom}author")
+            uri_elem = author.find("{http://www.w3.org/2005/Atom}uri") if author else None
+            author_uri = uri_elem.text if uri_elem is not None else ""
+            channel_id = author_uri.rsplit("/", 1)[-1] if author_uri else None
+
+        # video_id パース
+        video_id_elem = entry.find("yt:videoId", ns)
+        if video_id_elem is not None:
+            video_id = video_id_elem.text
+        else:
+            # フォールバック: id から抽出
+            entry_id_elem = entry.find("{http://www.w3.org/2005/Atom}id")
+            entry_id = entry_id_elem.text if entry_id_elem is not None else ""
+            if entry_id.startswith("yt:video:"):
+                video_id = entry_id.split("yt:video:")[-1]
+            else:
+                video_id = None
+
+        # title パース
+        title_elem = entry.find("{http://www.w3.org/2005/Atom}title")
+        title = title_elem.text if title_elem is not None else ""
+
+        # DB に保存
+        insert_video(
+            channel_id=channel_id,
+            video_id=video_id,
+            title=title,
+            video_url=None,
+            published_at=None,
+        )
+
+        # ★ 今後実装: 登録済みクライアントへの転送
+        # subscribers = get_subscribers_for_channel(channel_id)
+        # for client_id, callback_url in subscribers:
+        #     forward_to_client(callback_url, channel_id, video_id, title)
+
+    return {"status": "ok"}
+```
+
+**レスポンス**:
+```json
+HTTP 200 OK
+Content-Type: application/json
+
+{"status": "ok"}
+```
+
+---
+
+### 2. `/register` - クライアント登録エンドポイント
+
+クライアント（ユーザーのローカル環境）が WebSub 購読登録を要求します。
+
+**リクエスト**:
+```
+POST /register
+Content-Type: application/json
+X-Client-API-Key: secret_api_key_a
+
+{
+  "client_id": "user_a_client",
+  "channel_id": "UCxxxxxx",
+  "callback_url": "https://user-a-machine.ngrok.io/webhook"
+}
+```
+
+**リクエスト パラメータ**:
+
+| フィールド | 型 | 説明 |
+|:--|:--|:--|
+| `client_id` | str | クライアント識別子（settings.env で指定） |
+| `channel_id` | str | YouTube チャンネル ID（例: UCxxxxxx） |
+| `callback_url` | URL | Webhook コールバック URL（このクライアントが受け取る URL） |
+
+**ヘッダ**:
+
+| ヘッダ | 説明 |
+|:--|:--|
+| `X-Client-API-Key` | API 認証キー（settings.env で指定） |
+
+**認証フロー**:
+
+```python
+def register_subscriber(body: RegisterRequest, x_client_api_key: str = Header(...)):
+    # Step 1: client_id に対応する API キーを DB から取得
+    expected_key = get_client_apikey(body.client_id)
+    if expected_key is None:
+        raise HTTPException(status_code=403, detail="Unknown client_id")
+
+    # Step 2: 提供されたキーと比較
+    if x_client_api_key != expected_key:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+
+    # Step 3: 認証 OK → subscriptions テーブルに登録
+    add_subscription(
+        client_id=body.client_id,
+        channel_id=body.channel_id,
+        callback_url=str(body.callback_url),
+    )
+    return {"status": "ok"}
+```
+
+**レスポンス**:
+```json
+HTTP 200 OK
+Content-Type: application/json
+
+{"status": "ok"}
+```
+
+**エラーレスポンス**:
+
+| ステータス | 説明 |
+|:--|:--|
+| 400 | リクエストボディが不正 |
+| 401 | API キー不正（`X-Client-API-Key` が一致しない） |
+| 403 | Unknown client_id（DB に登録されていない） |
+
+---
+
+### 3. `/videos` - 動画情報取得エンドポイント
+
+クライアントが、センターサーバーにキャッシュされている動画情報を取得します。
+
+**リクエスト**:
+```
+GET /videos?channel_id=UCxxxxxx&limit=50
+```
+
+**クエリ パラメータ**:
+
+| パラメータ | 型 | デフォルト | 説明 |
+|:--|:--|:--|:--|
+| `channel_id` | str | **必須** | YouTube チャンネル ID |
+| `limit` | int | 50 | 取得するレコード数（1-200） |
+
+**レスポンス**:
+```json
+HTTP 200 OK
+Content-Type: application/json
+
+{
+  "channel_id": "UCxxxxxx",
+  "count": 3,
+  "items": [
+    {
+      "id": 1,
+      "video_id": "dQw4w9WgXcQ",
+      "channel_id": "UCxxxxxx",
+      "title": "New Video Title",
+      "video_url": null,
+      "published_at": null,
+      "created_at": "2026-01-03T10:30:00"
+    },
+    {
+      "id": 2,
+      "video_id": "9bZkp7q19f0",
+      "channel_id": "UCxxxxxx",
+      "title": "Another Video",
+      "video_url": null,
+      "published_at": null,
+      "created_at": "2026-01-03T10:25:00"
+    },
+    ...
+  ]
+}
+```
+
+**エラーレスポンス**:
+
+| ステータス | 説明 |
+|:--|:--|
+| 404 | 指定された channel_id が見つからない（動画がまだ通知されていない） |
+
+---
+
+### 4. `/health` - ヘルスチェック
+
+サーバーの稼働状況を確認します。
+
+**リクエスト**:
+```
+GET /health
+```
+
+**レスポンス**:
+```json
+HTTP 200 OK
+Content-Type: application/json
+
+{"status": "ok"}
+```
+
+---
+
+## エラーハンドリング
+
+### HTTP ステータスコード
+
+| ステータス | 原因 | 対応 |
+|:--|:--|:--|
+| 200 | 成功 | - |
+| 400 | リクエスト形式が不正 | リクエスト内容を確認 |
+| 401 | 認証失敗（API キー不正） | API キーを確認（settings.env） |
+| 403 | 認可失敗（client_id 未登録） | client_id がサーバーに登録されているか確認 |
+| 404 | リソースが見つからない | channel_id が正しいか確認、または動画情報がまだ同期されていない可能性 |
+| 500 | サーバーエラー | サーバーのログを確認 |
+
+### 一般的なエラーシナリオ
+
+#### シナリオ 1: API キー不正
+
+**現象**: `POST /register` で 401 エラー
+
+**原因**:
+- settings.env の `WEBSUB_CLIENT_API_KEY` が誤っている
+- サーバーのデータベースに登録されている API キーと一致していない
+
+**対応**:
+```bash
+# 1. settings.env を確認
+cat v3/settings.env | grep WEBSUB_CLIENT_API_KEY
+
+# 2. サーバーのクライアント DB を確認（サーバー管理者）
+sqlite3 /root/data/subscribers_map.db
+> SELECT * FROM clients WHERE client_id = 'your_client_id';
+```
+
+#### シナリオ 2: Unknown client_id
+
+**現象**: `POST /register` で 403 エラー
+
+**原因**:
+- `WEBSUB_CLIENT_ID` がサーバーのデータベースに登録されていない
+
+**対応**:
+- サーバー管理者に `client_id` と `api_key` の登録を依頼
+
+---
+
+## セキュリティ
+
+### 認証メカニズム
+
+#### WebSub verify_token
+
+- **用途**: YouTube がセンターサーバーの正当性を検証
+- **固定値**: `neco-verify-token`
+- **変更方法**: サーバー側コードの `VERIFY_TOKEN` 定数を変更
+
+#### API キー（X-Client-API-Key）
+
+- **用途**: クライアントがサーバーに対して自身の正当性を証明
+- **格納場所**: サーバーの SQLite DB（`clients.apikey`）
+- **管理方法**:
+  - 一意の API キーを各クライアント用に生成
+  - settings.env の `WEBSUB_CLIENT_API_KEY` に記載
+
+### データベース保護
+
+#### 情報の分離
+
+**subscriptions テーブル** (購読情報):
+- `client_id` (クライアント識別子)
+- `channel_id` (YouTube チャンネル ID)
+- `callback_url` (Webhook URL)
+
+⚠️ **注意**: `callback_url` は平文で保存されます。  \
+ネットワークトラフィックは HTTPS で暗号化してください（ngrok、Cloudflare Tunnel 等）
+
+#### アクセス制御
+
+| 操作 | アクセス元 | 認証 |
+|:--|:--|:--|
+| `/pubsub` (Verify) | YouTube | verify_token |
+| `/pubsub` (Notify) | YouTube | - |
+| `/register` | クライアント | API key |
+| `/videos` | クライアント | - |
+| `/health` | 任意 | - |
+
+### ベストプラクティス
+
+1. **API キーの管理**:
+   - 複雑な値を使用（例: UUID4）
+   - 定期的にローテーション
+   - 設定ファイルに平文で記載しない（暗号化を検討）
+
+2. **通信の暗号化**:
+   - callback_url は HTTPS のみ対応
+   - クライアント ↔ サーバーも HTTPS 推奨
+
+3. **ログ出力**:
+   - API キーをログに出力しない
+   - callback_url も極力ログに出力しない
+
+---
+
+## クライアント側実装
+
+### settings.env 設定
+
+WebSub モードを使用する場合、`settings.env` に以下を設定します：
+
+```env
+# YouTube フィード取得モード
+YOUTUBE_FEED_MODE=websub
+
+# WebSub センターサーバー設定
+WEBSUB_CLIENT_ID=your_unique_client_id
+WEBSUB_CLIENT_API_KEY=your_secret_api_key
+WEBSUB_CALLBACK_URL=https://your-machine-webhook-endpoint.local/webhook
+
+# WebSub ポーリング間隔（3-30分、デフォルト: 5分）
+YOUTUBE_WEBSUB_POLL_INTERVAL_MINUTES=5
+
+# WebSub ローカルサーバーポート（デフォルト: 8765）
+WEBSUB_SERVER_PORT=8765
+```
+
+### Webhook エンドポイントの実装
+
+クライアントは、センターサーバーからプッシュ通知を受け取るための Webhook エンドポイントを実装する必要があります。
+
+#### Flask 実装例
+
+```python
+from flask import Flask, request, jsonify
+
+app = Flask(__name__)
+
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    """
+    センターサーバーから WebSub 通知を受け取る
+    """
+    data = request.get_json()
+
+    channel_id = data.get("channel_id")
+    video_id = data.get("video_id")
+    title = data.get("title")
+
+    # ローカル DB に保存、または投稿キューに追加
+    print(f"📺 New video: {title} ({video_id})")
+
+    return jsonify({"status": "ok"}), 200
+
+if __name__ == "__main__":
+    # 設定で指定されたポートでリッスン
+    app.run(host="0.0.0.0", port=8765, debug=False)
+```
+
+#### 非同期処理
+
+通知を受け取ったら、メインアプリケーションのキューに追加するなどして、  \
+非同期で処理することを推奨します（webhook は素早く 200 OK を返すべき）。
+
+### クライアント初期化フロー
+
+```python
+# main.py または起動時
+from config import get_config
+
+config = get_config("settings.env")
+
+if config.youtube_feed_mode == "websub":
+    # WebSub モード初期化
+    websub_client = WebSubClient(
+        client_id=config.websub_client_id,
+        api_key=config.websub_client_api_key,
+        callback_url=config.websub_callback_url,
+        center_server_url="https://center-server.example.com",
+    )
+
+    # チャンネル登録
+    websub_client.register_channel(config.youtube_channel_id)
+
+    # または複数チャンネル
+    for channel_id in config.youtube_channel_ids:
+        websub_client.register_channel(channel_id)
+```
+
+---
+
+## トラブルシューティング
+
+### Q: `/register` エンドポイントで 403 Forbidden が返される
+
+**A**: 以下を確認してください：
+
+1. **client_id がサーバーに登録されているか**:
+   ```bash
+   # サーバーのデータベースを確認（サーバー管理者）
+   sqlite3 /root/data/subscribers_map.db
+   > SELECT * FROM clients;
+   ```
+
+2. **settings.env の WEBSUB_CLIENT_ID が正しいか**:
+   ```bash
+   grep WEBSUB_CLIENT_ID v3/settings.env
+   ```
+
+### Q: `/register` エンドポイントで 401 Unauthorized が返される
+
+**A**: API キーが一致していません：
+
+1. **settings.env の WEBSUB_CLIENT_API_KEY を確認**:
+   ```bash
+   grep WEBSUB_CLIENT_API_KEY v3/settings.env
+   ```
+
+2. **サーバーに登録されているキーを確認**（サーバー管理者）:
+   ```bash
+   sqlite3 /root/data/subscribers_map.db
+   > SELECT apikey FROM clients WHERE client_id = 'your_client_id';
+   ```
+
+3. **両者が一致していることを確認** → 一致していなければ API キーを更新
+
+### Q: 動画がセンターサーバーに到達しているが、クライアントに通知されない
+
+**A**: 以下を確認してください：
+
+1. **Webhook エンドポイントが正しく設定されているか**:
+   ```bash
+   curl -X GET "https://center-server/videos?channel_id=UCxxxxxx&limit=5"
+   ```
+   レスポンスが返ってくるか確認
+
+2. **callback_url が HTTPS か**（HTTP は非対応）:
+   ```bash
+   grep WEBSUB_CALLBACK_URL v3/settings.env
+   ```
+
+3. **ファイアウォール設定**:
+   - センターサーバーからのアウトバウンド通信が許可されているか
+   - クライアントの Webhook ポートが開いているか
+
+### Q: パフォーマンス・スケーラビリティに関する質問
+
+**A**: 以下の最適化を検討してください：
+
+- **SQLite のインデックス**: `channel_id` と `video_id` にインデックスを設定
+- **キャッシュ戦略**: 古い動画情報は自動削除（例: 30日以上前）
+- **非同期処理**: Webhook 通知を非同期キューで処理
+- **データベース**: 大規模運用では PostgreSQL への移行を検討
+
+---
+
+## 参考資料
+
+- [PubSubHubbub 仕様](https://pubsubhubbub.appspot.com/)
+- [YouTube RSS フィード](https://developers.google.com/youtube/v3/guides/push_notifications)
+- [Atom Feed 仕様](https://www.rfc-editor.org/rfc/rfc4287)
+
+---
+
+**作成日**: 2026-01-03
+**ステータス**: ✅ 本番環境で稼働中（YouTube WebSub のみ対応）
+**更新予定**: v4.0.0+ で Niconico/Twitch 対応予定

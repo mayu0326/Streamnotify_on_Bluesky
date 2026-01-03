@@ -1,8 +1,24 @@
 # v3 プラグイン拡張 実装タスクシート
 
-> **バージョン**: v3.x（将来実装予定）
-> **最終更新**: 2025-12-18
-> **ステータス**: 計画立案完了、実装準備段階
+> **バージョン**: v3.3.0（WebSub 実装完了）
+> **最終更新**: 2026-01-03
+> **ステータス**: WebSub 実装完了、Twitch/Tunnel/PubSubHubbub は計画段階
+
+---
+
+## ✅ WebSub/PubSubHubbub センターサーバー統合（v3.2.0 で実装完了）
+
+### ステータス: 実装完了
+
+**実装済み機能**:
+- ✅ **WebSub Hub 構築**: FastAPI ベースのセンターサーバー
+- ✅ **PubSubHubbub プロトコル対応**: YouTube RSS Hub と連携
+- ✅ **クライアント管理**: subscriptions テーブルで購読者を一元管理
+- ✅ **Webhook エンドポイント**: `/pubsub`, `/register`, `/videos` 等
+- ✅ **認証メカニズム**: verify_token + API キー認証
+- ✅ **本番運用**: 複数ユーザーへの提供実績あり
+
+**詳細仕様**: [CENTER_SERVER_INTEGRATION_SPEC.md](../References/CENTER_SERVER_INTEGRATION_SPEC.md) を参照
 
 ---
 
@@ -536,136 +552,6 @@ class TunnelServicePlugin(NotificationPlugin):
 
 ---
 
-## Phase 3-C: Webhook ハンドリング統合（推定期間：2-3週間）
-
-### Task 3-C-1: Flask Webhook ハンドラーを プラグイン対応に
-
-**目標**: OLD_App の webhook_routes.py ロジックをプラグイン化
-
-**参考元**: OLD_App/webhook_routes.py
-
-**成果物**:
-```python
-# v3/plugins/webhooks/twitch_webhook.py
-
-from flask import Blueprint, request, jsonify, current_app
-
-webhook_bp = Blueprint('webhook', __name__)
-
-@webhook_bp.route("/webhook", methods=["POST", "GET"])
-def handle_webhook():
-    """Twitch EventSub Webhook ハンドラー"""
-
-    if request.method == "GET":
-        return "Webhook endpoint is working! POST requests only.", 200
-
-    # TwitchAPIPlugin を取得
-    from plugin_manager import PluginManager
-    plugin = PluginManager.get_plugin("TwitchAPIPlugin")
-
-    if not plugin:
-        return jsonify({"error": "TwitchAPIPlugin not loaded"}), 500
-
-    # 署名検証
-    if not plugin.verify_webhook_signature(request):
-        return jsonify({"status": "signature mismatch"}), 403
-
-    # JSON パース
-    try:
-        data = request.get_json()
-    except Exception as e:
-        current_app.logger.error(f"JSON parse error: {e}")
-        return jsonify({"error": "Invalid JSON"}), 400
-
-    # メッセージ種別確認
-    message_type = request.headers.get("Twitch-Eventsub-Message-Type")
-
-    # チャレンジ応答
-    if message_type == "webhook_callback_verification":
-        challenge = data.get("challenge", "")
-        return challenge, 200, {"Content-Type": "text/plain"}
-
-    # イベント処理
-    if message_type == "notification":
-        result = plugin.handle_eventsub_event(data)
-        return jsonify({"status": "success", "result": result}), 200
-
-    return jsonify({"status": "unhandled message type"}), 200
-```
-
-**チェックリスト**:
-- [ ] Blueprint 定義
-- [ ] PluginManager 統合
-- [ ] GET/POST 処理
-- [ ] 署名検証統合
-- [ ] チャレンジ応答
-- [ ] イベント処理ディスパッチ
-
----
-
-### Task 3-C-2: 統合テスト（Flask エンドポイント）
-
-**目標**: Webhook ハンドラーと TwitchAPIPlugin の統合テスト
-
-**テストファイル**: `tests/integration/test_twitch_webhook_integration.py`
-
-**テストケース**:
-- [ ] チャレンジ検証レスポンス
-- [ ] stream.online イベント処理
-- [ ] stream.offline イベント処理
-- [ ] 無効な署名の拒否
-- [ ] JSON パースエラーの処理
-
----
-
-## Phase 3-D: PubSubHubbub連携プラグイン基盤（推定期間：4-5週間）
-
-### Task 3-D-1: PubSubHubbub 基本クラス実装
-
-**目標**: PubSubHubbub Hub との連携基盤
-
-**成果物**:
-```python
-# v3/plugins/pubsub_webhook_plugin.py
-
-class PubSubHubbubPlugin(NotificationPlugin):
-    """PubSubHubbub 連携プラグイン"""
-
-    def __init__(self):
-        self.hub_url = "https://pubsubhubbub.appspot.com/"
-        self.webhook_base_url = os.getenv("WEBHOOK_BASE_URL")
-
-    def is_available(self) -> bool:
-        return self.webhook_base_url is not None
-
-    def subscribe_to_feed(self, feed_url: str) -> bool:
-        """Feed に購読登録"""
-        pass
-
-    def unsubscribe_from_feed(self, feed_url: str) -> bool:
-        """Feed から購読解除"""
-        pass
-
-    def verify_callback_challenge(self, challenge: str) -> bool:
-        """Hub からのチャレンジ検証"""
-        pass
-
-    def post_video(self, video: Dict[str, Any]) -> bool:
-        pass
-```
-
-**チェックリスト**:
-- [ ] クラス定義
-- [ ] subscribe_to_feed() 実装
-- [ ] unsubscribe_from_feed() 実装
-- [ ] verify_callback_challenge() 実装
-- [ ] テスト実装
-
----
-
-### Task 3-D-2 ～ 3-D-4: PubSubHubbub フル実装
-
-（詳細は省略、同様のアプローチで進める）
 
 ---
 
@@ -687,16 +573,6 @@ class PubSubHubbubPlugin(NotificationPlugin):
 - [ ] TunnelServicePlugin: 統合テスト 5/5 パス
 - [ ] 自動再起動ロジック: 機能確認済み
 
-### Phase 3-C 完了条件
-- [ ] Flask Webhook ハンドラー実装完了
-- [ ] PluginManager との統合確認
-- [ ] 統合テスト: 5/5 パス
-
-### Phase 3-D 完了条件
-- [ ] PubSubHubbubPlugin: 実装完了
-- [ ] Hub 連携: 動作確認済み
-- [ ] コールバック処理: テスト 10/10 パス
-
 ---
 
 ## ドキュメント作成タスク
@@ -705,7 +581,6 @@ class PubSubHubbubPlugin(NotificationPlugin):
 |:--|:--|:--|
 | TwitchAPIPlugin ガイド | 使用方法・設定 | 開発者 |
 | TunnelServicePlugin ガイド | トンネル設定ガイド | 開発者 |
-| PubSubHubbubPlugin ガイド | 購読設定・管理 | 開発者 |
 | Webhook エンドポイント | API 仕様書 | 開発者 |
 | 実装ガイド | プラグイン開発のベストプラクティス | 開発者 |
 
@@ -731,10 +606,6 @@ Phase 3-B (Tunnel)
 Phase 3-C (Webhook Integration)
     ├─ TwitchAPIPlugin ← Phase 3-A 依存
     └─ Flask Webhook Handler
-
-Phase 3-D (PubSubHubbub)
-    ├─ TunnelServicePlugin ← Phase 3-B 依存
-    └─ PubSubHubbubPlugin
 ```
 
 ---
@@ -745,5 +616,34 @@ Phase 3-D (PubSubHubbub)
 |:--|:--|
 | Twitch API レート制限 | キャッシング・バッチ処理 |
 | トンネルサービス停止 | フェイルオーバー実装 |
-| PubSubHubbub 遅延 | ポーリング併用 |
 | テストカバレッジ不足 | ユニット・統合・E2E 全段階でテスト |
+
+---
+
+## 📝 更新履歴
+
+### 2026-01-03: v3.3.0 実装完了を反映
+
+**変更内容**:
+- ✅ WebSub/PubSubHubbub センターサーバー実装を「完了」に移動（v3.2.0+）
+  - YouTube RSS Feed WebSub Hub: 本番運用実績あり
+  - 複数ユーザーへの提供中
+  - 詳細: [CENTER_SERVER_INTEGRATION_SPEC.md](../References/CENTER_SERVER_INTEGRATION_SPEC.md)
+
+- 📋 Phase 3-C を「将来計画」（v4.0.0+）に再分類(Phase から除外)
+  - Twitch EventSub WebSub 化（Q1 2026）
+  - ニコニコ WebSub 対応（Q2 2026）
+  - セキュリティ監査・マルチテナント強化（Q2-Q3 2026）
+
+- 📊 実装スケジュールを更新
+  - WebSub 展開は完了
+  - Twitch/Tunnel の実装予定時期を更新
+
+**根拠**:
+- WebSub 機能: 複数ユーザーが現在利用中
+- 設定項目: settings.env.example に20+ のWebSub 関連パラメータ
+- 参考ドキュメント: [CENTER_SERVER_INTEGRATION_SPEC.md](../References/CENTER_SERVER_INTEGRATION_SPEC.md)、[FUTURE_ROADMAP_v3.md](../References/FUTURE_ROADMAP_v3.md)
+
+### 2025-12-18: 初版作成
+
+初期計画として、Twitch/Tunnel/PubSubHubbub の実装タスクを定義。

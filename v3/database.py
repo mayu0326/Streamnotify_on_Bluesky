@@ -13,6 +13,7 @@ import os
 import time
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 logger = logging.getLogger("AppLogger")
 post_logger = logging.getLogger("PostLogger")
@@ -25,8 +26,13 @@ DB_PATH = "data/video_list.db"
 DB_TIMEOUT = 10
 DB_RETRY_MAX = 3
 
-# バリデーション用の許可リスト
-VALID_CONTENT_TYPES = {"video", "live", "archive", "none"}
+# バリデーション用の許可リスト（v3.3.0: 5カテゴリ対応）
+# - "video": 通常動画
+# - "archive": LIVE終了後のアーカイブ
+# - "schedule": LIVE予約枠（upcoming）
+# - "live": LIVE配信中
+# - "completed": LIVE配信終了
+VALID_CONTENT_TYPES = {"video", "archive", "schedule", "live", "completed", "none"}
 VALID_LIVE_STATUSES = {None, "none", "upcoming", "live", "completed"}
 
 
@@ -68,6 +74,13 @@ class Database:
 
         Returns:
             正規化されたcontent_type（デフォルト値は "video"）
+
+        対応値:
+            - "video": 通常動画
+            - "archive": LIVE終了後のアーカイブ
+            - "schedule": LIVE予約枠（upcoming）
+            - "live": LIVE配信中
+            - "completed": LIVE配信終了
         """
         if content_type not in VALID_CONTENT_TYPES:
             logger.warning(f"⚠️ 不正な content_type: '{content_type}' → デフォルト値 'video' に置き換えます")
@@ -127,6 +140,8 @@ class Database:
                     image_mode TEXT,
                     image_filename TEXT,
                     source TEXT DEFAULT 'youtube',
+                    representative_time_utc TEXT,
+                    representative_time_jst TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
@@ -165,6 +180,15 @@ class Database:
                 logger.info("🔄 カラムを追加します: broadcast_status")
                 cursor.execute("ALTER TABLE videos ADD COLUMN broadcast_status TEXT")
 
+            # Representative time カラム（v3.3.1+: 動画種別ごとに基準時刻を切り替える）
+            if "representative_time_utc" not in columns:
+                logger.info("🔄 カラムを追加します: representative_time_utc")
+                cursor.execute("ALTER TABLE videos ADD COLUMN representative_time_utc TEXT")
+
+            if "representative_time_jst" not in columns:
+                logger.info("🔄 カラムを追加します: representative_time_jst")
+                cursor.execute("ALTER TABLE videos ADD COLUMN representative_time_jst TEXT")
+
             conn.commit()
             conn.close()
 
@@ -172,7 +196,7 @@ class Database:
             logger.error(f"スキーママイグレーションエラー: {e}")
             raise
 
-    def insert_video(self, video_id, title, video_url, published_at, channel_name="", thumbnail_url="", content_type="video", live_status=None, is_premiere=False, source="youtube", skip_dedup=False):
+    def insert_video(self, video_id, title, video_url, published_at, channel_name="", thumbnail_url="", content_type="video", live_status=None, is_premiere=False, source="youtube", skip_dedup=False, representative_time_utc=None, representative_time_jst=None):
         """
         動画情報を挿入（リトライ付き、YouTube重複排除対応）
 
@@ -188,91 +212,33 @@ class Database:
             is_premiere: プレミア配信フラグ
             source: 配信元（"youtube"/"niconico"など）
             skip_dedup: 重複排除をスキップするか（手動追加時 True）
+            representative_time_utc: 基準時刻（UTC）
+            representative_time_jst: 基準時刻（JST）
         """
         # バリデーション
         content_type = self._validate_content_type(content_type)
         live_status = self._validate_live_status(live_status, content_type)
 
-        # YouTube動画の重複チェック（優先度ロジック適用）
+        # YouTube動画の重複チェック（簡略版）
         # ★ skip_dedup=True なら重複チェックをスキップ（手動追加時の強制挿入）
-        if not skip_dedup and source == "youtube" and title and channel_name:
+        if not skip_dedup and source == "youtube":
             try:
-                import sys
-                from pathlib import Path
-                sys.path.insert(0, str(Path(__file__).parent / 'utils' / 'database'))
-                from youtube_dedup_priority import get_video_priority, should_keep_video
-
                 conn = self._get_connection()
-                conn.row_factory = sqlite3.Row
                 cursor = conn.cursor()
 
+                # 同じ video_id が既に存在するかチェック
                 cursor.execute("""
-                    SELECT * FROM videos
-                    WHERE source='youtube' AND title=? AND channel_name=?
-                """, (title, channel_name))
+                    SELECT id FROM videos WHERE source='youtube' AND video_id=?
+                """, (video_id,))
 
-                existing_videos = [dict(row) for row in cursor.fetchall()]
+                existing = cursor.fetchone()
                 conn.close()
 
-                if existing_videos:
-                    # 新しい動画の優先度と既存動画の優先度を比較
-                    new_video = {
-                        'video_id': video_id,
-                        'content_type': content_type,
-                        'live_status': live_status,
-                        'is_premiere': 1 if is_premiere else 0,
-                        'published_at': published_at
-                    }
+                if existing:
+                    # 同一 video_id は既存レコードを更新（重複登録を防止）
+                    logger.debug(f"⏭️ YouTube動画の重複登録を検出: video_id={video_id}")
+                    return False
 
-                    if not should_keep_video(new_video, existing_videos):
-                        logger.debug(f"⏭️ YouTube重複排除: より優先度の高い動画が既に登録されています（{title}）")
-                        return False
-
-                    # 優先度が高い場合は既存の低優先度動画を削除
-                    existing_priority = max(get_video_priority(v) for v in existing_videos)
-                    new_priority = get_video_priority(new_video)
-
-                    if new_priority > existing_priority:
-                        # 既存動画から低優先度のものを削除
-                        ids_to_delete = [
-                            v['id'] for v in existing_videos
-                            if get_video_priority(v) < new_priority
-                        ]
-                        if ids_to_delete:
-                            try:
-                                from deleted_video_cache import get_deleted_video_cache
-                                deleted_cache = get_deleted_video_cache()
-                            except ImportError:
-                                deleted_cache = None
-
-                            conn = self._get_connection()
-                            cursor = conn.cursor()
-                            for del_id in ids_to_delete:
-                                # video_id を取得してから削除
-                                cursor.execute("SELECT video_id FROM videos WHERE id=?", (del_id,))
-                                row = cursor.fetchone()
-                                if row:
-                                    deleted_video_id = row[0]
-
-                                    # DB から削除
-                                    cursor.execute("DELETE FROM videos WHERE id=?", (del_id,))
-                                    logger.debug(f"✅ 削除: 優先度が低い動画 ID={del_id}, video_id={deleted_video_id}")
-
-                                    # deleted_videos.json に登録
-                                    if deleted_cache:
-                                        try:
-                                            deleted_cache.add_deleted_video(deleted_video_id, source=source)
-                                        except Exception as e:
-                                            logger.warning(f"削除動画キャッシュへの登録失敗: {e}")
-
-                            conn.commit()
-                            conn.close()
-                    else:
-                        # 優先度が同じか低い場合はスキップ
-                        return False
-
-            except ImportError:
-                logger.warning("youtube_dedup_priority モジュールが見つかりません")
             except Exception as e:
                 logger.warning(f"重複チェック処理でエラー: {e}")
                 # エラー時は続行して挿入を試みる
@@ -283,18 +249,18 @@ class Database:
                 cursor = conn.cursor()
 
                 cursor.execute("""
-                    INSERT INTO videos (video_id, title, video_url, published_at, channel_name, thumbnail_url, content_type, live_status, is_premiere, source)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (video_id, title, video_url, published_at, channel_name, thumbnail_url, content_type, live_status, 1 if is_premiere else 0, source))
+                    INSERT INTO videos (video_id, title, video_url, published_at, channel_name, thumbnail_url, content_type, live_status, is_premiere, source, representative_time_utc, representative_time_jst)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (video_id, title, video_url, published_at, channel_name, thumbnail_url, content_type, live_status, 1 if is_premiere else 0, source, representative_time_utc, representative_time_jst))
 
                 conn.commit()
                 conn.close()
                 logger.info(f"動画を保存しました: {title}")
                 return True
 
-            except sqlite3.IntegrityError:
+            except sqlite3.IntegrityError as ie:
                 conn.close()
-                logger.debug(f"動画は既に保存されています: {video_id}")
+                logger.debug(f"重複登録を検出（スキップ）: video_id={video_id}")
                 return False
 
             except sqlite3.OperationalError as e:
@@ -332,6 +298,34 @@ class Database:
         except Exception as e:
             logger.error(f"未投稿動画の取得に失敗しました: {e}")
             return []
+
+    def get_video_by_id(self, video_id: str) -> Optional[dict]:
+        """
+        video_id で動画を取得
+
+        Args:
+            video_id: 動画ID
+
+        Returns:
+            dict: 動画情報（見つからない場合は None）
+        """
+        try:
+            conn = self._get_connection()
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+
+            cursor.execute("""
+                SELECT * FROM videos WHERE video_id = ?
+            """, (video_id,))
+
+            row = cursor.fetchone()
+            conn.close()
+
+            return dict(row) if row else None
+
+        except Exception as e:
+            logger.error(f"動画の取得に失敗しました（video_id={video_id}）: {e}")
+            return None
 
     def get_selected_videos(self):
         """投稿選択された未投稿動画を取得（スケジュール順）"""
@@ -453,6 +447,7 @@ class Database:
             where_clauses.append(f"({type_filter})")
 
             # DELETE された動画を除外
+            deleted_ids = []
             from deleted_video_cache import get_deleted_video_cache
             try:
                 deleted_cache = get_deleted_video_cache()
@@ -460,8 +455,13 @@ class Database:
                 if deleted_ids:
                     placeholders = ",".join("?" * len(deleted_ids))
                     where_clauses.append(f"video_id NOT IN ({placeholders})")
+                    logger.debug(f"除外動画リスト: {len(deleted_ids)} 件を除外フィルタに適用")
             except ImportError:
-                pass  # モジュールなければスキップ
+                logger.debug("deleted_video_cache モジュールが見つかりません")
+            except AttributeError as ae:
+                logger.warning(f"⚠️ get_deleted_video_ids() 呼び出しエラー: {ae}")
+            except Exception as e:
+                logger.warning(f"⚠️ 除外動画リスト取得エラー: {e}")
 
             where_clause = " AND ".join(where_clauses)
 
@@ -469,7 +469,7 @@ class Database:
                 SELECT * FROM videos
                 WHERE {where_clause}
                 ORDER BY published_at DESC
-            """, deleted_ids if 'deleted_ids' in locals() else [])
+            """, deleted_ids)
 
             videos = [dict(row) for row in cursor.fetchall()]
             conn.close()
@@ -505,6 +505,34 @@ class Database:
             return videos
         except Exception as e:
             logger.error(f"live_status={live_status} の動画取得に失敗: {e}")
+            return []
+
+    def get_videos_by_content_type(self, content_type: str):
+        """
+        指定された content_type の動画を取得
+
+        Args:
+            content_type: "video" / "archive" / "schedule" / "live" / "completed" / "none"
+
+        Returns:
+            List[Dict]: 該当する動画情報リスト
+        """
+        try:
+            conn = self._get_connection()
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT * FROM videos WHERE content_type = ?
+                ORDER BY published_at DESC
+                """,
+                (content_type,)
+            )
+            videos = [dict(row) for row in cursor.fetchall()]
+            conn.close()
+            return videos
+        except Exception as e:
+            logger.error(f"content_type={content_type} の動画取得に失敗: {e}")
             return []
 
     def mark_as_posted(self, video_id):
@@ -784,35 +812,59 @@ class Database:
         logger.error(f"❌ published_at 更新に失敗（リトライ上限）: {video_id}")
         return False
 
-    def delete_video(self, video_id: str) -> bool:
-        """動画をDBから削除（除外動画リスト連携付き）"""
+    def update_video_metadata(self, video_id: str, **metadata) -> bool:
+        """
+        ★ API から取得したメタデータを更新
+
+        タイトル、説明、サムネイル URL などの動画メタデータを更新します。
+
+        Args:
+            video_id: 動画ID
+            **metadata: 更新するカラム名と値（例: title="新タイトル", thumbnail_url="..."）
+
+        Returns:
+            更新成功フラグ
+        """
+        if not video_id or not metadata:
+            return False
+
+        # 有効なカラムのみを許可
+        valid_columns = {
+            "title", "channel_name", "thumbnail_url", "is_premiere",
+            "is_short", "is_members_only"
+        }
+        update_data = {k: v for k, v in metadata.items() if k in valid_columns and v is not None}
+
+        if not update_data:
+            return False
+
         for attempt in range(DB_RETRY_MAX):
             try:
-                conn = sqlite3.connect(self.db_path, timeout=DB_TIMEOUT)
-                conn.row_factory = sqlite3.Row
+                conn = self._get_connection()
                 cursor = conn.cursor()
 
-                # 削除前に source を取得
-                cursor.execute("SELECT source FROM videos WHERE video_id = ?", (video_id,))
-                row = cursor.fetchone()
-                source = row["source"] if row else "youtube"
+                # 更新 SQL を動的に構築
+                set_clause = ", ".join([f"{col} = ?" for col in update_data.keys()])
+                values = list(update_data.values()) + [video_id]
 
-                # DB から削除
-                cursor.execute("DELETE FROM videos WHERE video_id = ?", (video_id,))
+                sql = f"UPDATE videos SET {set_clause} WHERE video_id = ?"
+                cursor.execute(sql, values)
+
+                affected_rows = cursor.rowcount
                 conn.commit()
                 conn.close()
 
-                # ★ 新: 除外動画リストに追加
-                try:
-                    from deleted_video_cache import get_deleted_video_cache
-                    cache = get_deleted_video_cache()
-                    cache.add_deleted_video(video_id, source=source)
-                except ImportError:
-                    logger.warning("deleted_video_cache モジュールが見つかりません")
-                except Exception as e:
-                    logger.error(f"除外動画リスト登録エラー: {video_id} - {e}")
+                if affected_rows == 0:
+                    logger.debug(f"⚠️ 対象の動画が見つかりません: {video_id}")
+                    return False
 
-                logger.info(f"✅ 動画を削除しました: {video_id}")
+                # 更新内容をログ出力
+                for col, val in update_data.items():
+                    if isinstance(val, str) and len(val) > 50:
+                        logger.info(f"✅ {col} を更新: {video_id} → {val[:50]}...")
+                    else:
+                        logger.info(f"✅ {col} を更新: {video_id} → {val}")
+
                 return True
 
             except sqlite3.OperationalError as e:
@@ -821,30 +873,121 @@ class Database:
                     time.sleep(0.5)
                     continue
                 else:
-                    logger.error(f"動画削除に失敗: {video_id} - {e}")
+                    logger.error(f"❌ DB エラー（メタデータ更新失敗）: {video_id} - {e}")
                     return False
 
             except Exception as e:
-                logger.error(f"動画削除エラー: {video_id} - {e}")
+                logger.error(f"❌ メタデータ更新に予期しないエラー: {video_id} - {e}")
                 return False
 
+        logger.error(f"❌ メタデータ更新に失敗（リトライ上限）: {video_id}")
         return False
 
-    def delete_videos_batch(self, video_ids: list) -> int:
+    def delete_video(self, video_id: str) -> dict:
+        """動画をDBから削除（除外動画リスト連携付き・画像情報付き返却）
+
+        返却される辞書で、呼び出し元（GUI）が画像ファイルの削除を判断できるようにする。
+
+        Returns:
+            {
+                "success": bool,           # 削除成功フラグ
+                "image_filename": str,     # 削除対象の画像ファイル名
+                "source": str,             # 配信元（youtube / niconico など）
+            }
+        """
+        result = {
+            "success": False,
+            "image_filename": None,
+            "source": "youtube"
+        }
+
+        for attempt in range(DB_RETRY_MAX):
+            try:
+                conn = sqlite3.connect(self.db_path, timeout=DB_TIMEOUT)
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+
+                # 削除前に video_id, source, image_filename, image_mode を取得
+                cursor.execute(
+                    "SELECT source, image_filename, image_mode FROM videos WHERE video_id = ?",
+                    (video_id,)
+                )
+                row = cursor.fetchone()
+
+                if row:
+                    result["source"] = row["source"] or "youtube"
+                    result["image_filename"] = row["image_filename"]  # None でも OK（呼び出し元で判定）
+
+                # DB から削除
+                cursor.execute("DELETE FROM videos WHERE video_id = ?", (video_id,))
+                conn.commit()
+                conn.close()
+
+                result["success"] = True
+
+                # ★ 新: 除外動画リストに追加
+                try:
+                    from deleted_video_cache import get_deleted_video_cache
+                    cache = get_deleted_video_cache()
+                    cache.add_deleted_video(video_id, source=result["source"])
+                except ImportError:
+                    logger.warning("deleted_video_cache モジュールが見つかりません")
+                except Exception as e:
+                    logger.error(f"除外動画リスト登録エラー: {video_id} - {e}")
+
+                logger.info(f"✅ 動画を削除しました: {video_id}")
+                return result
+
+            except sqlite3.OperationalError as e:
+                if "locked" in str(e).lower() and attempt < DB_RETRY_MAX - 1:
+                    logger.debug(f"DB ロック中。{attempt + 1}/{DB_RETRY_MAX} リトライします...")
+                    time.sleep(0.5)
+                    continue
+                else:
+                    logger.error(f"動画削除に失敗: {video_id} - {e}")
+                    return result
+
+            except Exception as e:
+                logger.error(f"動画削除エラー: {video_id} - {e}")
+                return result
+
+        logger.error(f"動画削除に失敗（リトライ上限）: {video_id}")
+        return result
+
+    def delete_videos_batch(self, video_ids: list) -> dict:
         """複数の動画をDBから削除
 
         Args:
             video_ids: 削除対象の動画ID リスト
 
         Returns:
-            削除した数
+            {
+                "deleted_count": int,                    # 削除成功件数
+                "deleted_videos": [                      # 削除されたビデオの情報
+                    {
+                        "video_id": str,
+                        "image_filename": str or None,
+                        "source": str
+                    },
+                    ...
+                ]
+            }
         """
-        deleted_count = 0
-        for video_id in video_ids:
-            if self.delete_video(video_id):
-                deleted_count += 1
+        deleted_videos = []
 
-        return deleted_count
+        for video_id in video_ids:
+            result = self.delete_video(video_id)
+            if result["success"]:
+                deleted_videos.append({
+                    "video_id": video_id,
+                    "image_filename": result["image_filename"],
+                    "source": result["source"]
+                })
+
+        return {
+            "deleted_count": len(deleted_videos),
+            "deleted_videos": deleted_videos
+        }
 
 
 def get_database(db_path=DB_PATH) -> Database:

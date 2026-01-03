@@ -18,7 +18,7 @@ import logging
 import threading
 import tkinter as tk
 import gc
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # バージョン情報
 from app_version import get_version_info, get_full_version_info
@@ -110,6 +110,9 @@ def main():
         logger = setup_logging(debug_mode=config.debug_mode)
         logger.info(f"StreamNotify on Bluesky {get_version_info()}")
         logger.info(f"動作モードは: {config.operation_mode} に設定されています。")
+
+        # ★ 設定ログ出力（初期化時に1回だけ）
+        config._log_operation_mode()
     except Exception as e:
         print(f"設定の読み込みに失敗しました: {e}")
         sys.exit(1)
@@ -139,25 +142,43 @@ def main():
     except Exception as e:
         logger.error(f"除外動画リストの初期化に失敗しました: {e}")
 
+    # ★ 新: YouTubeVideoClassifier を初期化
+    try:
+        from youtube_core.youtube_video_classifier import get_video_classifier
+        classifier = get_video_classifier(api_key=config.youtube_api_key)
+        logger.info("✅ YouTube動画分類器を初期化しました")
+    except Exception as e:
+        logger.warning(f"⚠️ YouTube動画分類器の初期化に失敗しました: {e}")
+        classifier = None
+
+    # ★ 新: LiveModule を初期化
+    try:
+        from plugins.youtube.live_module import get_live_module
+        live_module = get_live_module(db=db, plugin_manager=None)  # plugin_manager は後で注入
+        logger.info("✅ YouTubeLiveモジュールを初期化しました")
+    except Exception as e:
+        logger.warning(f"⚠️ YouTubeLiveモジュールの初期化に失敗しました: {e}")
+        live_module = None
+
     # ===== YouTube フィード取得モード分岐 =====
     try:
         if config.youtube_feed_mode == "websub":
             # WebSub モード（Websubサーバー HTTP API 経由）
             logger.info("[YouTube] YouTube WebSub の取得を準備しています...")
             try:
-                from youtube_websub import get_youtube_websub
+                from youtube_core.youtube_websub import get_youtube_websub
                 yt_rss = get_youtube_websub(config.youtube_channel_id)
                 logger.info("[YouTube] WebSub の取得準備を完了しました")
             except ImportError:
                 logger.warning("[YouTube] youtube_websub モジュールが見つかりません。RSS モードにフォールバックします。")
                 config.youtube_feed_mode = "poll"
-                from youtube_rss import get_youtube_rss
+                from youtube_core.youtube_rss import get_youtube_rss
                 yt_rss = get_youtube_rss(config.youtube_channel_id)
                 logger.info("[YouTube] RSS の取得準備を完了しました")
         else:
             # RSS ポーリング モード（デフォルト）
             logger.info("[YouTube] YouTubeRSS の取得を準備しています...")
-            from youtube_rss import get_youtube_rss
+            from youtube_core.youtube_rss import get_youtube_rss
             yt_rss = get_youtube_rss(config.youtube_channel_id)
             logger.info("[YouTube] RSS の取得準備を完了しました")
     except Exception as e:
@@ -167,16 +188,26 @@ def main():
     plugin_manager = PluginManager(plugins_dir="plugins")
     loaded_names = set()
 
+    # ★ 新: LiveModule に plugin_manager を注入
+    if live_module:
+        live_module.set_plugin_manager(plugin_manager)
+        logger.debug("✅ LiveModule に PluginManager を注入しました")
+
     # Asset マネージャーの初期化（プラグイン導入時に資源を配置）
     asset_manager = get_asset_manager()
     logger.info("📦 Asset マネージャーを初期化しました")
 
-    plugin_files = [f for f in os.listdir("plugins") if f.endswith(".py") and not f.startswith("_") and f not in ("bluesky_plugin.py", "niconico_plugin.py", "youtube_api_plugin.py", "youtube_live_plugin.py")]
-    for pf in plugin_files:
-        plugin_name = pf[:-3]
+    # ★ プラグイン自動検出（discover_plugins でフィルタリング済み）
+    auto_plugins = plugin_manager.discover_plugins()
+    for plugin_name, plugin_path in auto_plugins:
+        # 除外リスト（明示的にロード）
+        if plugin_name in ("bluesky_plugin", "niconico_plugin", "youtube_api_plugin"):
+            continue
+
         if plugin_name in loaded_names:
             continue
-        plugin_manager.load_plugin(plugin_name, os.path.join("plugins", pf))
+
+        plugin_manager.load_plugin(plugin_name, plugin_path)
         # 自動ロードされたプラグインを有効化
         plugin_manager.enable_plugin(plugin_name)
 
@@ -190,36 +221,20 @@ def main():
 
     # YouTubeAPI プラグインを手動でロード・有効化
     try:
-        plugin_manager.load_plugin("youtube_api_plugin", os.path.join("plugins", "youtube_api_plugin.py"))
+        plugin_manager.load_plugin("youtube_api_plugin", os.path.join("plugins", "youtube", "youtube_api_plugin.py"))
         plugin_manager.enable_plugin("youtube_api_plugin")
         asset_manager.deploy_plugin_assets("youtube_api_plugin")
     except Exception as e:
         logger.debug(f"YouTubeAPI プラグインのロード失敗: {e}")
 
-    # YouTubeLive 検出プラグインを手動でロード・有効化
-    try:
-        plugin_manager.load_plugin("youtube_live_plugin", os.path.join("plugins", "youtube_live_plugin.py"))
-        asset_manager.deploy_plugin_assets("youtube_live_plugin")
-
-        # ★ YouTube Live プラグインに plugin_manager を注入（自動投稿用）
-        # ★ IMPORTANT: enable_plugin() より前に注入する必要がある（on_enable で自動投稿ロジックが実行されるため）
-        live_plugin = plugin_manager.get_plugin("youtube_live_plugin")
-        if live_plugin:
-            live_plugin.set_plugin_manager(plugin_manager)
-
-        # ★ 注入完了後に有効化（on_enable() が呼ばれる）
-        plugin_manager.enable_plugin("youtube_live_plugin")
-
-        # ★ プラグイン判定後に GUI を自動リロード
-        if gui_instance:
-            logger.debug("🔄 YouTube Live プラグイン判定後、GUI を再読込します...")
-            try:
-                gui_instance.refresh_data()
-                logger.info("✅ GUI を自動更新しました")
-            except Exception as e:
-                logger.debug(f"⚠️ GUI 自動更新に失敗（無視）: {e}")
-    except Exception as e:
-        logger.debug(f"YouTubeLive 検出プラグインのロード失敗: {e}")
+    # GUI インスタンスがあれば自動リロード
+    if gui_instance:
+        try:
+            logger.debug("🔄 プラグイン判定後、GUI を再読込します...")
+            gui_instance.refresh_data()
+            logger.info("✅ GUI を自動更新しました")
+        except Exception as e:
+            logger.debug(f"⚠️ GUI 自動更新に失敗（無視）: {e}")
 
 
     if config.youtube_api_plugin_exists:
@@ -262,7 +277,7 @@ def main():
         logger.info(f"✅ Bluesky 拡張機能プラグインを有効化しました（画像添付機能: 有効）")
     except Exception as e:
         logger.warning(f"⚠️  Bluesky 拡張機能プラグインの導入に失敗しました: {e}")
-        logger.info(f"ℹ️ プラグインがない場合でも、コア機能（テキスト投稿 + URLリンク化）は利用可能です")
+        logger.info(f"ℹ️ Bluesky投稿機能をコア機能のみで起動します。(プラグイン未導入)")
 
     if config.niconico_plugin_exists:
         try:
@@ -285,58 +300,12 @@ def main():
         except Exception as e:
             logger.warning(f"[ニコニコ連携] 初期化エラー: {type(e).__name__}: {e}", exc_info=True)
     else:
-        logger.info("[ニコニコ連携] ニコニコ連携プラグインは導入されていません。")
+        logger.info("ニコニコプラグインが導入されていないため、ニコニコ関連機能は無効化されます。")
 
     stop_event = threading.Event()
     gui_thread = threading.Thread(target=run_gui, args=(db, plugin_manager, stop_event, bluesky_core), daemon=True)
     gui_thread.start()
     logger.info("✅ アプリケーションの起動が完了しました。 管理画面を開きます。")
-
-    # ===== YouTube Live 終了検知用の定期ポーリングスレッド =====
-    def start_youtube_live_polling():
-        """YouTubeLive ライブ終了検知の定期ポーリングを開始"""
-        import time
-
-        # ポーリング間隔（分） - 最短15分、最長1時間に制限
-        poll_interval_minutes = int(os.getenv("YOUTUBE_LIVE_POLL_INTERVAL", "15"))
-
-        # バリデーション：最短15分、最長60分
-        if poll_interval_minutes < 15:
-            logger.warning(f"⚠️ YOUTUBE_LIVE_POLL_INTERVAL={poll_interval_minutes} は短すぎます（最短15分）")
-            poll_interval_minutes = 15
-        elif poll_interval_minutes > 60:
-            logger.warning(f"⚠️ YOUTUBE_LIVE_POLL_INTERVAL={poll_interval_minutes} は長すぎます（最長60分）")
-            poll_interval_minutes = 60
-
-        # ★ 修正: 旧フラグではなく新 MODE 変数で判定
-        # YOUTUBE_LIVE_AUTO_POST_MODE が "all" または "live" の場合のみポーリング有効
-        mode = os.getenv("YOUTUBE_LIVE_AUTO_POST_MODE", "off").lower()
-        if mode not in ("all", "live"):
-            logger.info(f"ℹ️ YOUTUBE_LIVE_AUTO_POST_MODE={mode} のためライブ終了検知は無効です")
-            return
-
-        logger.info(f"📡 YouTubeLive ライブ終了検知ポーリングを開始します（間隔: {poll_interval_minutes} 分）")
-
-        while not stop_event.is_set():
-            try:
-                live_plugin = plugin_manager.get_plugin("youtube_live_plugin")
-                if live_plugin and live_plugin.is_available():
-                    logger.debug("🔄 YouTubeLive ライブ終了チェック実行...")
-                    live_plugin.poll_live_status()
-                else:
-                    logger.debug("ℹ️ YouTubeLive プラグインが利用不可")
-            except Exception as e:
-                logger.error(f"❌ ライブ終了チェックエラー: {e}")
-
-            # 待機
-            for _ in range(poll_interval_minutes * 60):
-                if stop_event.is_set():
-                    break
-                time.sleep(1)
-
-    # ライブ終了検知スレッド開始
-    live_polling_thread = threading.Thread(target=start_youtube_live_polling, daemon=True)
-    live_polling_thread.start()
 
     polling_count = 0
     last_post_time = None
@@ -377,34 +346,61 @@ def main():
 
             if config.youtube_feed_mode == "websub":
                 logger.info("[YouTube] WebSub から情報を取得しています...")
-                # WebSub: API 経由で動画情報を取得
-                saved_count = yt_rss.save_to_db(db)
+                # WebSub: ProductionServerAPI 経由で動画情報を取得
+                from youtube_core.youtube_websub import YouTubeWebSub
+                yt_websub = YouTubeWebSub(config.youtube_channel_id)
+                # ★ 修正: classifier と live_module を渡す
+                saved_count, live_count = yt_websub.save_to_db(db, classifier=classifier, live_module=live_module)
+                logger.info(f"[YouTube] WebSub DB保存完了: {saved_count} 件（Live登録: {live_count} 件）")
 
-                # ★ 重要: WebSub でも API から取得した動画のサムネイル処理が必要
+                # ★ 重要: WebSub から取得した動画のサムネイルを処理
+                # 新規動画は thumb_mgr.ensure_websub_images で即座に処理
+                # 既存動画でサムネイル未保存のものは youtube_thumb_backfill で自動補完
+                websub_videos = yt_websub.fetch_feed()
+                logger.debug(f"[YouTube] WebSub fetch_feed() 完了: {len(websub_videos)} 件")
+
                 if saved_count > 0:
-                    logger.info(f"[YouTube] 取得した {saved_count} 個の動画のサムネイルを処理しています...")
-                    thumb_saved = thumb_mgr.fetch_and_ensure_images(config.youtube_channel_id)
-                    logger.debug(f"[YouTube] サムネイル処理完了: {thumb_saved} 件")
+                    # ケース1: 新規動画あり → 新規動画のサムネイルを処理
+                    logger.info(f"[YouTube] 取得した {saved_count} 個の新規動画のサムネイルを処理しています...")
+                    thumb_saved = thumb_mgr.ensure_websub_images(websub_videos)
+                    logger.info(f"[YouTube] 新規動画のサムネイル処理完了: {thumb_saved} 件")
+                else:
+                    # ケース2: 新規動画なし → 既存動画でサムネイル未保存のものを補完
+                    videos_without_images = db.get_videos_without_image()
+
+                    if videos_without_images:
+                        logger.info(f"[YouTube] サムネイル未保存の既存動画を検出: {len(videos_without_images)} 件")
+                        logger.info(f"[YouTube] youtube_thumb_backfill により自動補完します...")
+
+                        try:
+                            # 既存スクリプトの関数を直接呼び出してサムネイル補完
+                            from thumbnails.youtube_thumb_backfill import backfill_youtube
+                            backfill_youtube(dry_run=False)
+                        except Exception as e:
+                            logger.warning(f"⚠️ サムネイル補完処理に失敗しました: {e}")
             else:
                 logger.info("[YouTube] YouTubeRSS から情報を取得しています...")
                 # RSS ポーリング: RSS フェッチ・DB 保存・画像自動処理を一体実行
-                saved_count = thumb_mgr.fetch_and_ensure_images(config.youtube_channel_id)
+                # ★ 修正: classifier と live_module を渡す
+                from youtube_core.youtube_rss import YouTubeRSS
+                yt_rss = YouTubeRSS(config.youtube_channel_id)
+                saved_count, live_count = yt_rss.save_to_db(db, classifier=classifier, live_module=live_module)
+                logger.info(f"[YouTube] RSS DB保存完了: {saved_count} 件（Live登録: {live_count} 件）")
 
-            # ★ 新: YouTube RSS 取得後、YouTube Live プラグインで自動分類を実行
-            # 配信予定枠などが正しく content_type="live", live_status="upcoming" として分類される
-            # ★ 重要: collect モード時は判定処理をスキップ（collect は投稿機能を一切実行しない）
-            if config.is_collect_mode:
-                logger.info("[モード] 収集モード のため、判定・投稿処理をスキップします。")
-            elif saved_count > 0 or polling_count == 1:  # 新規動画があるか初回ポーリング時に実行
+                # ★ サムネイル処理：fetch_and_ensure_images の結果をマージ
+                thumb_mgr.fetch_and_ensure_images(config.youtube_channel_id)
+
+            # ★ 新: Live ポーリング（Live関連動画の状態遷移を検知・自動投稿）
+            if live_module:
+                logger.info("[YouTube] Live動画をポーリング中...")
                 try:
-                    live_plugin = plugin_manager.get_plugin("youtube_live_plugin")
-                    if live_plugin and live_plugin.is_available():
-                        logger.info(f"🔍 YouTube Live プラグイン: 未判定動画を自動分類中...")
-                        updated = live_plugin._update_unclassified_videos()
-                        if updated > 0:
-                            logger.info(f"✅ YouTube Live 自動分類: {updated} 件更新（配信予定枠など検出）")
+                    polled_count = live_module.poll_lives()
+                    if polled_count > 0:
+                        logger.info(f"✅ Live ポーリング完了: {polled_count} 件を処理しました")
+                    else:
+                        logger.debug("ℹ️ Live ポーリング: 状態遷移なし")
                 except Exception as e:
-                    logger.debug(f"⚠️ YouTube Live プラグインの自動分類エラー: {e}")
+                    logger.error(f"❌ Live ポーリングエラー: {e}")
 
             if config.is_collect_mode:
                 logger.info("[モード] 収集モード のため、投稿処理をスキップします。")

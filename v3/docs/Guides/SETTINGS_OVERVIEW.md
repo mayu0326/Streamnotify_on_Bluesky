@@ -1,6 +1,7 @@
 ﻿# Streamnotify v3 設定項目一覧
 
-このドキュメントは `v3/settings.env.example` のセクション順に、主要な設定項目の目的と利用条件を簡潔にまとめたものです。詳細なサンプル値やコメントは [settings.env.example](../../settings.env.example) を参照してください。
+- このドキュメントは `v3/settings.env.example` のセクション順に、主要な設定項目の目的と利用条件を簡潔にまとめたものです。\
+細かいサンプル値やコメントは [settings.env.example](../../settings.env.example) を参照してください。
 
 ---
 

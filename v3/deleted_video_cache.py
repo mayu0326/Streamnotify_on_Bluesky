@@ -208,6 +208,26 @@ class DeletedVideoCache:
         source_lower = source.lower()
         return {source_lower: self.data.get(source_lower, [])}
 
+    def get_deleted_video_ids(self, source: Optional[str] = None) -> list:
+        """
+        削除済み動画 ID のリストを取得（database.py の get_autopost_candidates で使用）
+
+        Args:
+            source: サービス名（None の場合は全サービス統合）
+
+        Returns:
+            削除済み動画 ID リスト
+        """
+        if source is None:
+            # 全サービスの削除済み ID を統合
+            all_ids = []
+            for ids in self.data.values():
+                all_ids.extend(ids)
+            return all_ids
+
+        source_lower = source.lower()
+        return self.data.get(source_lower, [])
+
 
 def get_deleted_video_cache(cache_file: str = "data/deleted_videos.json") -> DeletedVideoCache:
     """グローバル キャッシュインスタンスを取得（シングルトン）"""

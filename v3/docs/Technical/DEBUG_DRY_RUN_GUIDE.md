@@ -123,15 +123,23 @@ class DebugAndInfoFilter(logging.Filter):
 
 ### 使用方法
 
-#### 方法1: GUI から実行（推奨）
+#### 方法1: GUI から実行（推奨、v3.3.0+）
 
 **手順:**
 1. メイン画面で投稿対象の動画を選択（☑️ をクリック）
-2. 「📤 投稿設定」ボタンをクリック
-3. 投稿設定ウィンドウが表示される
-4. **「🧪 投稿テスト」ボタン** をクリック
-5. 処理完了「🧪 投稿テスト完了」メッセージ表示
-6. **DB は更新されない**（再試行可能）
+2. **「🧪 投稿テスト」ボタン** をクリック（gui_v3.py:133）
+3. 確認メッセージが表示される（投稿件数、テスト実行の説明）
+4. **「はい」をクリック** して投稿テストを開始
+5. PostSettingsWindow で各動画の設定を確認
+6. 各ウィンドウの「🧪 投稿テスト」で本テストを実行
+7. **DB は更新されない**（再試行可能）
+
+**または（v3.1.0+）:**
+1. 「📤 投稿設定」ボタンをクリック
+2. 投稿設定ウィンドウが表示される
+3. **「🧪 投稿テスト」ボタン** をクリック
+4. テスト完了メッセージが表示される
+5. **DB は更新されない**（再試行可能）
 
 **メリット:**
 - GUI で直感的に操作可能
@@ -154,16 +162,24 @@ APP_MODE=dry_run
 
 ### DRY RUN での処理フロー
 
+**GUI の「🧪 投稿テスト」ボタンをクリック時（v3.3.0+）:**
+
 ```
-ユーザーが「🧪 投稿テスト」 をクリック
+ユーザーが「🧪 投稿テスト」 をクリック（gui_v3.py:133）
     ↓
-PostSettingsWindow._execute_post(dry_run=True)
+dry_run_post() メソッド実行（gui_v3.py:1212-1269）
+    ↓
+選択動画の一覧と確認メッセージを表示
+    ↓
+ユーザーが「はい」をクリック
+    ↓
+PostSettingsWindow を is_dry_run=True で生成
     ↓
 plugin_manager.post_video_with_all_enabled(video, dry_run=True)
     ↓
 各プラグインに dry_run=True を設定
-    ├─ bluesky_plugin.set_dry_run(True)
-    └─ bluesky_core.set_dry_run(True)
+    ├─ bluesky_plugin.set_dry_run(True)  （plugins/bluesky_plugin.py:122-127）
+    └─ bluesky_core.set_dry_run(True)    （bluesky_core.py:74-77）
     ↓
 テキスト構築（通常通り）
     ↓
@@ -179,9 +195,23 @@ API.createRecord（★ スキップ）
     ↓
 DB 更新（★ スキップ）
     ↓
-ログ記録（通常通り）
+ログ記録（🧪 emoji で DRY RUN 表示）
     ↓
 🧪 投稿テスト完了
+```
+
+**APP_MODE=dry_run 設定時（v3.1.0+）:**
+
+```
+メインループで自動的に DRY RUN モードで動作
+    ↓
+execute_post() が呼ばれると
+    ↓
+if self.operation_mode == OperationMode.DRY_RUN:  （gui_v3.py:1294-1297）
+    ↓
+自動的に dry_run_post() に切り替わる
+    ↓
+以降は上記と同じフロー
 ```
 
 ### DRY RUN 実行時の確認項目
@@ -251,9 +281,10 @@ Facet: [富] 0-65 (リンク化)
 | ファイル | 実装内容 | 行数 |
 |---------|--------|------|
 | `plugin_manager.py` | dry_run パラメータ追加 | 220-240 |
-| `plugins/bluesky_plugin.py` | set_dry_run() メソッド | 446-451 |
+| `plugins/bluesky_plugin.py` | set_dry_run() メソッド | **122-127** |
 | `bluesky_core.py` | set_dry_run() メソッド、ダミーデータ | 60-62, 215-235 |
-| `gui_v3.py` | 投稿設定ウィンドウで dry_run 対応 | 1263-1330 |
+| `gui_v3.py` | dry_run_post() メソッド | **1212-1269** |
+| `gui_v3.py` | execute_post() メソッド（DRY_RUN モード対応） | **1294-1297** |
 
 ---
 
@@ -324,18 +355,31 @@ python main_v3.py
 
 **A:** 以下の点を確認してください:
 
-1. **GUI の投稿設定ウィンドウを使用しているか確認**
-   - ❌ CLI から直接実行
-   - ✅ GUI の「🧪 投稿テスト」ボタン
+1. **正しい DRY RUN ボタンを使用しているか確認（v3.3.0+）**
+   - ❌ 「📤 投稿設定」→「✅ 投稿」ボタン（本投稿、DB更新）
+   - ✅ メイン画面の「🧪 投稿テスト」ボタン（DRY RUN、DB更新なし）
+   - ✅ 投稿設定ウィンドウの「🧪 投稿テスト」ボタン（DRY RUN、DB更新なし）
 
 2. **ボタンを間違えていないか確認**
-   - ❌ 「✅ 投稿」ボタン（本投稿）
-   - ✅ 「🧪 投稿テスト」ボタン（DRY RUN）
+   - ❌ 「✅ 投稿」ボタン（本投稿、DB更新）
+   - ✅ 「🧪 投稿テスト」ボタン（DRY RUN、DB更新なし）
 
 3. **ログで dry_run フラグを確認**
    ```
-   ✅ [DRY RUN] 投稿をシミュレート ← DRY RUN 成功
-   ✅ 投稿完了 ← 本投稿（DB更新）
+   [INFO] 🧪 Bluesky プラグイン dry_run=True  ← DRY RUN 成功
+   [INFO] ✅ 投稿完了                         ← 本投稿（DB更新）
+   ```
+
+4. **APP_MODE=dry_run 設定時の動作確認**
+   ```env
+   APP_MODE=dry_run  # DRY_RUN モード時は execute_post() が自動的に dry_run_post() に切り替わる
+   ```
+   参考: gui_v3.py:1294-1297 の以下の条件判定
+   ```python
+   if self.operation_mode == OperationMode.DRY_RUN:
+       logger.info("🧪 DRY_RUN モード：投稿操作を自動的にドライランモードで実行します")
+       self.dry_run_post()
+       return
    ```
 
 ### Q: DEBUG ログが表示されない

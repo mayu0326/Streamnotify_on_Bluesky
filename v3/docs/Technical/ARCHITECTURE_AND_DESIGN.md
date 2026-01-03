@@ -62,10 +62,11 @@ StreamNotify v3 は以下の二層構造を採用します：
 
 **実装ファイル**:
 - `plugins/bluesky_plugin.py`: Bluesky投稿プラグイン
-- `plugins/youtube_api_plugin.py`: YouTube API連携
-- `plugins/youtube_live_plugin.py`: ライブ判定
-- `plugins/niconico_plugin.py`: ニコニコ監視
+- `plugins/youtube/youtube_api_plugin.py`: YouTube API連携
+- `plugins/youtube/live_module.py`: ライブ判定モジュール（プラグインではない）
+- `plugins/niconico_plugin.py`: ニコニコ動画
 - `plugins/logging_plugin.py`: ロギング拡張
+- `youtube_core/`: YouTube動画分類・API処理（プラグインではなくコアモジュール）
 
 ---
 
@@ -83,22 +84,31 @@ SQLite DB 初期化（database.py）
 YouTube RSS 監視初期化（youtube_rss.py）
   ↓
 プラグインマネージャー初期化＆プラグイン読み込み
-  └─ 自動ロード: bluesky_plugin, youtube_api_plugin, youtube_live_plugin, niconico_plugin, logging_plugin（存在時）
+  └─ 自動ロード: bluesky_plugin, youtube_api_plugin, niconico_plugin, logging_plugin（存在時）
+  └─ YouTube 分類: youtube_core.youtube_video_classifier（プラグインではなくコアモジュール）
   ↓
 GUI スレッド起動（gui_v3.py、独立して動作）
   ↓
 [メインループ] POLL_INTERVAL_MINUTES ごとに以下を繰り返（GUI と並行）:
   ├─ YouTube RSS 取得＆サムネイル自動処理
   ├─ 新着動画を DB に保存
-  ├─ 収集モード（APP_MODE=collect）の場合:
-  │   └─ ここで終了（投稿処理スキップ）
-  ├─ 通常モード（APP_MODE=normal）の場合:
-  │   ├─ GUI で選択された動画を取得
-  │   ├─ 投稿間隔チェック
-  │   └─ 投稿対象あり & 間隔OK なら:
-  │       └─ Bluesky に投稿
-  │           ├─ bluesky_plugin.py → bluesky_core.py（投稿実行）
-  │           └─ 投稿済みフラグ更新
+  ├─ 削除済み動画キャッシュで除外判定
+  ├─ 動作モードごとの処理:
+  │   ├─ COLLECT モード:
+  │   │   └─ ここで終了（投稿処理スキップ）
+  │   ├─ DRY_RUN モード:
+  │   │   └─ テスト投稿（DB更新なし）
+  │   ├─ AUTOPOST モード:
+  │   │   ├─ LOOKBACK ウィンドウ内の未投稿動画をフィルタ
+  │   │   ├─ 安全弁チェック（未投稿数がしきい値超過しないか）
+  │   │   ├─ 投稿対象あり & 間隔OK & 安全弁OK なら:
+  │   │   │   └─ plugin_manager で自動投稿
+  │   │   └─ 投稿済みフラグ更新
+  │   └─ SELFPOST モード:
+  │       ├─ GUI で選択された動画を取得（selected_for_post=1）
+  │       ├─ 投稿対象あり & スケジュール時刻OK なら:
+  │       │   └─ plugin_manager で投稿実行
+  │       └─ 投稿済みフラグ更新
   └─ ポーリング間隔分 sleep
   ↓
 Ctrl+C で安全終了
@@ -207,8 +217,8 @@ results = manager.post_video_with_all_enabled(video_dict, dry_run=True)
 plugins/
   __init__.py
   bluesky_plugin.py          # Bluesky 投稿プラグイン
-  youtube_api_plugin.py      # YouTube Data API 連携
-  youtube_live_plugin.py     # YouTube ライブ判定
+  youtube/youtube_api_plugin.py      # YouTube Data API 連携
+  youtube/live_module.py     # ライブ判定モジュール（プラグインではない）
   niconico_plugin.py         # ニコニコ動画 RSS 監視
   logging_plugin.py          # ロギング統合管理
 ```
@@ -263,23 +273,33 @@ class TwitchPlugin(NotificationPlugin):
 | カラム | 型 | 制約 | 説明 |
 |--------|----|----|------|
 | `id` | INTEGER | PRIMARY KEY AUTO_INCREMENT | 主キー |
-| `video_id` | TEXT | UNIQUE, NOT NULL | YouTube 動画 ID |
+| `video_id` | TEXT | UNIQUE, NOT NULL | YouTube/ニコニコ等の動画 ID |
 | `title` | TEXT | NOT NULL | 動画タイトル |
 | `video_url` | TEXT | NOT NULL | 動画 URL |
 | `published_at` | TEXT | NOT NULL | 公開日時（ISO 8601） |
 | `channel_name` | TEXT | | チャンネル名 |
-| `source` | TEXT | DEFAULT 'youtube' | 動画配信元（youtube, niconico など）小文字 |
+| `source` | TEXT | DEFAULT 'youtube' | 動画配信元（小文字: "youtube", "niconico"） |
 | `posted_to_bluesky` | INTEGER | DEFAULT 0 | 投稿済みフラグ（0=未投稿, 1=投稿済み） |
 | `posted_at` | TEXT | | 投稿実行日時（ISO 8601） |
-| `content_type` | TEXT | DEFAULT 'video' | コンテンツ種別（"video", "live", "archive", "none"） |
-| `live_status` | TEXT | DEFAULT NULL | ライブ配信状態（null, "upcoming", "live", "completed"） |
+| `content_type` | TEXT | DEFAULT 'video' | コンテンツ種別（"video", "live", "archive", "schedule", "completed", "none"） |
+| `live_status` | TEXT | DEFAULT NULL | ライブ配信状態（null, "none", "upcoming", "live", "completed"） |
+| `is_premiere` | INTEGER | DEFAULT 0 | プレミア配信フラグ（0=通常, 1=プレミア） |
+| `is_short` | INTEGER | DEFAULT 0 | YouTube Shorts フラグ（0=通常, 1=Shorts） |
+| `is_members_only` | INTEGER | DEFAULT 0 | メンバー限定フラグ（0=公開, 1=メンバー限定） |
 | `image_filename` | TEXT | | 保存済みサムネイル画像ファイル名 |
 | `thumbnail_url` | TEXT | | サムネイル画像の URL |
+| `image_mode` | TEXT | | 画像モード（"import", "remove" など） |
+| `selected_for_post` | INTEGER | DEFAULT 0 | 投稿選択フラグ（0=未選択, 1=選択） |
+| `scheduled_at` | TEXT | | 投稿予約日時（ISO 8601） |
+| `representative_time_utc` | TEXT | | 基準時刻（UTC、動画種別ごとに変動） |
+| `representative_time_jst` | TEXT | | 基準時刻（JST、動画種別ごとに変動） |
+| `created_at` | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | レコード作成日時 |
 
 **値の正規化** (database.py で実施):
 - `source`: すべて小文字（"youtube", "niconico"）
-- `content_type`: "video", "live", "archive", "none" のいずれか
+- `content_type`: "video", "live", "archive", "schedule", "completed", "none" のいずれか
 - `live_status`: null, "none", "upcoming", "live", "completed" のいずれか
+- `is_premiere`, `is_short`, `is_members_only`: AUTOPOST フィルタに使用
 
 ---
 
@@ -292,7 +312,7 @@ class TwitchPlugin(NotificationPlugin):
 | `main_v3.py` | エントリーポイント・メインループ | 起動、プラグイン管理、メインループで RSS → DB → 投稿 |
 | `config.py` | 設定読み込み・バリデーション | settings.env から設定取得、値チェック |
 | `database.py` | SQLite 操作 | テーブル作成、INSERT/SELECT/UPDATE/DELETE、値正規化 |
-| `youtube_rss.py` | RSS 取得・パース | YouTube チャンネル RSS URL 生成、RSS 取得、新着動画抽出 |
+| `youtube_core/` | YouTube動画処理モジュール | RSS取得・パース、動画分類、API連携（プラグインではなくコア機能） |
 | `plugin_manager.py` | プラグイン管理 | プラグイン自動検出・読み込み・有効化・無効化 |
 | `plugin_interface.py` | プラグイン基本インターフェース | プラグイン基本クラス（NotificationPlugin） |
 
@@ -314,8 +334,8 @@ class TwitchPlugin(NotificationPlugin):
 | `bluesky_plugin.py` | 機能拡張 | Bluesky 投稿ラッパ |
 | `niconico_plugin.py` | サイト連携 | ニコニコ動画 RSS 監視 |
 | `youtube_api_plugin.py` | サイト連携 | YouTube Data API 連携 |
-| `youtube_live_plugin.py` | サイト連携 | YouTube ライブ判定（実験的） |
 | `logging_plugin.py` | 機能拡張 | ロギング統合管理 |
+| **`youtube_core/`** | **コアモジュール** | **YouTube動画分類・API処理（プラグインではない）** |
 
 ---
 
@@ -327,57 +347,123 @@ class TwitchPlugin(NotificationPlugin):
 
 ### event_context キー定義
 
-| キー名 | 型 | 説明 | 変更禁止 |
-|--------|----|----|---------|
-| `title` | str | 動画タイトル | ✅ |
-| `video_id` | str | YouTube/ニコニコ等の動画ID | ✅ |
-| `video_url` | str | 動画URL | ✅ |
-| `channel_name` | str | チャンネル名 | ✅ |
-| `published_at` | str | 公開日時（ISO 8601） | ✅ |
-| `source` | str | 動画配信元（小文字："youtube", "niconico"） | ✅ |
-| `content_type` | str | コンテンツ種別（"video", "live", "archive", "none"） | ✅ |
-| `live_status` | str or None | ライブ配信の状態（null, "upcoming", "live", "completed"） | ✅ |
-| `image_filename` | str | 保存済みサムネイル画像ファイル名 | ✅ |
-| `posted_at` | str | Bluesky投稿日時（ISO 8601、未投稿時はNone） | ✅ |
+| キー名 | 型 | 説明 | 用途 |
+|--------|----|----|------|
+| `title` | str | 動画タイトル | **必須**（全テンプレート） |
+| `video_id` | str | YouTube/ニコニコ等の動画ID | **必須**（新着動画テンプレート） |
+| `video_url` | str | 動画URL | **必須**（URL含テンプレート） |
+| `channel_name` | str | チャンネル名 | **必須**（全テンプレート） |
+| `published_at` | str | 公開日時（ISO 8601） | **オプション**（テンプレートで使用可） |
+| `source` | str | 動画配信元（小文字："youtube", "niconico"） | **オプション**（テンプレートで使用可） |
+| `content_type` | str | コンテンツ種別（"video", "live", "archive", "schedule", "completed", "none"） | **オプション**（YouTube Live テンプレート） |
+| `live_status` | str or None | ライブ配信の状態（null, "none", "upcoming", "live", "completed"） | **必須**（YouTube Live テンプレート） |
+| `image_filename` | str | 保存済みサムネイル画像ファイル名 | **オプション**（プラグインで使用） |
+| `posted_at` | str or None | Bluesky投稿日時（ISO 8601、未投稿時はNone） | **オプション**（テンプレートで使用可） |
 
-### テンプレートファイル置き場所
+### テンプレートファイル置き場所＆必須キー定義（v3.3.0+）
 
 ```
 templates/
 ├── youtube/
 │   ├── yt_new_video_template.txt      # YouTube新着動画用
-│   ├── yt_online_template.txt         # YouTube配信開始用（将来）
-│   └── yt_offline_template.txt        # YouTube配信終了用（将来）
-└── niconico/
-    └── nico_new_video_template.txt    # ニコニコ新着動画用
+│   │   必須キー: [title, video_id, video_url, channel_name]
+│   ├── yt_online_template.txt         # YouTube配信開始用
+│   │   必須キー: [title, video_url, channel_name, live_status]
+│   ├── yt_offline_template.txt        # YouTube配信終了用
+│   │   必須キー: [title, channel_name, live_status]
+│   └── yt_archive_template.txt        # YouTube アーカイブ用（v3.2.0+）
+│       必須キー: [title, video_url, channel_name]
+├── niconico/
+│   └── nico_new_video_template.txt    # ニコニコ新着動画用
+│       必須キー: [title, video_id, video_url, channel_name]
+└── .templates/
+    └── default_template.txt           # デフォルト・フォールバック用
+        必須キー: [title, video_url]
 ```
 
 ### 拡張ルール
 
-- **既存キーの削除・型変更は禁止**
+- **必須キーの削除・型変更は禁止** - TEMPLATE_REQUIRED_KEYS との一貫性が必須
 - **新規キーの追加は OK** だが、テンプレートファイルとドキュメントを同時に更新
-- **後方互換性を維持**（古いテンプレートファイルも動作するように）
+- **後方互換性を維持** - 古いテンプレートファイルも動作するように（TEMPLATE_REQUIRED_KEYS でキー別に定義）
+- **テンプレート種別ごとに必須キーを定義** - template_utils.py:399-420 で TEMPLATE_REQUIRED_KEYS として定義
 
 ---
 
 ## プラグイン統合
 
-### main_v3.py での PluginManager 統合
+### main_v3.py での PluginManager 統合（v3.3.0+）
 
 ```python
-# main_v3.py 内の実装
+# main_v3.py 内の実装フロー
+
+# 1. 基本初期化
+from config import get_config
+from database import get_database
 from plugin_manager import PluginManager
+from asset_manager import get_asset_manager
 
+config = get_config("settings.env")
+db = get_database()
 plugin_manager = PluginManager(plugins_dir="plugins")
-# プラグインディレクトリから自動ロード
-plugin_manager.load_plugins_from_directory()
+asset_manager = get_asset_manager()
 
-# GUI に渡す
-gui = StreamNotifyGUI(root, db, plugin_manager)
+# 2. 削除済み動画キャッシュ初期化（v3.2.0+）
+from deleted_video_cache import get_deleted_video_cache
+deleted_cache = get_deleted_video_cache()
 
-# GUI 内で使用
+# 3. YouTube動画分類器初期化（v3.3.0+）
+from youtube_core.youtube_video_classifier import get_video_classifier
+classifier = get_video_classifier(api_key=config.youtube_api_key)
+
+# 4. プラグイン自動ロード＆有効化
+auto_plugins = plugin_manager.discover_plugins()
+for plugin_name, plugin_path in auto_plugins:
+    plugin_manager.load_plugin(plugin_name, plugin_path)
+    plugin_manager.enable_plugin(plugin_name)
+    asset_manager.deploy_plugin_assets(plugin_name)
+
+# 5. YouTube API プラグイン手動ロード
+try:
+    plugin_manager.load_plugin("youtube_api_plugin",
+                                os.path.join("plugins", "youtube", "youtube_api_plugin.py"))
+    plugin_manager.enable_plugin("youtube_api_plugin")
+except Exception as e:
+    logger.debug(f"YouTubeAPI プラグイン不可: {e}")
+
+# 6. Bluesky コア機能初期化
+from bluesky_core import BlueskyMinimalPoster
+bluesky_core = BlueskyMinimalPoster(
+    config.bluesky_username,
+    config.bluesky_password,
+    dry_run=not config.bluesky_post_enabled
+)
+
+# 7. Bluesky プラグイン初期化
+from plugins.bluesky_plugin import BlueskyImagePlugin
+bluesky_plugin = BlueskyImagePlugin(
+    config.bluesky_username,
+    config.bluesky_password,
+    dry_run=not config.bluesky_post_enabled,
+    minimal_poster=bluesky_core
+)
+plugin_manager.loaded_plugins["bluesky_image_plugin"] = bluesky_plugin
+
+# 8. ニコニコプラグイン初期化
+try:
+    from plugins.niconico_plugin import NiconicoPlugin
+    niconico_plugin = NiconicoPlugin(...)
+    if niconico_plugin.is_available():
+        plugin_manager.enable_plugin("niconico_plugin")
+        niconico_plugin.start_monitoring()
+except Exception as e:
+    logger.debug(f"ニコニコプラグイン不可: {e}")
+
+# 9. GUI 起動
+gui = StreamNotifyGUI(root, db, plugin_manager, bluesky_core)
+
+# GUI 内での使用例
 results = self.plugin_manager.post_video_with_all_enabled(video, dry_run=False)
-# DRY RUN: results = self.plugin_manager.post_video_with_all_enabled(video, dry_run=True)
 ```
 
 ### 呼び出しフロー
@@ -387,6 +473,22 @@ main_v3.py::main()
 │
 ├─ config.py から設定読み込み
 ├─ logging_config.py でロギング初期化
+├─ database.py から DB 初期化
+├─ deleted_video_cache.py から除外リスト初期化（v3.2.0+）
+├─ youtube_core.classifier から動画分類器初期化（v3.3.0+）
+├─ plugin_manager.py でプラグインシステム初期化
+│  ├─ auto_plugins で自動検出＆ロード
+│  ├─ youtube_api_plugin を手動ロード
+│  ├─ niconico_plugin を条件付きロード
+│  └─ bluesky_plugin を強制ロード
+├─ asset_manager でテンプレート・画像を自動配置
+├─ bluesky_core で Bluesky コア機能初期化
+└─ GUI を別スレッドで起動（plugin_manager, bluesky_core を渡す）
+   ├─ StreamNotifyGUI(root, db, plugin_manager, bluesky_core)
+   │  ├─ setup_ui() でボタン・リスト作成
+   │  └─ execute_post() → plugin_manager.post_video_with_all_enabled()
+   └─ メインループでポーリング継続
+```
 ├─ database.py からDB初期化
 ├─ plugin_manager.py でプラグイン管理システム初期化
 │  └─ plugins/ ディレクトリから全プラグインを自動ロード
@@ -403,4 +505,3 @@ main_v3.py::main()
 **作成日**: 2025-12-18
 **最後の修正**: 2025-12-18
 **ステータス**: ✅ 完成・検証済み
-

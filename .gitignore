@@ -24,3 +24,6 @@ Streamnotify_on_Bluesky.code-workspace
 .editorconfig
 .gitattributes
 **/data/*
+**/.github/**
+**v2/utils/**
+**v3/utils/**

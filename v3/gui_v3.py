@@ -31,6 +31,55 @@ __copyright__ = "Copyright (C) 2025 mayuneco(mayunya)"
 __license__ = "GPLv2"
 
 
+class CreateToolTip:
+    """ウィジェットにツールチップを作成する"""
+    def __init__(self, widget, text):
+        self.widget = widget
+        self.text = text
+        self.widget.bind("<Enter>", self.enter)
+        self.widget.bind("<Leave>", self.leave)
+        self.id = None
+        self.tw = None
+
+    def enter(self, event=None):
+        self.schedule()
+
+    def leave(self, event=None):
+        self.unschedule()
+        self.hidetip()
+
+    def schedule(self):
+        self.unschedule()
+        self.id = self.widget.after(500, self.showtip)
+
+    def unschedule(self):
+        id = self.id
+        self.id = None
+        if id:
+            self.widget.after_cancel(id)
+
+    def showtip(self, event=None):
+        x = y = 0
+        x, y, cx, cy = self.widget.bbox("insert")
+        x += self.widget.winfo_rootx() + 25
+        y += self.widget.winfo_rooty() + 20
+        # creates a toplevel window
+        self.tw = tk.Toplevel(self.widget)
+        # Leaves only the label and removes the app window
+        self.tw.wm_overrideredirect(True)
+        self.tw.wm_geometry(f"+{x}+{y}")
+        label = tk.Label(self.tw, text=self.text, justify='left',
+                       background="#ffffe0", relief='solid', borderwidth=1,
+                       font=("tahoma", "8", "normal"))
+        label.pack(ipadx=1)
+
+    def hidetip(self):
+        tw = self.tw
+        self.tw = None
+        if tw:
+            tw.destroy()
+
+
 class StreamNotifyGUI:
     """Stream notify GUI（統合版, プラグイン対応）"""
 
@@ -65,11 +114,11 @@ class StreamNotifyGUI:
         toolbar.pack(side=tk.TOP, fill=tk.X, padx=5, pady=5)
 
         ttk.Button(toolbar, text="🔄 再読込", command=self.refresh_data).pack(side=tk.LEFT, padx=2)
-        
+
         # ★ フィード取得ボタン：websubモード時は「新着取得」、それ以外は「RSS更新」
         feed_button_text = "📡 新着取得" if self.config.youtube_feed_mode == "websub" else "🌐 RSS更新"
         ttk.Button(toolbar, text=feed_button_text, command=self.fetch_rss_manually).pack(side=tk.LEFT, padx=2)
-        
+
         ttk.Button(toolbar, text="🎬 Live判定", command=self.classify_youtube_live_manually).pack(side=tk.LEFT, padx=2)
         ttk.Button(toolbar, text="➕ 動画追加", command=self.add_video_dialog).pack(side=tk.LEFT, padx=2)
         ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=2)
@@ -136,15 +185,15 @@ class StreamNotifyGUI:
         source_combo.grid(row=0, column=5, sticky=tk.W, padx=5, pady=5)
         source_combo.bind("<<ComboboxSelected>>", lambda e: self.apply_filters())
 
-        # タイプフィルタ（YouTube: 動画/アーカイブ/Live/プレミア）
+        # タイプフィルタ（5カテゴリ対応: 動画/アーカイブ/放送予約/放送中/放送終了/プレミア）
         ttk.Label(filter_frame, text="タイプ:").grid(row=0, column=6, sticky=tk.W, padx=5, pady=5)
         self.filter_type_var = tk.StringVar(value="全て")
         type_combo = ttk.Combobox(
             filter_frame,
             textvariable=self.filter_type_var,
-            values=["全て", "🎬 動画", "📹 アーカイブ", "🔴 配信", "🎆 プレミア"],
+            values=["全て", "🎬 動画", "📹 アーカイブ", "📅 放送予約", "🔴 放送中", "⏹️ 放送終了", "🎆 プレミア"],
             state="readonly",
-            width=15
+            width=20
         )
         type_combo.grid(row=0, column=7, sticky=tk.W, padx=5, pady=5)
         type_combo.bind("<<ComboboxSelected>>", lambda e: self.apply_filters())
@@ -244,8 +293,8 @@ class StreamNotifyGUI:
     def fetch_rss_manually(self):
         """RSS フィードを手動で今すぐ取得・更新"""
         try:
-            from youtube_rss import YouTubeRSS
-            from youtube_websub import YouTubeWebSub
+            from youtube_core.youtube_rss import YouTubeRSS
+            from youtube_core.youtube_websub import YouTubeWebSub
             from config import Config
             from plugin_manager import PluginManager
 
@@ -258,7 +307,7 @@ class StreamNotifyGUI:
 
             # フィード取得モード判定
             feed_mode = config.youtube_feed_mode
-            
+
             if feed_mode == "websub":
                 # WebSub モード時はWebSubサーバーから新着確認
                 messagebox.showinfo("RSS更新", "WebSub サーバーから新着を確認中...\n（ウィンドウを閉じないでください）")
@@ -277,35 +326,12 @@ class StreamNotifyGUI:
                 messagebox.showinfo("RSS更新完了", "新着動画は検出されませんでした。")
                 return
 
-            # ★ 新: YouTube Live プラグインで自動分類を実行
-            # 新規追加動画をYouTube Liveプラグインで分類
-            youtube_live_classified = 0
-            if added_count > 0:
-                try:
-                    pm = PluginManager()
-                    live_plugin = pm.get_plugin("youtube_live_plugin")
-                    if live_plugin and live_plugin.is_available():
-                        logger.info(f"🔍 YouTube Live プラグイン: 新規追加動画 {added_count} 件を自動分類します...")
-                        youtube_live_classified = live_plugin._update_unclassified_videos()
-                        logger.info(f"✅ YouTube Live 自動分類完了: {youtube_live_classified} 件更新")
-                except Exception as e:
-                    logger.warning(f"⚠️ YouTube Live プラグインでの自動分類に失敗: {e}")
-                    # エラーでも処理を続行
 
-            # 結果をメッセージボックスで表示
-            result_msg = f"""✅ フィード更新完了
-
-フィード取得モード: {"WebSub" if feed_mode == "websub" else "RSS ポーリング"}
-取得件数: {len(new_videos)}
-新規追加: {added_count}
-Live 自動分類: {youtube_live_classified} 件更新
-
-DB を再読込みします。"""
-            messagebox.showinfo("フィード更新完了", result_msg)
+            # YouTubeLive プラグインは v3.3.0+ で廃止されました
 
             # DB を再読込して表示更新
             self.refresh_data()
-            logger.info(f"✅ フィード手動更新完了: {added_count} 件追加（{feed_mode} モード、YouTube Live自動分類 {youtube_live_classified} 件）")
+            logger.info(f"✅ フィード手動更新完了: {added_count} 件追加（{feed_mode} モード）")
 
         except ImportError as e:
             logger.error(f"❌ インポートエラー: {e}")
@@ -316,44 +342,134 @@ DB を再読込みします。"""
             messagebox.showerror("エラー", f"RSS更新中にエラーが発生しました:\n{e}")
 
     def classify_youtube_live_manually(self):
-        """YouTube Live 判定を手動で今すぐ実行"""
-        try:
-            # YouTubeLive プラグインを取得
-            youtube_live_plugin = self.plugin_manager.get_plugin("youtube_live_plugin")
+        """YouTube Live キャッシュ更新・分類を手動で実行
 
-            if not youtube_live_plugin:
-                messagebox.showwarning("警告", "YouTube Live プラグインがロードされていません。")
-                logger.warning("⚠️ YouTube Live プラグインが見つかりません")
+        処理フロー：
+        1. DB から Live 関連動画を取得
+        2. 各動画のキャッシュを確認
+        3. 30分以上古い場合、API から最新情報を取得してキャッシュ更新
+        4. 分類・検針・DB更新を実行
+        5. 動画取得と自動投稿はしない
+        """
+        try:
+            # YouTube API プラグインを取得
+            youtube_api_plugin = self.plugin_manager.get_plugin("youtube_api_plugin")
+
+            if not youtube_api_plugin:
+                messagebox.showinfo(
+                    "情報",
+                    "YouTube API プラグインが導入されていません。\n"
+                    "YOUTUBE_API_KEY を settings.env に設定してください。"
+                )
+                logger.info("ℹ️ YouTube API プラグインは導入されていません")
                 return
 
-            if not youtube_live_plugin.is_available():
-                messagebox.showwarning("警告", "YouTube Live プラグインが利用不可です。\n（YouTube API キーが設定されていない可能性があります）")
-                logger.warning("⚠️ YouTube Live プラグインが利用不可")
+            if not youtube_api_plugin.is_available():
+                messagebox.showwarning(
+                    "警告",
+                    "YouTube API プラグインが利用不可です。\n"
+                    "YOUTUBE_API_KEY が正しく設定されていることを確認してください。"
+                )
                 return
 
             # 判定開始を通知
-            messagebox.showinfo("YouTube Live判定", "未判定動画のYouTube Live判定を実行中...\n（ウィンドウを閉じないでください）")
+            messagebox.showinfo(
+                "YouTube Live 判定",
+                "Live キャッシュ確認・更新を実行中...\n"
+                "（ウィンドウを閉じないでください）"
+            )
 
-            # YouTube Live 判定を実行（on_enable と同じロジック）
-            updated_count = youtube_live_plugin._update_unclassified_videos()
+            # 実行処理
+            import time
+            from database import get_database
+            from youtube_core.youtube_video_classifier import get_video_classifier
+
+            db = get_database()
+            classifier = get_video_classifier(api_key=os.getenv("YOUTUBE_API_KEY"))
+
+            # DB から Live 関連動画を取得
+            all_videos = db.get_all_videos()
+            live_videos = [
+                v for v in all_videos
+                if v.get("content_type") in ["schedule", "live", "completed", "archive"]
+            ]
+
+            if not live_videos:
+                messagebox.showinfo("YouTube Live 判定", "Live 関連動画がありません。")
+                logger.info("ℹ️ Live 関連動画なし")
+                return
+
+            logger.info(f"🎬 {len(live_videos)} 件の Live 動画をキャッシュ更新・判定中...")
+
+            # キャッシュの有効期限（秒）: 30分
+            CACHE_VALIDITY_SECONDS = 30 * 60
+            current_time = time.time()
+
+            updated_count = 0
+            refreshed_count = 0
+
+            for video in live_videos:
+                video_id = video.get("video_id")
+                if not video_id:
+                    continue
+
+                # キャッシュの確認
+                timestamp = youtube_api_plugin.cache_timestamps.get(video_id, 0)
+                cache_age_seconds = current_time - timestamp
+                is_cache_old = cache_age_seconds > CACHE_VALIDITY_SECONDS
+
+                if is_cache_old:
+                    # ★ API から最新情報を取得
+                    logger.debug(f"📡 API から取得（キャッシュ {int(cache_age_seconds/60)} 分前）: {video_id}")
+                    classification_result = classifier.classify_video(video_id)
+                    refreshed_count += 1
+                else:
+                    # ★ キャッシュから取得
+                    logger.debug(f"📦 キャッシュから取得（{int(cache_age_seconds/60)} 分前）: {video_id}")
+                    classification_result = classifier.classify_video(video_id)
+
+                if not classification_result.get("success"):
+                    logger.debug(f"⏭️ 分類失敗（スキップ）: {video_id}")
+                    continue
+
+                # ★ 分類結果を DB に反映（投稿なし）
+                from plugins.youtube.live_module import get_live_module
+                live_module = get_live_module()
+
+                content_type = classification_result.get("type", "video")
+                live_status = classification_result.get("live_status")
+
+                # ★ DB を更新（ただし投稿はしない）
+                success = db.update_video_status(video_id, content_type, live_status)
+                if success:
+                    updated_count += 1
+                    logger.info(f"✅ 更新: {video_id} (type={content_type}, status={live_status})")
 
             # 結果をメッセージボックスで表示
-            result_msg = f"""
-✅ YouTube Live判定完了
+            result_msg = f"""✅ YouTube Live 判定完了
 
-判定結果: {updated_count} 件更新
+キャッシュ確認: {len(live_videos)} 件
+API 更新: {refreshed_count} 件
+DB 更新: {updated_count} 件
 
-DB を再読込みします。
-            """
-            messagebox.showinfo("YouTube Live判定完了", result_msg)
+※ 動画取得と自動投稿はしていません。
+DB を再読込みします。"""
+            messagebox.showinfo("YouTube Live 判定完了", result_msg)
 
             # DB を再読込して表示更新
             self.refresh_data()
-            logger.info(f"✅ YouTube Live 手動判定完了: {updated_count} 件更新")
+            logger.info(f"✅ YouTube Live 判定完了: キャッシュ確認 {len(live_videos)} 件、API 更新 {refreshed_count} 件、DB 更新 {updated_count} 件")
+
+        except ImportError as ie:
+            logger.error(f"❌ インポートエラー: {ie}")
+            messagebox.showwarning(
+                "警告",
+                f"必要なモジュールが見つかりません。\nv3 の plugins/youtube/ ディレクトリを確認してください。\n\nエラー: {ie}"
+            )
 
         except Exception as e:
-            logger.error(f"❌ YouTube Live判定中にエラー: {e}")
-            messagebox.showerror("エラー", f"YouTube Live判定中にエラーが発生しました:\n{e}")
+            logger.error(f"❌ YouTube Live 判定中にエラー: {e}")
+            messagebox.showerror("エラー", f"YouTube Live 判定中にエラーが発生しました:\n{e}")
 
     def apply_filters(self):
         """現在のフィルタ条件をツリーに適用"""
@@ -388,9 +504,9 @@ DB を再読込みします。
             if source_filter_lower != "全て" and source != source_filter_lower:
                 continue
 
-            # タイプフィルタ（動画/アーカイブ/Live/プレミア）
+            # タイプフィルタ（5カテゴリ: 動画/アーカイブ/放送予約/放送中/放送終了/プレミア）
             if type_filter != "全て":
-                # 表示用のタイプを計算
+                # 表示用のタイプを計算（新分類対応）
                 content_type = video.get("content_type", "video")
                 is_premiere = video.get("is_premiere", 0)
                 source_for_display = video.get("source", "").lower()
@@ -401,8 +517,12 @@ DB を再読込みします。
                     display_type = "🎬 動画"
                 elif content_type == "archive":
                     display_type = "📹 アーカイブ"
+                elif content_type == "schedule":
+                    display_type = "📅 放送予約"
                 elif content_type == "live":
-                    display_type = "🔴 配信"
+                    display_type = "🔴 放送中"
+                elif content_type == "completed":
+                    display_type = "⏹️ 放送終了"
                 else:
                     display_type = "🎬 動画"
 
@@ -427,7 +547,7 @@ DB を再読込みします。
             image_mode = video.get("image_mode") or ""
             image_filename = video.get("image_filename") or ""
 
-            # 分類情報を取得
+            # 分類情報を取得（5カテゴリ対応）
             content_type = video.get("content_type", "video")
             is_premiere = video.get("is_premiere", 0)
             if is_premiere:
@@ -436,8 +556,12 @@ DB を再読込みします。
                 display_type = "🎬 動画"
             elif content_type == "archive":
                 display_type = "📹 アーカイブ"
+            elif content_type == "schedule":
+                display_type = "📅 放送予約"
             elif content_type == "live":
-                display_type = "🔴 配信"
+                display_type = "🔴 放送中"
+            elif content_type == "completed":
+                display_type = "⏹️ 放送終了"
             else:
                 display_type = "🎬 動画"
 
@@ -1272,7 +1396,27 @@ YouTube:      {youtube_count} 件 (投稿済み: {youtube_posted})
         messagebox.showinfo("統計情報", stats)
 
     def youtube_live_settings(self):
-        """YouTube Live 投稿設定パネル"""
+        """YouTube Live 投稿設定パネル（v3 API プラグイン対応）"""
+        # YouTube API プラグインの存在をチェック（v3では Live はAPI プラグインに統合）
+        youtube_api_plugin = self.plugin_manager.get_plugin("youtube_api_plugin")
+
+        if not youtube_api_plugin:
+            messagebox.showinfo(
+                "情報",
+                "YouTube API プラグインが導入されていません。\n"
+                "YOUTUBE_API_KEY を settings.env に設定してください。"
+            )
+            logger.info("ℹ️ YouTube API プラグインは導入されていません")
+            return
+
+        if not youtube_api_plugin.is_available():
+            messagebox.showwarning(
+                "警告",
+                "YouTube API プラグインが利用不可です。\n"
+                "YOUTUBE_API_KEY が正しく設定されていることを確認してください。"
+            )
+            return
+
         settings_window = tk.Toplevel(self.root)
         settings_window.title("YouTube Live 投稿設定")
         settings_window.geometry("500x600")
@@ -1436,7 +1580,7 @@ YouTube:      {youtube_count} 件 (投稿済み: {youtube_posted})
                     f.write(content)
 
             messagebox.showinfo("成功", "YouTube Live 設定を保存しました。\n\n※ アプリ再起動時に反映されます。")
-            logger.info("✅ YouTube Live 設定を保存しました")
+            logger.info("✅ YouTube Live 設定を保存しました（API プラグイン経由）")
             window.destroy()
 
         except Exception as e:
@@ -1679,6 +1823,7 @@ YouTube:      {youtube_count} 件 (投稿済み: {youtube_posted})
             msg += f"  ... ほか {len(selected) - 5} 件\n"
 
         msg += """
+⚠️ 関連する画像ファイルも削除されます
 この操作は取り消せません。
 本当に削除してもよろしいですか？
         """
@@ -1689,13 +1834,26 @@ YouTube:      {youtube_count} 件 (投稿済み: {youtube_posted})
 
         # 削除実行
         logger.info(f"🗑️ {len(selected)} 件の動画削除を開始します")
-        deleted_count = self.db.delete_videos_batch([v["video_id"] for v in selected])
+        result = self.db.delete_videos_batch([v["video_id"] for v in selected])
+        deleted_count = result.get("deleted_count", 0)
+        deleted_videos = result.get("deleted_videos", [])
 
         if deleted_count > 0:
-            logger.info(f"✅ {deleted_count} 件の動画を削除しました（GUI操作）")
+            # 画像ファイルも削除
+            images_deleted = 0
+            for del_video in deleted_videos:
+                if del_video.get("image_filename"):
+                    try:
+                        site = self._normalize_site_dir(del_video.get("source", "YouTube"))
+                        if self.image_manager.delete_images_by_video_id(site, del_video["image_filename"]):
+                            images_deleted += 1
+                    except Exception as e:
+                        logger.warning(f"⚠️ 画像削除に失敗: {del_video['video_id']} - {e}")
+
+            logger.info(f"✅ {deleted_count} 件の動画を削除しました（画像ファイル {images_deleted} 件も削除）")
             self.selected_rows.clear()
             self.refresh_data()
-            messagebox.showinfo("成功", f"{deleted_count} 件の動画を削除しました。")
+            messagebox.showinfo("成功", f"{deleted_count} 件の動画を削除しました。\n（画像ファイル {images_deleted} 件も削除）")
         else:
             logger.error(f"❌ 動画の削除に失敗しました（{len(selected)}件リクエスト）")
             messagebox.showerror("エラー", "動画の削除に失敗しました。")
@@ -1723,6 +1881,7 @@ YouTube:      {youtube_count} 件 (投稿済み: {youtube_posted})
 タイトル: {video['title'][:60]}...
 動画ID: {item_id}
 
+⚠️ 関連する画像ファイルも削除されます
 この操作は取り消せません。
 削除してもよろしいですか？
         """
@@ -1733,11 +1892,27 @@ YouTube:      {youtube_count} 件 (投稿済み: {youtube_posted})
 
         # 削除実行
         logger.info(f"🗑️ 動画削除を実行: {item_id} ({video['title'][:40]}...)")
-        if self.db.delete_video(item_id):
+        result = self.db.delete_video(item_id)
+
+        if result.get("success"):
+            # 画像ファイルも削除
+            images_deleted = False
+            if result.get("image_filename"):
+                try:
+                    site = self._normalize_site_dir(result.get("source", "YouTube"))
+                    if self.image_manager.delete_images_by_video_id(site, result["image_filename"]):
+                        images_deleted = True
+                except Exception as e:
+                    logger.warning(f"⚠️ 画像削除に失敗: {item_id} - {e}")
+
             logger.info(f"✅ 動画を削除しました: {item_id}（右クリックメニュー操作）")
             self.selected_rows.discard(item_id)
             self.refresh_data()
-            messagebox.showinfo("成功", f"動画を削除しました。\n{item_id}")
+
+            if images_deleted:
+                messagebox.showinfo("成功", f"動画を削除しました。\n{item_id}\n（画像ファイルも削除）")
+            else:
+                messagebox.showinfo("成功", f"動画を削除しました。\n{item_id}")
         else:
             logger.error(f"❌ 動画削除に失敗: {item_id}")
             messagebox.showerror("エラー", "動画の削除に失敗しました。")
@@ -1760,7 +1935,19 @@ YouTube:      {youtube_count} 件 (投稿済み: {youtube_posted})
         platform_frame.pack(padx=10, pady=5, fill=tk.X)
 
         ttk.Radiobutton(platform_frame, text="YouTube", variable=platform_var, value="YouTube").pack(side=tk.LEFT, padx=5)
-        ttk.Radiobutton(platform_frame, text="ニコニコ", variable=platform_var, value="Niconico").pack(side=tk.LEFT, padx=5)
+
+        # --- ニコニコプラグインのチェックとボタン生成 ---
+        niconico_plugin_enabled = False
+        if self.plugin_manager:
+            niconico_plugin = self.plugin_manager.get_plugin("niconico_plugin")
+            if niconico_plugin and niconico_plugin.is_available():
+                niconico_plugin_enabled = True
+
+        niconico_radio_button = ttk.Radiobutton(platform_frame, text="ニコニコ", variable=platform_var, value="Niconico")
+        if not niconico_plugin_enabled:
+            niconico_radio_button.config(state=tk.DISABLED)
+            CreateToolTip(niconico_radio_button, "ニコニコプラグインが導入されていないため無効です")
+        niconico_radio_button.pack(side=tk.LEFT, padx=5)
 
         # === 説明 ===
         description_frame = ttk.Frame(dialog)
@@ -1860,7 +2047,7 @@ YouTube:      {youtube_count} 件 (投稿済み: {youtube_posted})
             snippet = video_details.get("snippet", {})
 
             # ★ ライブ判定を実行（API データから）
-            from plugins.youtube_api_plugin import YouTubeAPIPlugin
+            from plugins.youtube.youtube_api_plugin import YouTubeAPIPlugin
             api_plugin = YouTubeAPIPlugin()
             content_type, live_status, is_premiere = api_plugin._classify_video_core(video_details)
 
@@ -2111,8 +2298,7 @@ YouTube:      {youtube_count} 件 (投稿済み: {youtube_posted})
         def on_fetch_from_api():
             """API からメタデータを取得して自動入力"""
             try:
-                from plugins.youtube_api_plugin import YouTubeAPIPlugin
-                from plugins.youtube_live_plugin import YouTubeLivePlugin
+                from plugins.youtube.youtube_api_plugin import YouTubeAPIPlugin
 
                 api_plugin = YouTubeAPIPlugin()
                 if not api_plugin.is_available():
@@ -2141,7 +2327,7 @@ YouTube:      {youtube_count} 件 (投稿済み: {youtube_posted})
                     pass
 
                 # ライブ判定
-                from plugins.youtube_api_plugin import YouTubeAPIPlugin
+                from plugins.youtube.youtube_api_plugin import YouTubeAPIPlugin
                 api_plugin = YouTubeAPIPlugin()
                 content_type, live_status, is_premiere = api_plugin._classify_video_core(details)
 
@@ -2203,11 +2389,11 @@ YouTube:      {youtube_count} 件 (投稿済み: {youtube_posted})
         published_entry.grid(row=3, column=1, sticky=tk.EW, padx=5, pady=5)
         published_entry.insert(0, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
-        # コンテンツタイプ
+        # コンテンツタイプ（5カテゴリ対応）
         ttk.Label(form_frame, text="コンテンツ種別:").grid(row=4, column=0, sticky=tk.W, pady=5)
         content_type_var = tk.StringVar(value="video")
         content_combo = ttk.Combobox(form_frame, textvariable=content_type_var, state="readonly", width=47)
-        content_combo['values'] = ("video", "live", "archive", "none")
+        content_combo['values'] = ("video", "archive", "schedule", "live", "completed")
         content_combo.grid(row=4, column=1, sticky=tk.EW, padx=5, pady=5)
 
         # ライブ配信状態

@@ -1,7 +1,7 @@
 ﻿# Stream notify on Bluesky - v3 モジュール一覧
 
-**最終更新**: 2025-12-22
-**対象バージョン**: v3.2.0+
+**最終更新**: 2026-01-03
+**対象バージョン**: v3.3.0+
 
 ---
 
@@ -10,9 +10,9 @@
 | ファイル名 | 種類 | 主な用途・役割 | インポート先 |
 |-----------|------|-----------------|---------|
 | `main_v3.py` | コア | アプリ起動・メインループ・GUI統合・プラグイン管理・AssetManager 統合 | 単体実行（エントリーポイント） |
+| `app_version.py` | コア | バージョン情報・アプリケーションメタデータ管理 | main_v3.py、その他 |
 | `config.py` | コア | 設定読み込み・バリデーション（AUTOPOST・重複投稿防止設定対応） | main_v3.py |
-| `database.py` | コア | SQLite 操作・動画管理（YouTube 重複排除・重複投稿検知対応） | main_v3.py、youtube_rss.py、bluesky_plugin.py |
-| `youtube_rss.py` | コア | YouTube RSS 取得・パース | main_v3.py |
+| `database.py` | コア | SQLite 操作・動画管理（YouTube 重複排除・重複投稿検知対応） | main_v3.py、youtube_core.youtube_rss、bluesky_plugin.py |
 | `plugin_interface.py` | コア | NotificationPlugin 抽象基底クラス（プラグイン定義） | すべてのプラグイン |
 | `plugin_manager.py` | コア | プラグイン自動検出・読み込み・管理 | main_v3.py |
 | `bluesky_core.py` | ユーティリティ | Bluesky 投稿機能の本体（ログイン・投稿・Facet構築・Rich Text対応） | bluesky_plugin.py |
@@ -46,11 +46,10 @@
 | ファイル名 | 種類 | 主な用途・役割 | インポート先 |
 |-----------|------|-----------------|---------|
 | `deleted_video_cache.py` | ユーティリティ | 削除済み動画除外リスト管理（JSON ファイルベース、サービス別管理） | database.py、youtube_rss.py |
-| `youtube_dedup_priority.py` | ユーティリティ | YouTube 動画優先度ロジック（新動画 > アーカイブ > 通常動画） | database.py |
-| `youtube_live_cache.py` | ユーティリティ | YouTube Live 状態キャッシング（配信中・終了検知） | youtube_live_plugin.py |
+| `youtube_dedup_priority.py` | ユーティリティ | YouTube 動画優先度ロジック（新動画 > アーカイブ > 通常動画） | database.py |core.youtube_rss |
 | `backup_manager.py` | ユーティリティ | DB・テンプレート・設定の ZIP バックアップ/復元 | gui_v3.py |
 | `asset_manager.py` | ユーティリティ | Asset ディレクトリからプラグイン用テンプレート・画像を自動配置 | main_v3.py |
-
+| `production_server_api_client.py` | ユーティリティ | 本番サーバー API クライアント（WebSub/プッシュ通知対応）
 ---
 
 ## 設定ファイル・テンプレート（v3.2.0 対応）
@@ -75,10 +74,17 @@
 |-----------|------|-----------------|---------|
 | `bluesky_plugin.py` | 投稿プラグイン | Bluesky リッチテキスト・画像添付・テンプレート拡張（自動ロード） | v3.0.0+ |
 | `youtube_api_plugin.py` | サイト連携プラグイン | YouTube Data API 連携・UC以外チャンネル ID 対応（自動ロード） | v3.0.0+ |
-| `youtube_live_plugin.py` | サイト連携プラグイン | YouTube Live/Archive 判定・自動投稿・ポーリング（youtube_api_plugin 依存、自動ロード） | v3.0.0+ |
 | `niconico_plugin.py` | サイト連携プラグイン | ニコニコ動画 RSS 監視・新着通知・テンプレート対応（自動ロード） | v3.0.0+ |
 | `logging_plugin.py` | 機能拡張プラグイン | ロギング統合管理・環境変数によるログレベル制御（自動ロード） | v3.0.0+ |
 
+---
+
+## YouTube 連携プラグインモジュール（plugins/youtube/）
+
+| ファイル名 | 種類 | 主な用途・役割 | 対応バージョン | 依存関係 |
+|-----------|------|-----------------|---------|---------|
+| `youtube_api_plugin.py` | サイト連携プラグイン | YouTube Data API 連携・UC以外チャンネル ID 対応・詳細メタデータ取得（自動ロード） | v3.0.0+ | - |
+| `live_module.py` | サイト連携プラグイン | YouTube Live/Archive/Schedule 判定・ステータス管理・キャッシング（youtube_api_plugin から呼び出し） | v3.3.0+ | youtube_api_plugin.py
 ---
 
 ## サムネイル・画像処理モジュール（thumbnails/）
@@ -91,6 +97,18 @@
 | `niconico_ogp_backfill.py` | Niconico OGP 情報一括バックフィル処理 |
 | `youtube_thumb_utils.py` | YouTube サムネイル URL 生成・取得ユーティリティ |
 | `youtube_thumb_backfill.py` | YouTube サムネイル一括バックフィル処理 |
+
+---
+
+## YouTube 関連コアモジュール（youtube_core/）
+
+| ファイル名 | 説明 |
+|-----------|------|
+| `__init__.py` | パッケージ初期化 |
+| `youtube_rss.py` | YouTube RSS フィード取得・パース・WebSub/ポーリング対応（v3.2.0+ WebSub サポート） |
+| `youtube_dedup_priority.py` | YouTube 動画優先度ロジック（新動画 > アーカイブ > 通常動画） |
+| `youtube_video_classifier.py` | YouTube 動画分類・コンテンツ種別判定（通常/ショート/メンバー限定/プレミア） |
+| `youtube_websub.py` | WebSub（Pub-Sub Hub Callbacks）実装・プッシュ通知処理（v3.2.0+） |
 
 ---
 
@@ -149,7 +167,8 @@
 
 ## 主要サードパーティライブラリ一覧
 | `logs/tuバージョン | 用途 |
-|-----------|-----------|------|
+|-----------|-----------|------|・WebSub 実装 |
+| v3.3.0 | 2026-01-03 | YouTube Live プラグインリファクタリング（plugins/youtube/ へ移行）・ステータス分類統合・API ポーリング動的間隔制御
 | `python-dotenv` | 1.0+ | settings.env ファイル読み込み |
 | `feedparser` | 6.0+ | YouTube・ニコニコ RSS パース |
 | `atproto` | 0.0.50+ | Bluesky AT Protocol API |
@@ -189,7 +208,6 @@
 - [プラグインシステムガイド](../Technical/PLUGIN_SYSTEM.md) - プラグイン開発・Rich Text Facet 実装
 - [AssetManager 統合ガイド](../Technical/ASSET_MANAGER_INTEGRATION_v3.md) - テンプレート・画像自動配置
 - [設定項目一覧](../Guides/SETTINGS_OVERVIEW.md) - settings.env 全設定項目
-- [デバッグユーティリティ](../../utils/DEBUGGING_UTILITIES.md) - テスト・検証スクリプト
 | `asset_manager.py` | Asset ディレクトリからテンプレート・画像を自動配置（プラグイン導入時） |
 
 - `Asset/` ディレクトリに全サービス・全プラグイン用テンプレート/画像を保管

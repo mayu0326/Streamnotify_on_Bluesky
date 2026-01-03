@@ -190,10 +190,10 @@ class AssetManager:
 
         # プラグイン別のマッピング定義
         plugin_asset_map = {
-            "youtube_live_plugin": {
-                "templates": ["youtube"],
-                "images": ["youtube"],
-            },
+        #    "youtube_live_plugin": {
+        #        "templates": ["youtube"],
+        #        "images": ["youtube"],
+        #    },
             "niconico_plugin": {
                 "templates": ["niconico"],
                 "images": ["niconico"],
