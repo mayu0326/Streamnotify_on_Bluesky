@@ -1,8 +1,8 @@
 # YouTube WebSub 通知機能 - 実装ガイド
 
-**対象バージョン**: v3.4.0+
-**最終更新**: 2025-12-24
-**ステータス**: ✅ 実装完了
+**対象バージョン**: v3.3.0+
+**最終更新**: 2026-01-03
+**ステータス**: ⚠️ 部分実装（センターサーバー モデル機能追加、ローカルサーバー未実装）
 
 ---
 
@@ -31,15 +31,15 @@ YouTube チャンネルの新着動画情報を、従来の **RSS ポーリン�
 | セットアップ | ✅ 簡単 | 📝 やや複雑 | **RSS が優位** |
 | 安定性 | ✅ 高い | 🔄 フォールバック機能 | **同等** |
 
-### 3つの動作モード
+### 実装済みの動作モード
 
 ```
 ┌─────────────┬──────────────────────┬──────────────────────────────┐
-│ モード      │ 説明                 │ 用途                         │
+│ モード      │ 説明                 │ 実装状況                     │
 ├─────────────┼──────────────────────┼──────────────────────────────┤
-│ poll        │ RSS ポーリング        │ トンネル不要（従来方式）   │
-│ websub      │ WebSub プッシュ       │ リアルタイム対応必須         │
-│ hybrid      │ WebSub + ポーリング   │ フォールバック対応（推奨） │
+│ poll        │ RSS ポーリング        │ ✅ 実装済み（従来方式）     │
+│ websub      │ WebSub HTTP API      │ ✅ 部分実装（センターサーバー）│
+│ hybrid      │ WebSub + ポーリング   │ ❌ 未実装（将来予定）       │
 └─────────────┴──────────────────────┴──────────────────────────────┘
 ```
 
@@ -47,55 +47,70 @@ YouTube チャンネルの新着動画情報を、従来の **RSS ポーリン�
 
 ## WebSub とは
 
-### PubSubHubbub（パブサブハブハブ）
+## WebSub と実装アーキテクチャ
 
-WebSub（旧称 PubSubHubbub）は、**Atom/RSS フィードの更新をプッシュで配信する仕組み**です。
-
-#### 従来の RSS ポーリング
+### 従来の RSS ポーリング（実装済み）
 
 ```
-┌─────────────────────────────┐
+┌────────────────────────────────────────────────────────────┐
 │ あなたのアプリケーション    │
-└────────────┬────────────────┘
+│ (main_v3.py)                │
+└────────────┬─────────────────────────────────────────────────┘
              │
-   5分ごとに │ RSS を取得？
+   10分ごと  │ RSS を取得
              │
              ↓
-     ┌────────────────┐
-     │ YouTube RSS    │
-     │ フィード       │
-     └────────────────┘
+     ┌──────────────────────────────────────────────────┐
+     │ YouTube RSS フィード                             │
+     │ https://www.youtube.com/feeds/videos.xml?...    │
+     └──────────────────────────────────────────────────┘
 ```
 
-**問題**: 常に RSS を確認し続ける必要がある → ラグが発生
+**特徴** ✅:
+- シンプル・実装済み
+- ❌ ラグが発生（数分～10分）
 
-#### WebSub プッシュ通知
+### v3 WebSub アーキテクチャ（センターサーバー モデル）
+
+**ローカル Webhook サーバーは実装されていません** ❌
+かわりに、センターサーバー（https://webhook.neco-server.net）が YouTube の WebSub を管理します。
 
 ```
-┌────────────────────────────────┐
-│ YouTube チャンネル             │
-│ （新着動画投稿）               │
-└─────────────┬──────────────────┘
-              │
-   プッシュ   │ 通知を送信
-   通知       ↓
-     ┌────────────────────────────┐
-     │ WebSub ハブ                │
-     │ （YouTube のハブサーバー）  │
-     └─────────────┬──────────────┘
-                   │
-                   │ プッシュ通知
-                   ↓
-     ┌────────────────────────────┐
-     │ あなたのサーバー           │
-     │ Webhook エンドポイント     │
-     │ /webhook/youtube           │
-     └────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│ YouTube チャンネル         │
+│ （新着動画投稿）           │
+└─────────────────────┬───────────────────────────────────────────────────┘
+                      │
+                      ↓ WebSub 通知
+   ┌──────────────────────────────────────────────────────────────────────┐
+   │ YouTube WebSub ハブ                               │
+   │ pubsubhubbub.appspot.com                          │
+   └──────────────────────────────────┬─────────────────────────────────────┘
+                                      │
+                                      ↓ 通知
+   ┌──────────────────────────────────────────────────────────────────────────────┐
+   │ センターサーバー                                                                  │
+   │ https://webhook.neco-server.net                                              │
+   │ (WebSub 集約・データ保管)                                      │
+   └──────────────────────────────────────┬─────────────────────────────────────────┘
+                                          │
+   HTTP GET                               │
+   定期ポーリング                          ↓
+   ┌──────────────────────────────────────────────────────────────────────────────┐
+   │ あなたのアプリケーション                                                      │
+   │ (main_v3.py)                                                                  │
+   │                                                                               │
+   │ ProductionServerAPIClient                                                   │
+   │ → /videos エンドポイント                                                     │
+   └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-**メリット**: リアルタイムで動画情報を受け取れる
-
----
+**特徴** ⚠️:
+- ✅ YouTube WebSub 対応（センターサーバー 経由）
+- ✅ トンネル不要（センターサーバー が管理）
+- ✅ 実装済み（youtube_websub.py, production_server_api_client.py）
+- ❌ リアルタイムではない（センターサーバー からの定期 GET）
+- ⚠️ センターサーバー 依存（停止時は動作不可）
 
 ## 導入手順
 
@@ -105,73 +120,63 @@ WebSub（旧称 PubSubHubbub）は、**Atom/RSS フィードの更新をプッ�
 
 ```env
 # poll: RSS ポーリング（従来方式、トンネル不要）
-# websub: WebSub プッシュ（推奨、トンネル必須）
-# hybrid: WebSub + ポーリング併用（推奨、フォールバック対応）
+# websub: WebSub HTTP API（推奨、センターサーバー 設定必須）
+# hybrid: WebSub + ポーリング並用（v3.4.0+ 予定）
 
-YOUTUBE_FEED_MODE=hybrid
+YOUTUBE_FEED_MODE=websub
 ```
 
-#### 1-2 WebSub 設定（websub/hybrid モード用）
+#### 1-2 WebSub 設定（websub モード用）
 
 ```env
-# コールバック URL（トンネルを通じた HTTPS URL）
-WEBSUB_CALLBACK_URL=https://your-tunnel-url.ngrok.io/webhook/youtube
+# センターサーバー の WebSub クライアント ID
+WEBSUB_CLIENT_ID=my-websub-client
 
-# ローカルサーバーポート（デフォルト: 8765）
-WEBSUB_SERVER_PORT=8765
+# センターサーバー の WebSub API キー
+WEBSUB_CLIENT_API_KEY=your-api-key
 
-# 購読期間（秒、デフォルト: 5日 = 432000秒）
-# 範囲: 1日（86400秒）～ 30日（2592000秒）
-WEBSUB_LEASE_SECONDS=432000
+# WebSub ポーリング間隔（分、デフォルト: 5、範囲: 3～30）
+# センターサーバー からの動画データ取得間隔
+YOUTUBE_WEBSUB_POLL_INTERVAL_MINUTES=5
 
-# ポーリング間隔（websub/hybrid モード時のバックアップ、デフォルト: 10分）
-POLL_INTERVAL_MINUTES=10
+# 注: ローカル Webhook サーバーは実装されていません(センターサーバーのため不要です)
+# 注: トンネル設定（ngrok、Cloudflare）は不要です
+# 注: VPNや固定IPアドレス、ドメイン、ファイアウォール設定等も不要です
 ```
 
-### ステップ 2: トンネル設定（WebSub/Hybrid モード用）
+### ステップ 2: センターサーバー の設定
 
-WebSub を使用する場合、**HTTPS で公開可能なコールバック URL** が必須です。
+**ローカル Webhook サーバーは実装されていません。** ✅ トンネル設定は不要です。
 
-#### オプション A: ngrok（推奨・簡単）
+- かわりに、センターサーバー（https://webhook.neco-server.net）の設定が必要です。\
+なお、WebsubCenterServer は作者が運営するサービスであり、一部の方に限って提供しております。
+
+- Websub センターサーバー の利用にはクライアントIDとAPIキーが必要です。\
+将来的には提供範囲を拡大することも検討していますが、具体的な日時は未定です。
+
+#### センターサーバー へのクライアント登録
 
 ```bash
-# 1. ngrok をダウンロード（https://ngrok.com）
+# 1. センターサーバー 管理者から指定された WebSubクライアントIDとAPIキーを登録
+#    - WEBSUB_CLIENT_ID: クライアント識別子
+#    - WEBSUB_CLIENT_API_KEY: API キー
 
-# 2. トンネルを開始
-.\ngrok http 8765
+# 2. settings.env に設定
+WEBSUB_CLIENT_ID=my-websub-client
+WEBSUB_CLIENT_API_KEY=your-api-key
 
-# 出力例:
-# Forwarding  https://abc123.ngrok.io -> http://localhost:8765
-
-# 3. settings.env に設定
-WEBSUB_CALLBACK_URL=https://abc123.ngrok.io/webhook/youtube
+# 3. YouTube チャンネル ID も設定
+YOUTUBE_CHANNEL_ID=UCxxxxxxxxxxxxxxxx
 ```
 
-**メリット**: セットアップ簡単、自動 HTTPS
+#### センターサーバー の概要
 
-#### オプション B: Cloudflare Tunnel
+センターサーバー は：
+- ✅ YouTube WebSub ハブの購読・管理を行う
+- ✅ プッシュ通知を受け取ってキャッシュする
+- ✅ HTTP GET API で動画データを提供する
+- 🚀 複数クライアントから同時アクセス可能
 
-```bash
-# 1. Cloudflare アカウントを作成
-#    https://dash.cloudflare.com
-
-# 2. ターミナルで実行
-cloudflared tunnel --url http://localhost:8765
-
-# 出力例:
-# Your quick tunnel has been created! Visit it at (it may take some time to be reachable):
-# https://xxx-yyy-zzz.trycloudflare.com
-
-# 3. settings.env に設定
-WEBSUB_CALLBACK_URL=https://xxx-yyy-zzz.trycloudflare.com/webhook/youtube
-```
-
-#### オプション C: Docker + トンネル
-
-```bash
-docker run -p 8765:8765 your-app
-# その後、ngrok/Cloudflare で トンネル化
-```
 
 ### ステップ 3: アプリケーション起動
 
@@ -183,15 +188,16 @@ python main_v3.py
 
 ```
 ✅ WebSub マネージャーを初期化しました
-   モード: hybrid
-   コールバック: https://abc123.ngrok.io/webhook/youtube
+   モード: websub
 
-🔔 YouTube WebSub を購読しています...
-ハブ: https://pubsubhubbub.appspot.com
-トピック: https://www.youtube.com/feeds/videos.xml?channel_id=UCxxxxxx
-コールバック: https://abc123.ngrok.io/webhook/youtube
+🔗 YouTube フィード取得モード: WebSub（Websubサーバー HTTP API 経由）
+🔗 WebSub ポーリング間隔: 5 分
 
-✅ WebSub 購読に成功しました（ステータス: 202）
+[YouTube] YouTubeWebSub の取得を準備しています...
+[YouTube] WebSub の取得準備を完了しました
+
+✅ YouTube フィード更新を確認しました
+   新着動画: 2 件
 ```
 
 ---
@@ -210,156 +216,74 @@ python main_v3.py
 
 | 項目 | 値 | 説明 |
 |:--|:--|:--|
-| `YOUTUBE_FEED_MODE` | poll / websub / hybrid | フィード取得方式 |
-| `WEBSUB_CALLBACK_URL` | https://... | YouTube がプッシュ通知を送信する URL |
-| `WEBSUB_SERVER_PORT` | 1024～65535 | ローカルサーバーがリッスンするポート |
-| `WEBSUB_LEASE_SECONDS` | 86400～2592000 | 購読有効期間 |
-| `POLL_INTERVAL_MINUTES` | 5～30 | ポーリング間隔（バックアップ用） |
-
----
+| `YOUTUBE_FEED_MODE` | poll / websub | フィード取得方式（hybrid は未実装） |
+| `WEBSUB_CLIENT_ID` | 文字列 | センターサーバー のクライアント ID |
+| `WEBSUB_CLIENT_API_KEY` | 文字列 | センターサーバー の API キー |
+| `YOUTUBE_WEBSUB_POLL_INTERVAL_MINUTES` | 3～30 | センターサーバー からのポーリング間隔 |
+| `YOUTUBE_RSS_POLL_INTERVAL_MINUTES` | 10～60 | RSS ポーリング間隔（poll モード用） |
 
 ## フィード取得モード
 
 ### モード 1: poll（RSS ポーリング）
 
 ```
-┌─────────────────────────────────┐
-│ main_v3.py ポーリングループ    │
-│                                 │
-│ 1. 10分ごとに YouTube RSS 取得 │
-│ 2. DB に保存                    │
-│ 3. 10分待機                     │
-└─────────────────────────────────┘
+┌────────────────────────────────────────────────────────────┐
+│ あなたのアプリケーション    │
+│ (main_v3.py)                │
+└────────────┬─────────────────────────────────────────────────┘
+             │
+   10分ごと  │ RSS を取得
+             │
+             ↓
+     ┌──────────────────────────────────────────────────┐
+     │ YouTube RSS フィード                             │
+     │ https://www.youtube.com/feeds/videos.xml?...    │
+     └──────────────────────────────────────────────────┘
 ```
 
-**特徴**:
-- ✅ トンネル不要
-- ✅ シンプル
-- ❌ リアルタイム性に欠ける（数分～10分ラグ）
+**特徴** ✅:
+- トンネル不要
+- シンプル・実装済み
+- 安定性高い
+- ❌ ラグが発生（数分～10分）
 
 **推奨環境**:
 - ローカル環境テスト
 - ネットワークが限定的
 - リアルタイム対応不要
 
-### モード 2: websub（WebSub プッシュ）
+### モード 2: websub（WebSub - センターサーバー 経由）
 
 ```
-┌────────────────────────────────┐
-│ YouTube チャンネル             │
-│ 新着動画投稿                   │
-└─────────┬──────────────────────┘
-          │
-          └─→ WebSub ハブ
-              │
-              └─→ HTTPS Webhook
-                  /webhook/youtube
-                  │
-                  └─→ DB に保存
-                      GUI 更新
+┌──────────────────────────────────────────────────┐
+│ 1. YouTube WebSub ハブ → センターサーバー          │
+│    (センターサーバー が購読・管理)            　　　│
+│                                                 │
+│ 2. Polling ループ                          　　　 │
+│    5分ごと HTTP GET                     　　　　   │
+│    ProductionServerAPIClient           　　　    │
+│    → センターサーバー /videos エンドポイント 　　　　 │
+│                                                 │
+│ 3. DB に保存                            　　　   │
+└──────────────────────────────────────────────────┘
 ```
 
-**特徴**:
-- ✅ リアルタイム（秒単位）
-- ✅ API 呼び出し少ない
-- ❌ トンネル設定必須
-- ❌ Webhook エンドポイント必須
+**特徴** ⚠️:
+- ✅ YouTube WebSub 対応（センターサーバー 経由）
+- ✅ トンネル不要
+- ✅ 実装済み（youtube_websub.py, production_server_api_client.py）
+- ❌ リアルタイムではない（センターサーバー からの定期 GET）
+- ⚠️ センターサーバー 依存（停止時は動作不可）
 
 **推奨環境**:
-- 本番環境
-- リアルタイム対応必須
-- ネットワーク環境が整備されている
+- センターサーバー に接続可能な環境
+- ある程度のリアルタイム性が必要な場合
 
 ### モード 3: hybrid（ハイブリッド）
 
-```
-┌──────────────────────────────────────┐
-│ 並行実行                             │
-│                                      │
-│ 1. WebSub 購読（プッシュ待機）       │
-│ 2. 定期ポーリング（バックアップ）    │
-│                                      │
-│ メリット:                            │
-│ - WebSub 失敗時でもポーリングで対応 │
-│ - 取りこぼし防止                     │
-└──────────────────────────────────────┘
-```
+**❌ v3.3.0 では未実装**（v3.4.0+ 予定）
 
-**特徴**:
-- ✅ 最も安全（フォールバック機能）
-- ✅ リアルタイム対応
-- ❌ トンネル設定が必要
-
-**推奨環境**: **本番環境**（最もバランスが良い）
-
----
-
-## トンネル設定
-
-### ngrok を使用する場合（推奨）
-
-#### Windows
-
-```batch
-# ngrok をダウンロード＆解凍
-# https://ngrok.com/download
-
-# コマンドプロンプトで実行
-cd ngrok_directory
-.\ngrok http 8765
-```
-
-#### Linux / Mac
-
-```bash
-# Homebrew でインストール
-brew install ngrok
-
-# トンネルを開始
-ngrok http 8765
-```
-
-#### 出力
-
-```
-ngrok                                                                              (Ctrl+C to quit)
-
-Build v3.5.0
-...
-Forwarding  https://abc123.ngrok.io -> http://localhost:8765
-Status      online
-
-Web Interface                 http://127.0.0.1:4040
-Forwarding                    https://abc123.ngrok.io -> http://localhost:8765
-```
-
-**設定**:
-
-```env
-WEBSUB_CALLBACK_URL=https://abc123.ngrok.io/webhook/youtube
-WEBSUB_SERVER_PORT=8765
-```
-
-### Cloudflare Tunnel を使用する場合
-
-```bash
-# インストール
-npm install -g cloudflared
-# または
-brew install cloudflare/cloudflare/cloudflared
-
-# トンネルを開始
-cloudflared tunnel --url http://localhost:8765
-```
-
-**設定**:
-
-```env
-WEBSUB_CALLBACK_URL=https://xxx-yyy-zzz.trycloudflare.com/webhook/youtube
-WEBSUB_SERVER_PORT=8765
-```
-
----
+実装されたら、WebSub + ポーリング を並行実行し、フォールバック対応を実現します。
 
 ## トラブルシューティング
 
@@ -367,60 +291,64 @@ WEBSUB_SERVER_PORT=8765
 
 **原因**:
 - コールバック URL が間違っている
-- トンネルが起動していない
-- HTTPS でない
-- YouTube のハブサーバーに接続できない
+- API キーが間違っている
+- クライアント ID が間違っている
+- センターサーバー に登録されていないクライアント
+- 通信環境の問題
+- その他 センターサーバー 側の問題
 
 **対応**:
 
 ```
-1. トンネルが起動しているか確認
-   $ ngrok http 8765
+1. センターサーバー への疎通確認
+   $ curl https://webhook.neco-server.net/health
 
 2. コールバック URL を確認
-   WEBSUB_CALLBACK_URL=https://xxx.ngrok.io/webhook/youtube
+   WEBSUB_CALLBACK_URL=https://webhook.neco-server.net/pubsub
    （http:// ではなく https:// か確認）
 
-3. YouTube ハブサーバーに疎通確認
-   $ curl https://pubsubhubbub.appspot.com
+3. API キーとクライアント ID を確認
+   settings.env の WEBSUB_CLIENT_ID, WEBSUB_CLIENT_API_KEY
 
 4. ログを確認
    $ grep "WebSub" logs/app.log
 ```
 
-### Q2: Webhook が呼ばれない（プッシュ通知が来ない）
+### Q2: Webhook で新着取得できない
 
 **原因**:
-- 購読がまだ完了していない（24時間待つ）
-- Webhook エンドポイントが 200 OK を返していない
-- YouTube がエンドポイントに到達できない
+- 購読がまだ完了していない（センターサーバーに登録されていない）
+- 通信環境が悪い（ネットワーク障害など）
+- データがまだセンターサーバーに到着していない（YouTube 側の遅延など）
 
 **対応**:
 
 ```
 1. 購読状態を確認
-   GUI から「🔧 プラグイン」→「WebSub 設定」で状態を確認
+   管理者からクライアントIDとAPIキーを受け取っている場合は、登録がされています。
 
 2. Webhook エンドポイントのログを確認
    $ grep "webhook/youtube" logs/app.log
 
-3. 手動で購読テスト
-   GUI から「購読する」ボタンで再購読
+3. YouTubeStudioから動画の公開設定を変更して戻してみる。
+   公開設定を変更すると、YouTubeWebSubの反応遅延が解消される場合があります。
 
 4. ポーリングで代替
    YOUTUBE_FEED_MODE=hybrid で、ポーリングをバックアップに設定
 ```
 
-### Q3: トンネル URL が頻繁に変わる
+### Q3: センターサーバーに接続できない
 
-**原因**: ngrok の無料版は毎回新しい URL が発行される
+**原因**: 通信障害やサーバーメンテナンスの場合があります。
 
 **対応**:
 
 ```
-方法 1: ngrok Pro に有料アップグレード（固定 URL）
-方法 2: Cloudflare Tunnel を使用（無料で固定 URL）
-方法 3: 独自ドメインを設定（Cloudflare など）
+方法 1: Cloudflareに障害が発生していないか確認してください
+方法 2: VPNやプロキシを無効化して再試行してください
+方法 3: ヘルスチェックエンドポイントへの疎通が可能か確認してください
+方法 4: 一時的に RSS ポーリングモードに切り替えてください
+方法 5: センターサーバー 管理者に問い合わせてください(メンテナンス中の場合があります)
 ```
 
 ### Q4: WebSub モード時、新着動画が遅延する
@@ -516,62 +444,85 @@ POLL_INTERVAL_MINUTES=5  # 最短 5分（バックアップ用）
 
 ## 技術仕様
 
-### WebSub フロー
+### センターサーバー API フロー（v3.3.0）
 
-#### 購読
+v3.3.0 では、YouTube WebSub を センターサーバー が管理し、
+あなたのアプリケーションは センターサーバー から HTTP GET でデータを取得します。
 
-```
-POST https://pubsubhubbub.appspot.com
-
-hub.mode=subscribe
-hub.topic=https://www.youtube.com/feeds/videos.xml?channel_id=xxx
-hub.callback=https://your-domain.com/webhook/youtube
-hub.lease_seconds=432000
-hub.secret=<random-secret>
-```
-
-#### チャレンジ検証
+#### フロー図
 
 ```
-GET https://your-domain.com/webhook/youtube?
-  hub.mode=subscribe
-  &hub.topic=...
-  &hub.challenge=<challenge>
-  &hub.lease_seconds=432000
-
-レスポンス: <challenge> をそのまま返す
+┌─────────────────────────────────────────────────┐
+│ YouTube WebSub ハブ                             │
+└─────────────────────────────────────────────────┘
+           ↓ (プッシュ通知)
+┌─────────────────────────────────────────────────┐
+│ センターサーバー (webhook.neco-server.net)        │
+│ - YouTube WebSub 購読を管理                     │
+│ - 動画情報をキャッシュ                           │
+└─────────────────────────────────────────────────┘
+           ↑ (HTTP GET /videos)
+┌─────────────────────────────────────────────────┐
+│ あなたのアプリケーション                         │
+│ - 5分ごとに センターサーバー に GET                │
+│ - 動画情報を DB に保存                          │
+└─────────────────────────────────────────────────┘
 ```
 
-#### 通知ペイロード
-
-```
-POST https://your-domain.com/webhook/youtube
-
-X-Hub-Signature: sha1=<hmac-sha1>
-
-Body: Atom XML format
-```
-
-### HMAC 署名検証
+#### 実装例
 
 ```python
-import hmac
-import hashlib
-
-# ペイロードから HMAC-SHA1 を計算
-expected_digest = hmac.new(
-    secret.encode('utf-8'),
-    body,
-    hashlib.sha1
-).hexdigest()
-
-# X-Hub-Signature ヘッダーと比較
-actual_digest = signature.split("=")[1]
-assert hmac.compare_digest(expected_digest, actual_digest)
+# main_v3.py
+if config.youtube_feed_mode == "websub":
+    yt_rss = get_youtube_websub(config.youtube_channel_id)
+    videos = yt_rss.get_websub_videos(limit=15)
+    # DB に保存
+    for video in videos:
+        db.insert_video(...)
 ```
+
+### ポーリング vs WebSub（センターサーバー）の比較
+
+| 項目 | Poll | WebSub（センターサーバー） |
+|:--|:--|:--|
+| データ取得元 | YouTube RSS フィード | センターサーバー キャッシュ |
+| リアルタイム性 | ❌ 低（数分ラグ） | ⚠️ 中（遅延あり、YouTube の遅延に依存） |
+| トンネル | ❌ 不要 | ❌ 不要 |
+| ローカル webhook | ❌ 不要 | ❌ 不要 |
+| 実装複雑度 | ✅ シンプル | ⚠️ 中程度（API クライアント） |
+| センターサーバー 依存 | ❌ なし | ✅ あり |
+| v3.3.0 実装状況 | ✅ 完全実装 | ✅ 完全実装 |
+
+---
+
+## 関連ファイル
+
+### ✅ v3.3.0 で実装済み
+
+- `youtube_core/youtube_websub.py` - WebSub マネージャー実装（センターサーバー API 対応）
+- `production_server_api_client.py` - センターサーバー HTTP API クライアント
+- `config.py` - 設定管理（YOUTUBE_FEED_MODE, YOUTUBE_WEBSUB_POLL_INTERVAL_MINUTES）
+- `main_v3.py` - メインループ統合（poll/websub のモード分岐）
+
+### ⏳ 将来実装予定（v3.4.0+）
+
+- `websub_settings_panel.py` - GUI 設定パネル（v3.4.0+ 予定）
+- ローカル Webhook サーバー実装（v3.5.0+ 予定）
+
+---
+
+## 実装チェックリスト
+
+| 機能 | v3.3.0 | v3.4.0+ | 詳細 |
+|:--|:--:|:--:|:--|
+| Poll モード（RSS） | ✅ | ✅ | RSS ポーリング・完全実装 |
+| WebSub（センターサーバー） | ✅ | ✅ | センターサーバー HTTP API・完全実装 |
+| Hybrid モード | ❌ | ⏳ | v3.4.0+ 実装予定 |
+| ローカル Webhook | ❌ | ⏳ | v3.5.0+ 実装予定 |
+| GUI 設定パネル | ❌ | ⏳ | v3.4.0+ 実装予定 |
 
 ---
 
 **作成日**: 2025-12-24
-**最後の修正**: 2025-12-24
-**ステータス**: ✅ 完成・検証済み
+**最後の修正**: 2026-01-03
+**ステータス**: ⚠️ 部分実装（v3.3.0 センターサーバー モデル）
