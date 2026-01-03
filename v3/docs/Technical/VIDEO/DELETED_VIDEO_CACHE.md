@@ -138,7 +138,14 @@ cache = get_deleted_video_cache()
 **戻り値**:
 - `True`: 除外動画リストに含まれている
 - `False`: 含まれていない
+**ログ出力**:
+- リストに含まれている場合: DEBUG レベルで `⏭️ 除外動画リスト確認: {video_id}`
+- 含まれていない場合: ログ出力なし
 
+**動作**:
+- サービス名を小文字に正規化
+- サービスキーが存在しない場合: False を返す
+- リスト内の ID と完全一致で判定
 **例**:
 ```python
 if cache.is_deleted("yt123abc", source="youtube"):
@@ -156,15 +163,23 @@ else:
 - `source` (str): サービス名
 
 **戻り値**:
-- `True`: 追加成功
-- `False`: 追加失敗（既に含まれている等）
+- `True`: 追加成功（または既に含まれている場合も True）
+- `False`: 追加失敗（ファイル保存エラー等）
+
+**ログ出力**:
+- 新規追加時: INFO レベルで `✅ 除外動画リストに追加しました`
+- 既に含まれている場合: DEBUG レベルで `既に除外動画リスト登録済みです`
+
+**動作**:
+- 指定したサービスキーが存在しなければ自動作成
+- 重複チェック後、リストに追加して JSON ファイルに保存
 
 **例**:
 ```python
 if cache.add_deleted_video("yt123abc", source="youtube"):
     logger.info("✅ 除外動画リストに追加しました")
 else:
-    logger.warning("⚠️ 既に除外動画リストに含まれています")
+    logger.warning("⚠️ 除外動画リストへの追加に失敗しました")
 ```
 
 #### `remove_deleted_video(video_id: str, source: str = "youtube") -> bool`
@@ -177,14 +192,23 @@ else:
 
 **戻り値**:
 - `True`: 削除成功
-- `False`: 削除失敗（含まれていない等）
+- `False`: 削除失敗（含まれていない、サービス未存在等）
+
+**ログ出力**:
+- 削除成功時: INFO レベルで `🗑️ 除外動画リストから削除しました`
+- 失敗時: DEBUG レベルで詳細メッセージ
+
+**動作**:
+- サービスキーが存在するか確認
+- 動画 ID がリストに含まれているか確認
+- リストから削除して JSON ファイルに保存
 
 **例**:
 ```python
 if cache.remove_deleted_video("yt123abc", source="youtube"):
     logger.info("✅ 除外動画リストから削除しました")
 else:
-    logger.warning("⚠️ 除外動画リストに含まれていません")
+    logger.warning("⚠️ 除外動画リストから削除できません")
 ```
 
 #### `get_deleted_count(source: str = None) -> int`
@@ -192,26 +216,39 @@ else:
 削除済み動画数を取得
 
 **パラメータ**:
-- `source` (str, optional): サービス名。None の場合は全体
+- `source` (str, optional): サービス名。None の場合は全サービスの合計
 
 **戻り値**:
 - (int): 削除済み動画の件数
+
+**動作**:
+- `source=None` の場合: すべてのサービスの ID 数を合計
+- `source=\"youtube\"` の場合: YouTube のみの ID 数
+- サービスキーが存在しない場合: 0 を返す
 
 **例**:
 ```python
 yt_count = cache.get_deleted_count("youtube")        # YouTube のみ
 nico_count = cache.get_deleted_count("niconico")      # Niconico のみ
-total_count = cache.get_deleted_count()              # 全体
+total_count = cache.get_deleted_count()              # 全サービスの合計
 print(f"削除済み: YouTube {yt_count}, Niconico {nico_count}, 合計 {total_count}")
 ```
 
 #### `clear_all_deleted() -> bool`
 
-全除外動画リストをクリア
+全除外動画リストをクリア（デフォルト構造にリセット）
 
 **戻り値**:
 - `True`: クリア成功
 - `False`: クリア失敗
+
+**ログ出力**:
+- 成功時: INFO レベルで `✅ 除外動画リストをクリアしました`
+- 失敗時: ERROR レベルで詳細メッセージ
+
+**動作**:
+- `{\"youtube\": [], \"niconico\": [], \"twitch\": []}` の状態にリセット
+- JSON ファイルに保存
 
 **例**:
 ```python
@@ -219,6 +256,7 @@ if cache.clear_all_deleted():
     logger.info("✅ 除外動画リストをクリアしました")
 else:
     logger.error("❌ 除外動画リストのクリアに失敗")
+```
 ```
 
 ---
@@ -229,46 +267,65 @@ else:
 
 **変更内容**:
 
-削除時に自動的に除外動画リストに登録
+削除時に自動的に除外動画リストに登録し、画像情報を返却
 
 ```python
-def delete_video(self, video_id: str) -> bool:
-    """動画を削除（除外動画リスト連携付き）"""
+def delete_video(self, video_id: str) -> dict:
+    """動画をDBから削除（除外動画リスト連携付き・画像情報付き返却）
 
+    返却される辞書で、呼び出し元（GUI）が画像ファイルの削除を判断できるようにする。
+
+    Returns:
+        {
+            "success": bool,           # 削除成功フラグ
+            "image_filename": str,     # 削除対象の画像ファイル名
+            "source": str,             # 配信元（youtube / niconico など）
+        }
+    """
+
+    result = {"success": False, "image_filename": None, "source": "youtube"}
+
+    # 削除前に video_id, source, image_filename, image_mode を取得
+    cursor.execute(
+        "SELECT source, image_filename, image_mode FROM videos WHERE video_id = ?",
+        (video_id,)
+    )
+    row = cursor.fetchone()
+
+    if row:
+        result["source"] = row["source"] or "youtube"
+        result["image_filename"] = row["image_filename"]  # None でも OK（呼び出し元で判定）
+
+    # DB から削除
+    cursor.execute("DELETE FROM videos WHERE video_id = ?", (video_id,))
+    result["success"] = True
+
+    # ★ 新: 除外動画リストに追加
     try:
-        # 削除前に source を取得
-        cursor = self._get_connection().cursor()
-        cursor.execute(
-            "SELECT source FROM videos WHERE video_id = ?",
-            (video_id,)
-        )
-        result = cursor.fetchone()
-        source = result[0] if result else "youtube"
-
-        # DB から削除
-        cursor.execute("DELETE FROM videos WHERE video_id = ?", (video_id,))
-        cursor.execute("DELETE FROM posts WHERE video_id = ?", (video_id,))
-        self._get_connection().commit()
-
-        # ★ 新: 除外動画リストに追加
+        from deleted_video_cache import get_deleted_video_cache
         cache = get_deleted_video_cache()
-        cache.add_deleted_video(video_id, source=source)
-
-        logger.info(f"✅ 削除完了: {video_id}（除外動画リスト登録済み）")
-        return True
-
+        cache.add_deleted_video(video_id, source=result["source"])
     except Exception as e:
-        logger.error(f"❌ 削除失敗: {e}")
-        return False
+        logger.error(f"除外動画リスト登録エラー: {video_id} - {e}")
+
+    logger.info(f"✅ 動画を削除しました: {video_id}")
+    return result
 ```
 
-### youtube_rss.py - `save_to_db()` メソッド
+**戻り値の仕様**:
+- `success`: 削除成功フラグ
+- `image_filename`: 削除時に画像も削除する必要があるかを GUI が判定するため
+- `source`: サービス別の画像ディレクトリを特定するため
+
+### youtube_rss.py など - RSS 取得時の除外動画リストチェック
 
 **変更内容**:
 
-新着判定前に除外動画リストをチェック
+RSS から取得した動画を DB に追加する前に除外動画リストをチェック
 
 ```python
+from deleted_video_cache import get_deleted_video_cache
+
 def save_to_db(self, videos: list) -> tuple:
     """RSS 動画を DB に保存"""
 
@@ -298,11 +355,16 @@ def save_to_db(self, videos: list) -> tuple:
     return new_count, existing_count
 ```
 
+**特徴**:
+- 除外動画リストに含まれている動画は DEBUG レベルで `⏭️ スキップ（削除済み）` をログ出力
+- RSS で何度来ても DB に追加されない
+- サービス別（YouTube / Niconico など）に正確に判定
+
 ### gui_v3.py - 削除ボタンクリック時
 
 **変更内容**:
 
-GUI から削除時に自動的に除外動画リストに登録（database.py の連携で自動化）
+GUI から削除時に自動的に除外動画リストに登録し、画像ファイルも削除
 
 ```python
 def on_delete_video(self):
@@ -314,13 +376,24 @@ def on_delete_video(self):
 
     video_id = self.video_list.item(selected_item, "values")[0]
 
-    # DB から削除（自動的に除外動画リスト登録される）
-    if self.db.delete_video(video_id):
+    # DB から削除（自動的に除外動画リスト登録・画像情報返却）
+    result = self.db.delete_video(video_id)
+
+    if result["success"]:
+        # 画像ファイルも削除（必要な場合）
+        if result["image_filename"]:
+            self.image_manager.delete_image(result["image_filename"], result["source"])
+
         self.refresh_video_list()
         logger.info(f"✅ 削除完了: {video_id}")
     else:
         logger.error(f"❌ 削除失敗: {video_id}")
 ```
+
+**特徴**:
+- `delete_video()` が辞書を返すため、画像ファイル情報を取得可能
+- GUI は画像ファイル削除の判断を容易に実行
+- 除外動画リスト登録は `database.py` 内で自動実行
 
 ---
 
@@ -462,17 +535,18 @@ grep "ERROR" logs/app.log | grep "deleted_videos"
 cat data/deleted_videos.json
 
 # 2. 削除時に除外動画リストに登録されているか
-grep -A 5 "削除完了" logs/app.log
+grep "✅ 除外動画リストに追加" logs/app.log
 
 # 3. RSS チェック時に除外動画リストを確認しているか
-grep "スキップ（削除済み）" logs/app.log
+grep "⏭️ スキップ（削除済み）" logs/app.log
 ```
 
 **対応**:
 
 - ✅ JSON ファイルに動画 ID が含まれているか確認
-- ✅ ログに「スキップ（削除済み）」メッセージが出力されているか確認
-- ❌ 出力されていない場合は、youtube_rss.py の `save_to_db()` 修正を確認
+- ✅ ログに「✅ 除外動画リストに追加」メッセージが出力されているか確認
+- ✅ RSS 取得時に「⏭️ スキップ（削除済み）」ログが出力されているか確認
+- ❌ 出力されていない場合は、youtube_rss.py など RSS 取得モジュールの `is_deleted()` チェック実装を確認
 
 ### 症状 3: JSON ファイルが破損している
 
@@ -492,7 +566,14 @@ python -c "import json; json.load(open('data/deleted_videos.json'))"
 自動修復機能が働きます（ログで確認）：
 
 ```bash
-grep "JSON 破損を検出" logs/app.log
+grep "除外動画リスト JSON の形式エラー" logs/app.log
+```
+
+ログに以下が出力されます：
+
+```
+❌ 除外動画リスト JSON の形式エラー: ...
+⚠️ 除外動画リスト JSON をリセットします
 ```
 
 ただし、自動修復後もエラーが続く場合は、ファイルを手動で削除してください：
@@ -505,5 +586,5 @@ rm -f data/deleted_videos.json
 ---
 
 **作成日**: 2025-12-18
-**最後の修正**: 2025-12-18
+**最後の修正**: 2026-01-03
 **ステータス**: ✅ 完成・検証済み

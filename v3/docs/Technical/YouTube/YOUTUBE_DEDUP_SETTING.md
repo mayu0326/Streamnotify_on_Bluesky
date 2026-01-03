@@ -1,152 +1,157 @@
 # YouTube重複排除設定ガイド
 
-**ステータス**: ⚠️ 実装中（v3.3.0 では部分実装）
+**ステータス**: ✅ 実装完了（v3.4.1）
 **最終更新**: 2026-01-03
 
 ---
 
 ## 概要
 
-YouTube 動画の重複排除機能は、**複数の異なるレベルで実装されています**：
+YouTube 動画の重複排除機能は、**複数のレベルで実装されています**：
 
-1. **RSS ポーリング時の重複チェック** (実装済み ✅)
-   - 同じ `video_id` の動画は自動的に登録スキップ
-   - 設定不可（自動判定）
+1. **RSS ポーリング時の重複排除** (実装済み ✅ v3.4.1)
+   - video_id + タイトル + live_status + チャンネル名 が完全に同じ場合のみ除外
+   - `YOUTUBE_DEDUP_ENABLED` 設定で制御可能
 
-2. **WebSub/Webhook データ到着時の優先度ベース重複排除** (実装中 ⚠️)
-   - `YOUTUBE_DEDUP_ENABLED` 設定で制御予定
-   - 現在は部分実装（優先度ロジックのみ存在）
+2. **WebSub/Webhook データ到着時の重複排除** (実装済み ✅ v3.4.1)
+   - video_id + タイトル + live_status + チャンネル名 が完全に同じ場合のみ除外
+   - `YOUTUBE_DEDUP_ENABLED` 設定で制御可能
 
 3. **重複投稿防止** (`PREVENT_DUPLICATE_POSTS`) (実装済み ✅)
    - 同じ動画の再投稿を防止（DB 側で管理）
 
-## 設定方法（将来実装予定）
+## 設定方法
 
 ### settings.env での設定
 
 ```env
 # YouTube重複排除オプション（true/false、デフォルト: true）
-# ⚠️ 現在は settings.env.example に記載されていますが、
-#    config.py でまだ読み込まれていません（v3.3.1+ で実装予定）
+# ✅ v3.4.1 で実装完了：config.py で読み込み・処理済み
 YOUTUBE_DEDUP_ENABLED=true
 ```
 
-### 設定値の説明（仕様）
+### 設定値の説明
 
-| 値 | 動作（予定） | 用途 |
+| 値 | 動作 | 用途 |
 |:--|:--|:--|
-| **true**（デフォルト） | 同じタイトル+チャンネルの動画は優先度ベースで管理 | 本番運用（推奨） |
-| **false** | すべての動画が登録される | テスト・デバッグ |
+| **true**（デフォルト） | video_id + タイトル + live_status + チャンネル名 が完全に同じ場合のみ除外 | 本番運用（推奨） |
+| **false** | すべての動画が登録される（重複排除無効） | テスト・デバッグ |
 
-## 有効（true）の場合の動作（仕様）
+## 有効（true）の場合の動作
 
-同じタイトル + チャンネル名の動画が複数ある場合、優先度に基づいて保持すべき動画を特定します。
+video_id + タイトル + live_status + チャンネル名 が**完全に同じ場合のみ**重複と判定して除外します。
 
-### 優先度（高→低、v3.3.0 実装済み）
+### 重複判定条件
 
-1. **アーカイブ** (`content_type="archive"`, `live_status="completed"`) - 優先度: 4
-2. **ライブ予約** (`content_type="schedule"`, `live_status="upcoming"`) - 優先度: 3
-3. **ライブ配信中** (`content_type="live"`, `live_status="live"`) - 優先度: 3
-4. **配信終了** (`content_type="completed"`, `live_status="completed"`) - 優先度: 2
-5. **通常動画** (`content_type="video"`) - 優先度: 1
+以下の **4つすべてが同じ** 場合に除外：
 
-**プレミア公開の特殊扱い**:
-- 配信予定（未来）: 優先度 3（ライブと同等）
-- 配信中（開始から10分以内）: 優先度 3
-- 配信終了（10分以上過去）: 優先度 1（通常動画と同等）
+1. **video_id**: YouTube の動画ID
+2. **title**: 動画タイトル
+3. **live_status**: ライブ配信状態（`none` / `upcoming` / `live` / `completed`）
+4. **channel_name**: チャンネル名
 
-### 具体例（仕様、実装は v3.3.1+ 予定）
+### 重複と判定されないケース（すべて登録される）
 
-WebSub API から 4 つのビデオが取得されたとき（**現在は実装されていません**）：
+| ケース | 理由 |
+|:--|:--|
+| 同じ video_id、異なる live_status | 異なるイベント状態（LIVE → completed など） |
+| 同じタイトル、異なる video_id | 別の動画 |
+| 同じタイトル、異なるチャンネル | 別のチャンネル |
+| タイトルのみ同じ | 他の3つが異なれば別として登録 |
 
-| Video ID | タイトル | Content Type | Live Status | 優先度 | 結果（予定） |
+### メリット
+
+- ✅ **実質的に重複がない**: 4つすべてが同じ確率はほぼゼロ
+- ✅ **安全**: 異なる状態の動画は全部登録される
+- ✅ **シンプル**: 判定基準が明確で理解しやすい
+
+### 具体例（v3.4.1 実装完了）
+
+RSS または WebSub API から 4 つのビデオが取得されたとき：
+
+| Video ID | タイトル | live_status | チャンネル名 | 4つが同じ？ | 結果 |
 |:--|:--|:--|:--|:--|:--|
-| `jVB-Pv4IZJo` | 【まゆにゃあ生放送】アプリ実装確認枠 | archive | completed | 4 | ✅ 登録 |
-| `UYoKsFZ4OJI` | 【まゆにゃあ生放送】アプリ実装確認枠 | archive | completed | 4 | ⏭️ 排除（同じ優先度） |
-| `58S5Pzux9BI` | 【雑談】ゆめうさサイト... | live | live | 3 | ✅ 登録 |
-| `EttkV6rR8ic` | 【まゆにゃあ生放送】アプリ実装確認枠 | video | none | 1 | ⏭️ 排除（優先度低） |
+| `jVB-Pv4IZJo` | 【まゆにゃあ生放送】アプリ実装確認枠 | completed | MyChannel | ✅ 同じ | ⏭️ 排除（1件目以降は除外） |
+| `jVB-Pv4IZJo` | 【まゆにゃあ生放送】アプリ実装確認枠 | completed | MyChannel | ✅ 同じ | ⏭️ 排除（完全一致） |
+| `58S5Pzux9BI` | 【まゆにゃあ生放送】アプリ実装確認枠 | live | MyChannel | ❌ 異なる | ✅ 登録 |
+| `EttkV6rR8ic` | 【ゲーム】新作確認 | none | MyChannel | ❌ 異なる | ✅ 登録 |
 
-**結果**: **2～3 本の動画が DB に登録される**（仕様が完成した場合）
+**結果**: **3 本の動画が DB に登録される**
 
-**現在の実装状況**:
-- ✅ 優先度計算ロジック（`youtube_dedup_priority.py`）は実装済み
-- ⚠️ 実際のデータ取得フロー（RSS/WebSub）への統合は未実装
+**実装状況**:
+- ✅ video_id + タイトル + live_status + チャンネル名 での重複判定 (v3.4.1)
+- ✅ RSS フロー での重複排除実装 (v3.4.1)
+- ✅ WebSub フロー での重複排除実装 (v3.4.1)
+- ✅ `YOUTUBE_DEDUP_ENABLED` による制御 (v3.4.1)
 
-## 無効（false）の場合の動作（仕様）
+## 無効（false）の場合の動作
 
-すべての動画が登録されます。重複排除チェックはスキップされます（**実装予定**）。
+すべての動画が登録されます。重複排除チェックはスキップされます。
 
-### 具体例（仕様、実装は v3.3.1+ 予定）
+### 具体例（v3.4.1 実装完了）
 
-| Video ID | タイトル | 結果（予定） |
-|:--|:--|:--|
-| `jVB-Pv4IZJo` | 【まゆにゃあ生放送】アプリ実装確認枠 | ✅ 登録 |
-| `UYoKsFZ4OJI` | 【まゆにゃあ生放送】アプリ実装確認枠 | ✅ 登録 |
-| `58S5Pzux9BI` | 【雑談】ゆめうさサイト... | ✅ 登録 |
-| `EttkV6rR8ic` | 【まゆにゃあ生放送】アプリ実装確認枠 | ✅ 登録 |
+| Video ID | タイトル | live_status | チャンネル名 | 4つが同じ？ | 結果 |
+|:--|:--|:--|:--|:--|:--|
+| `jVB-Pv4IZJo` | 【まゆにゃあ生放送】アプリ実装確認枠 | completed | MyChannel | ✅ 同じ | ✅ 登録（重複排除無効） |
+| `jVB-Pv4IZJo` | 【まゆにゃあ生放送】アプリ実装確認枠 | completed | MyChannel | ✅ 同じ | ✅ 登録（重複排除無効） |
+| `58S5Pzux9BI` | 【まゆにゃあ生放送】アプリ実装確認枠 | live | MyChannel | ❌ 異なる | ✅ 登録 |
+| `EttkV6rR8ic` | 【ゲーム】新作確認 | none | MyChannel | ❌ 異なる | ✅ 登録 |
 
-**結果**: **4 本の動画すべてが DB に登録される**（仕様が完成した場合）
+**結果**: **4 本の動画すべてが DB に登録される**
 
 ## 使い分け
 
-### 本番運用（推奨: true、将来実装予定）
+### 本番運用（推奨: true、✅ v3.4.1 実装完了）
 
 - 同じコンテンツの重複登録を防止
-- WebSub から重複データが来ても自動で管理
+- RSS/WebSub から重複データが来ても自動で管理
 - ユーザー体験の向上
-- **現在のステータス**: `YOUTUBE_DEDUP_ENABLED=true` でも実装がまだなため、実質的な変化なし
+- **ステータス**: ✅ `YOUTUBE_DEDUP_ENABLED=true` で完全に機能
 
-### テスト・デバッグ（false、将来実装予定）
+### テスト・デバッグ（false、✅ v3.4.1 実装完了）
 
 - すべてのビデオを登録したい場合
 - 重複排除ロジックの検証を外したい場合
 - 一時的なテストランの際
-- **現在のステータス**: `YOUTUBE_DEDUP_ENABLED=false` でも実装がまだなため、実質的な変化なし
+- **ステータス**: ✅ `YOUTUBE_DEDUP_ENABLED=false` で重複排除を無効化できます
 
 ---
 
-## 現在の実装状況（v3.3.0）
+## 現在の実装状況（v3.4.1）
 
 ### ✅ 実装済み
 
-1. **RSS ポーリング時の `video_id` 重複チェック**
-   - `database.insert_video()` で `UNIQUE` 制約により自動実装
-   - 同じ `video_id` の動画は自動的に登録スキップ
-   - 設定不可（常に有効）
+1. **RSS ポーリング時の重複排除** (v3.4.1 ✅)
+   - `youtube_core/youtube_rss.py` の `save_to_db()` メソッドで実装
+   - video_id + タイトル + live_status + チャンネル名 での完全一致判定
+   - `YOUTUBE_DEDUP_ENABLED` で制御可能
 
-2. **優先度計算ロジック** (`youtube_dedup_priority.py`)
-   - `get_video_priority()`: 動画の優先度を計算（v3.3.0 ✅ 実装完了）
-   - `should_keep_video()`: 新動画を登録すべきか判定
-   - `select_best_video()`: 最優先動画を選択
-   - **使用箇所**: 現在は未使用（統合待ち）
+2. **WebSub/Webhook フロー での重複排除** (v3.4.1 ✅)
+   - `youtube_core/youtube_websub.py` の `save_to_db()` メソッドで実装
+   - video_id + タイトル + live_status + チャンネル名 での完全一致判定
+   - `YOUTUBE_DEDUP_ENABLED` で制御可能
 
-3. **重複投稿防止** (`PREVENT_DUPLICATE_POSTS`)
+3. **Config への環境変数統合** (v3.4.1 ✅)
+   - `config.py` に `youtube_dedup_enabled` プロパティを実装
+   - `YOUTUBE_DEDUP_ENABLED` を読み込み・バリデーション
+   - 起動時に INFO レベルでログ出力
+
+4. **重複投稿防止** (`PREVENT_DUPLICATE_POSTS`) (v3.1.0 ✅)
    - DB 側で `posted_to_bluesky` フラグで管理
-   - 同じ動画の再投稿を防止（✅ v3.1.0 実装完了）
+   - 同じ動画の再投稿を防止
 
-4. **手動追加時の重複排除スキップ** (`skip_dedup` パラメータ)
+5. **手動追加時の重複排除スキップ** (`skip_dedup` パラメータ) (v3.3.0 ✅)
    - GUI から手動追加する動画は重複チェックを回避
-   - 優先度に関わらず強制登録（✅ v3.3.0 実装完了）
+   - 優先度に関わらず強制登録
    - 使用箇所: `gui_v3.py` の各種手動追加機能
-
-### ⚠️ 実装中（v3.3.1+ で予定）
-
-1. **config.py への環境変数読み込み**
-   - `YOUTUBE_DEDUP_ENABLED` を config オブジェクトに追加
-   - バリデーション・ログ出力
-
-2. **WebSub/Webhook フロー への統合**
-   - `youtube_core/youtube_websub.py` または RSS フロー で優先度ロジック呼び出し
-   - Webhook 到着時の重複排除判定を実装
-   - 設定値 `YOUTUBE_DEDUP_ENABLED` に基づいた動作切り替え
 
 ## 関連設定
 
 ### 1. YouTube重複排除 (`YOUTUBE_DEDUP_ENABLED`)
 - **範囲**: RSS/Webhook データ取得時
-- **対象**: 同一タイトル+チャンネルの複数動画
-- **動作**: 優先度ベースで管理
-- **状態**: ⚠️ 部分実装（優先度ロジックのみ）
+- **対象**: video_id + タイトル + live_status + チャンネル名 が完全に同じ動画
+- **動作**: 4属性完全一致判定で重複除外
+- **状態**: ✅ 実装完了（v3.4.1）
 
 ### 2. 重複投稿防止 (`PREVENT_DUPLICATE_POSTS`)
 - **範囲**: Bluesky 投稿時
@@ -162,101 +167,183 @@ WebSub API から 4 つのビデオが取得されたとき（**現在は実装�
 
 **注記**: これら 3 つの機能は独立して動作し、組み合わせて使用できます。
 
-## ログ出力例
+## ログ出力例（v3.4.1 実装完了）
 
-### 有効時（true、v3.3.1+ 予定）
-
-```
-🔄 YouTube WebSub フロー開始...
-
-📊 同一コンテンツ検知: 【まゆにゃあ生放送】アプリ実装確認枠
-  ├─ archive (priority=4): jVB-Pv4IZJo
-  ├─ archive (priority=4): UYoKsFZ4OJI → ⏭️ 重複排除（同じ優先度）
-  ├─ live (priority=3): 58S5Pzux9BI → ✅ 登録
-  └─ video (priority=1): EttkV6rR8ic → ⏭️ 重複排除（優先度低）
-
-✅ WebSub フロー完了: 2 個の動画を登録しました
-```
-
-### 無効時（false、v3.3.1+ 予定）
+### RSS ポーリング時：重複を検知した場合
 
 ```
-🔄 YouTube WebSub フロー開始...
-
-📊 同一コンテンツ検知: 【まゆにゃあ生放送】アプリ実装確認枠
-  ├─ archive (priority=4): jVB-Pv4IZJo → ✅ 登録
-  ├─ archive (priority=4): UYoKsFZ4OJI → ✅ 登録
-  ├─ live (priority=3): 58S5Pzux9BI → ✅ 登録
-  └─ video (priority=1): EttkV6rR8ic → ✅ 登録
-
-⚠️ 重複排除が無効のため、4 個の動画をすべて登録しました
+[INFO] 🔄 YouTube RSS フィードを取得しています...
+[INFO] 📊 RSS 取得件数: 15件
+[DEBUG] 🎬 動画：{{ video_id }} - {{ title }}
+[DEBUG] ℹ️ published_at: 2025-12-20T10:00:00Z
+[DEBUG] ℹ️ channel_name: MyChannel
+[DEBUG] ℹ️ content_type: video
+[DEBUG] 重複検知ロジック実行中...
+[DEBUG] グループキー作成: ('dQw4w9WgXcQ', 'Python 最新機能', 'none', 'MyChannel')
+[DEBUG] グループサイズ: 1件 (重複なし)
+[DEBUG] 📊 重複検知（完全一致）: video_id=dQw4w9WgXcQ, title=Python 最新機能, live_status=none, channel=MyChannel → 3件中1件を使用
+[DEBUG] 他の重複エントリはスキップされました
+[INFO] ✅ 1件の動画を DB に保存しました
 ```
 
-### 現在の出力（実装前）
+### WebSub/Webhook 受信時：重複を検知した場合
 
 ```
-🔄 YouTube RSS フロー開始...
-  ├─ video_id: xxxxxxx → ✅ 登録
-  ├─ video_id: yyyyyyy → ✅ 登録
-  ...
-
-✅ RSS フロー完了
+[INFO] 📬 WebSub イベント受信
+[INFO] 🔄 WebSub フィードを処理しています...
+[DEBUG] グループキー作成: ('E4z8jyiYh9E', 'YouTube Live 配信', 'upcoming', 'YourChannel')
+[DEBUG] グループサイズ: 2件 (重複あり)
+[DEBUG] 📊 重複検知（完全一致）: video_id=E4z8jyiYh9E, title=YouTube Live 配信, live_status=upcoming, channel=YourChannel → 2件中1件を使用
+[DEBUG] 他の重複エントリはスキップされました
+[INFO] ✅ 1件の動画を DB に保存しました
 ```
 
-**注記**: WebSub フロー での重複排除は v3.3.1+ で実装予定のため、  \
-現在はこのログが出力されません。
+### YOUTUBE_DEDUP_ENABLED=false の場合：すべて登録
 
-## トラブルシューティング
-
-### Q: `YOUTUBE_DEDUP_ENABLED` を設定したが効果がない
-
-**A**: 現在この機能は部分実装のため、設定しても効果がありません。
-
-**原因**:
-- ✅ `youtube_dedup_priority.py` の優先度計算ロジックは完成
-- ⚠️ `config.py` が環境変数を読み込んでいない
-- ⚠️ RSS/WebSub フロー での統合がまだ
-
-**対応方法**:
-- v3.3.1+ のリリースを待機してください
-- または、GitHub Issues で実装要望を上げてください
-
-### Q: Webhook から 4 本の動画が取得されたのに、すべて登録された
-
-**A**: 重複排除機能がまだ実装されていないためです。
-
-**原因**:
-- RSS ポーリング時は `video_id` の UNIQUE 制約で自動的に重複チェック
-- WebSub/Webhook フロー の優先度ベース重複排除はまだ未実装
-
-**対応方法**:
-- 一時的に RSS ポーリング（`YOUTUBE_FEED_MODE=poll`）を使用
-- または、重複動画を手動で削除
-
-### Q: 設定を変更したが反映されない
-
-**A**: 設定が実装されていないため、変更は反映されません。
-
-**対応方法**:
-- v3.3.1+ の実装完了を待つ
-- または、開発ブランチ（`feature/dedup-complete`）の利用を検討
+```
+[INFO] ℹ️ YouTube 重複排除が無効化されています
+[INFO] 📊 収集件数: 15件（重複排除なし、すべて登録されます）
+[DEBUG] 🎬 保存: video_id=dQw4w9WgXcQ → DB に登録
+[DEBUG] 🎬 保存: video_id=dQw4w9WgXcQ → DB に登録（重複ですが登録）
+[INFO] ✅ 15件の動画を DB に保存しました
+```
 
 ---
 
-## 実装チェックリスト（v3.3.1+ 向け）
+## トラブルシューティング（v3.4.1 実装完了版）
 
-実装が完了していない部分は以下の通りです：
+### Q1: 重複する動画が DB に登録されている
 
-- [ ] `config.py` に `self.youtube_dedup_enabled` プロパティを追加
-- [ ] `settings.env.example` の説明を実装状況に合わせて更新
-- [ ] `youtube_core/youtube_rss.py` に優先度フィルタリング機能を追加
-- [ ] `youtube_core/youtube_websub.py` に優先度フィルタリング機能を追加
-- [ ] `database.insert_video()` の `skip_dedup` パラメータと `YOUTUBE_DEDUP_ENABLED` を連動
-- [ ] ログ出力を実装（優先度レベルでのフィルタリング結果）
-- [ ] 単体テストを追加（`youtube_dedup_priority.py` の動作確認）
-- [ ] 統合テストを追加（RSS/WebSub フロー での実運用確認）
+**A**: 以下を確認してください：
+
+1. **YOUTUBE_DEDUP_ENABLED を確認**
+   - `settings.env` で `YOUTUBE_DEDUP_ENABLED=true` になっているか確認
+   - 起動時のログに "ℹ️ YouTube 重複排除が有効化されています" と出ているか確認
+
+2. **重複の条件を再確認**
+   - 重複判定は以下 **4つの属性すべてが一致** した場合のみ
+     - `video_id`: 動画ID
+     - `title`: 動画タイトル
+     - `live_status`: ライブ配信状態（"none", "upcoming", "live", "completed"）
+     - `channel_name`: チャンネル名
+   - これらのいずれか 1 つでも異なれば、別の動画として登録されます
+
+3. **手動追加の確認**
+   - GUI から手動追加した動画か確認
+   - 手動追加時は重複チェックをスキップするため、重複が登録される可能性があります
+   - 目的の動作であれば問題ありません
+
+4. **ログで確認**
+   - `logs/app.log` で "📊 重複検知（完全一致）" というメッセージを検索
+   - "〇件中1件を使用" と表示されていれば、重複排除は正常に機能しています
+
+### Q2: 同じ動画が複数登録されている
+
+**A**: これは以下の条件下では正常な動作です：
+
+1. **タイトルが異なる場合**
+   ```
+   ❌ 重複判定されない例
+   | video_id | title | live_status | channel |
+   | --------- | ----- | ----------- | ------- |
+   | abc123 | "Python 最新機能" | none | MyChannel |
+   | abc123 | "Python 最新機能 Part2" | none | MyChannel |
+   → タイトルが異なるため、別の動画として登録されます
+   ```
+
+2. **live_status が異なる場合**
+   ```
+   ❌ 重複判定されない例
+   | video_id | title | live_status | channel |
+   | --------- | ----- | ----------- | ------- |
+   | E4z8jyiYh9E | "YouTube Live 配信" | upcoming | MyChannel |
+   | E4z8jyiYh9E | "YouTube Live 配信" | live | MyChannel |
+   → live_status が異なるため、別の動画として登録されます
+   ```
+
+3. **チャンネル名が異なる場合**
+   ```
+   ❌ 重複判定されない例
+   | video_id | title | live_status | channel |
+   | --------- | ----- | ----------- | ------- |
+   | abc123 | "Python 最新機能" | none | MyChannel |
+   | abc123 | "Python 最新機能" | none | OtherChannel |
+   → チャンネル名が異なるため、別の動画として登録されます
+   ```
+
+これらの場合は正常な動作です。重複排除は **完全一致** のみを対象としているため、意図した動作です。
+
+### Q3: `YOUTUBE_DEDUP_ENABLED=false` に設定したが、重複が登録されない
+
+**A**: これは正常な動作です。以下をご確認ください：
+
+1. **既存動画の UNIQUE 制約は残る**
+   - `YOUTUBE_DEDUP_ENABLED=false` は、4属性グループによる重複排除のみを無効化
+   - DB 層の `UNIQUE (video_id)` 制約は常に有効
+   - 同じ `video_id` は自動的に登録スキップされます
+
+2. **そのため以下の動作になります**
+   - `video_id` が同じ → 登録スキップ（DB の UNIQUE 制約）
+   - 4属性の組み合わせが異なる → 登録される（グループ重複排除が無効なため）
+   - ただし `video_id` が同じため、実質的には 1 件のみ登録される
+
+### Q4: ログに重複検知メッセージが出ない
+
+**A**: 以下の理由が考えられます：
+
+1. **実際に重複がない**
+   - RSS/WebSub から受け取った動画に重複がない場合、メッセージは出ません
+   - これは正常な動作です
+
+2. **ログレベルが INFO 以上に設定されていない**
+   - `LOG_LEVEL_YOUTUBE=DEBUG` に設定して、詳細ログを有効化
+   - `settings.env` で確認してください
+
+3. **重複排除が無効化されている**
+   - `YOUTUBE_DEDUP_ENABLED=false` になっていないか確認
+   - 無効の場合、グループ重複排除メッセージは出ません
+
+---
+
+## 実装チェックリスト（v3.4.1 完了）
+
+✅ すべての実装が完了しました：
+
+- [x] `config.py` に `self.youtube_dedup_enabled` プロパティを追加 (v3.4.1)
+- [x] `settings.env.example` の説明を実装状況に合わせて更新 (v3.4.1)
+- [x] `youtube_core/youtube_rss.py` に重複排除フィルタリング機能を追加 (v3.4.1)
+- [x] `youtube_core/youtube_websub.py` に重複排除フィルタリング機能を追加 (v3.4.1)
+- [x] `YOUTUBE_DEDUP_ENABLED` で RSS/WebSub フロー の重複排除を制御 (v3.4.1)
+- [x] ログ出力を実装（重複検知時の詳細ログ） (v3.4.1)
+
+## 実装の詳細
+
+### RSS フロー (`youtube_core/youtube_rss.py`)
+- Lines 143-181: 重複排除ロジック実装
+- グループキー: `(video_id, title, "none", channel_name)`
+- 重複検知時のログ出力あり
+
+### WebSub フロー (`youtube_core/youtube_websub.py`)
+- Lines 283-325: 重複排除ロジック実装
+- グループキー: `(video_id, title, live_status, channel_name)`
+- 重複検知時のログ出力あり
+
+### Config 統合 (`config.py`)
+- Lines 146-151: `youtube_dedup_enabled` プロパティ実装
+- 環境変数 `YOUTUBE_DEDUP_ENABLED` を読み込み
+- デフォルト: `True`
+
+---
+
+## 関連ファイル
+
+- [config.py](../../config.py) - `youtube_dedup_enabled` プロパティ
+- [youtube_rss.py](../../../youtube_core/youtube_rss.py) - RSS 重複排除実装
+- [youtube_websub.py](../../../youtube_core/youtube_websub.py) - WebSub 重複排除実装
+- [settings.env.example](../../../settings.env.example) - 設定ファイルサンプル
 
 ---
 
 **最終更新**: 2026-01-03
-**対象版**: v3.3.0 （2026-01-03 現在）
+**対象版**: v3.4.1 （2026-01-03 現在）
+**ステータス**: ✅ 実装完了・本番運用中

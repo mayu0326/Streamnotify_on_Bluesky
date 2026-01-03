@@ -1,7 +1,7 @@
 # StreamNotify on Bluesky
 
 - YouTube チャンネルの新着動画を Bluesky に自動投稿するアプリケーションです。
-- YouTube動画に対応。YouTubeLive / Twitch / ニコニコなどはプラグインで対応
+- YouTube動画に対応。YouTube Live（モジュール）、ニコニコ、Twitch などはプラグインで対応
 
 ## 概要
 
@@ -9,7 +9,7 @@
 Bluesky に自動投稿する常駐ボットです。
 - プラグインアーキテクチャにより、新しいプラットフォーム・通知先の対応は  \
 拡張プラグインで実現できます。
-- **v3（次世代版）**: GUI 大幅拡張、既存機能強化、YouTubeLive 完全対応 \
+- **v3（次世代版）**: GUI 大幅拡張、既存機能強化、YouTube Live 完全対応（モジュール化） \
 - **v2（安定版）**: YouTube RSS 監視、Bluesky 投稿機能強化、基本 GUI、YouTube Live 対応、  \
 テンプレート管理、画像処理パイプライン、プラグイン拡張 、ニコニコ動画対応
 
@@ -50,84 +50,88 @@ Bluesky に自動投稿する常駐ボットです。
 │
 ├── v3/                          # v3（推奨、次世代版）
 │   ├── main_v3.py               # エントリーポイント
-│   ├── gui_v3.py                # 拡張 GUI（2,760 行）
+│   ├── gui_v3.py                # 拡張 GUI
+│   ├── config.py                # 設定管理
+│   ├── database.py              # SQLite 操作
+│   ├── bluesky_core.py          # Bluesky 投稿処理
 │   ├── plugin_manager.py        # プラグイン管理
-│   ├── plugins/                 # プラグイン実装（5 種）
-│   ├── utils/                   # デバッグ・検証スクリプト
-│   │   ├── database/            # DB操作・検証
-│   │   ├── cache/               # キャッシュ管理
-│   │   ├── classification/      # 分類・検証
-│   │   ├── analysis/            # 分析・検証
-│   │   └── DEBUGGING_UTILITIES.md
+│   ├── plugin_interface.py      # プラグイン基本インターフェース
+│   ├── logging_config.py        # ロギング設定
+│   ├── image_manager.py         # 画像ダウンロード・管理
+│   ├── image_processor.py       # 画像リサイズ・処理
+│   ├── template_utils.py        # テンプレート処理
+│   ├── asset_manager.py         # アセット自動配置
+│   ├── utils_v3.py              # ユーティリティ関数
+│   │
+│   ├── youtube_core/            # YouTube 処理モジュール（プラグインではない）
+│   │   ├── youtube_rss.py           # RSS 取得・パース
+│   │   ├── youtube_video_classifier.py # 動画分類（Live/Archive判定）
+│   │   ├── youtube_dedup_priority.py # 重複排除ロジック
+│   │   ├── youtube_websub.py        # WebSub サポート
+│   │   └── __init__.py
+│   │
+│   ├── plugins/                 # プラグインディレクトリ
+│   │   ├── bluesky_plugin.py    # Bluesky 投稿プラグイン
+│   │   ├── niconico_plugin.py   # ニコニコ動画 RSS プラグイン
+│   │   ├── logging_plugin.py    # ロギング統合プラグイン
+│   │   └── youtube/             # YouTube 関連プラグイン
+│   │       ├── youtube_api_plugin.py  # YouTube Data API プラグイン
+│   │       └── __init__.py
+│   │
 │   ├── docs/                    # ドキュメント（4 カテゴリ体系）
 │   │   ├── Technical/           # 技術資料
 │   │   ├── Guides/              # ユーザーガイド
 │   │   ├── References/          # 参考資料
 │   │   └── Local/               # ローカル作業用
-│   ├── data/                    # ローカルデータ
-│   │   └── video_list.db        # SQLite データベース
-│   ├── logs/                    # ログファイル出力先
-│   ├── thumbnails/              # サムネイル用ユーティリティ
+│   │
 │   ├── Asset/                   # テンプレート・画像配布
-│   │    ├── README.md                       # AssetManager 統合ガイド
-│   │    ├── templates/                      # テンプレート配布元
-│   │   |    └── default/                    # デフォルトテンプレート
-│   │    └── images/                         # 画像配布元
-│   │       ├── default/                    # デフォルト画像
-│   │      ├── YouTube/                    # YouTube 関連
-│   │      ├── Niconico/                   # ニコニコ関連
-│   │      └── Twitch/                     # Twitch 関連（将来）
-│   └── settings.env.example     # 設定ファイル例
+│   │   ├── README.md            # AssetManager 統合ガイド
+│   │   ├── templates/           # テンプレート配布元
+│   │   │   ├── default/         # デフォルトテンプレート
+│   │   │   ├── youtube/         # YouTube 関連
+│   │   │   ├── niconico/        # ニコニコ関連
+│   │   │   └── twitch/          # Twitch 関連（将来）
+│   │   └── images/              # 画像配布元
+│   │       ├── default/         # デフォルト画像
+│   │       ├── YouTube/         # YouTube 関連
+│   │       ├── Niconico/        # ニコニコ関連
+│   │       └── Twitch/          # Twitch 関連（将来）
+│   │
+│   ├── templates/               # 実行時テンプレートディレクトリ
+│   │   ├── youtube/             # YouTube テンプレート
+│   │   ├── niconico/            # ニコニコテンプレート
+│   │   └── .templates/          # デフォルト・フォールバック用
+│   │
+│   ├── images/                  # 実行時画像保存ディレクトリ
+│   │   ├── default/
+│   │   ├── YouTube/
+│   │   └── Niconico/
+│   │
+│   ├── data/                    # ローカルデータ
+│   │   ├── video_list.db        # SQLite データベース
+│   │   └── youtube_video_detail_cache.json  # キャッシュ
+│   │
+│   ├── logs/                    # ログファイル出力先
+│   ├── thumbnails/              # サムネイル処理ユーティリティ
+│   ├── settings.env.example     # 設定ファイル例
+│   └── requirements.txt         # Python 依存パッケージ
 │
 ├── v2/                          # v2（安定版、既存ユーザー向け）
-│   │
+│   ├── main_v2.py
 │   ├── plugins/                 # プラグインディレクトリ
-│   │   ├── bluesky_plugin.py    # Bluesky 投稿プラグイン
+│   │   ├── bluesky_plugin.py
 │   │   ├── youtube_api_plugin.py
-│   │   └── ...
-│   │
-│   ├── docs/                    # 設計ドキュメント（4カテゴリに整理）
-│   │   ├── README_GITHUB_v2.md  # ドキュメント入口
-│   │   ├── Technical/           # 技術資料（アーキテクチャ・仕様）
-│   │   │   ├── ARCHITECTURE_AND_DESIGN.md
-│   │   │   ├── PLUGIN_SYSTEM.md
-│   │   │   ├── TEMPLATE_SYSTEM.md
-│   │   │   ├── YOUTUBE_API_CACHING_IMPLEMENTATION.md
-│   │   │   └── ...
-│   │   ├── Guides/              # ユーザーガイド（使い方・操作方法）
-│   │   │   ├── DEBUG_DRY_RUN_GUIDE.md
-│   │   │   ├── IMAGE_RESIZE_GUIDE.md
-│   │   │   ├── SESSION_REPORTS.md
-│   │   │   └── ...
-│   │   ├── References/          # 参考資料（ロードマップ・構想）
-│   │   │   ├── FUTURE_ROADMAP_v3.md
-│   │   │   └── ...
-│   │   ├── ARCHIVE/             # 実装計画・記録（完了後）
-│   │   │   └── ...
-│   │   └── Local/               # 一時ファイル（非公開推奨）
-│   │
+│   │   ├── youtube_live_plugin.py
+│   │   ├── niconico_plugin.py
+│   │   └── logging_plugin.py
+│   ├── docs/                    # ドキュメント
 │   ├── data/                    # ローカルデータ
-│   │   └── video_list.db        # SQLite データベース
-│   │
-│   ├── logs/                    # ログファイル出力先
-│   │
-│   ├── templates/               # 投稿テンプレート
-│   │   └── .templates/
-│   │
-│   ├── images/                  # サムネイル用キャッシュ(各サイト毎)
-│   │
-│   ├── thumbnails/              # サムネイル用ユーティリティ
-│   │
-│   ├── Asset/                   # プラグイン用テンプレート・画像
-│   │   ├── README.md
-│   │   ├── images/
-│   │   │    └── default/          # デフォルト画像
-│   │   └── templates/
-│   │       ├── default/          # デフォルトテンプレート
-│   │       ├── YouTube/          # YouTube 用
-│   │       ├── Niconico/         # ニコニコ用
-│   │       └── Twitch/           # Twitch 用（将来）
-│   └── __pycache__/             # Python キャッシュ（Git 管理外）
+│   ├── logs/                    # ログファイル
+│   ├── templates/               # テンプレート
+│   ├── images/                  # 画像キャッシュ
+│   ├── Asset/                   # アセット配布
+│   ├── settings.env.example
+│   └── requirements.txt
 │
 ├── v1/                          # v1（レガシー版、参考用）
 │
@@ -234,7 +238,7 @@ python main_v2.py
   - `AUTOPOST_INCLUDE_NORMAL`: 通常動画を投稿
   - `AUTOPOST_INCLUDE_PREMIERE`: プレミア配信を投稿
 
-詳細は [AUTOPOST機能仕様書](v3/docs/References/AUTOPOST_SELFPOST_機能仕様書.md) を参照。
+詳細は [AUTOPOST機能仕様書](./v3/docs/References/AUTOPOST_SELFPOST_機能仕様書.md) を参照。
 
 ### GUI の主な機能（SELFPOST モード）
 
@@ -311,9 +315,8 @@ python main_v2.py
 - [**Twitch API ポーリング実装ガイド**](v3/docs/Technical/TWITCH/TWITCH_POLLING_IMPLEMENTATION.md)
 
 ## 📚 YouTube関連資料
-- [YouTube API キャシュ実装](v3/docs/Technical/YouTube/YOUTUBE_API_CACHING_IMPLEMENTATION.md)
-- [YouTubeLive 終了検出機構](v3/docs/Technical/YouTube/YOUTUBE_LIVE_CACHE_IMPLEMENTATION.md)
-- [YouTube Live プラグイン](v3/docs/Technical/YouTube/YOUTUBE_LIVE_PLUGIN_IMPLEMENTATION.md)
+- [YouTube API キャッシュ実装](v3/docs/Technical/YouTube/YOUTUBE_API_CACHING_IMPLEMENTATION.md)
+- [YouTube Live 動画分類機構](v3/docs/Technical/YouTube/YOUTUBE_LIVE_CACHE_IMPLEMENTATION.md)
 
 ### 💡 設計思想・アーキテクチャ
 - [**Streamnotify 設計思想とアーキテクチャ哲学**](v3/docs/References/DESIGN_PHILOSOPHY.md)（⭐ 必読）
@@ -449,15 +452,17 @@ Git による公開リポジトリには含めないでください（`.gitignor
 - **動画登録の重複抑止**: YouTube 優先度ベースの重複排除
 - **ドキュメント統一**: 30+ ファイルを 4 カテゴリ体系に再構成
 
-### v2.3.0 YouTubeLiveプラグイン実装完了（2025-12-18）
+### v2.3.0 YouTube Live プラグイン実装完了（2025-12-18）
 
-YouTubeLiveプラグインの実装が完全に完了しました。以下の機能がv2で確立されました：
+v2 で YouTube Live プラグインの実装が完全に完了しました。以下の機能がv2で確立されました：
 
 - ✅ YouTube Live/Archive/Normal判定ロジック
 - ✅ Live開始/終了の自動ポーリング・自動投稿
 - ✅ テンプレート選択・投稿（yt_online_template.txt / yt_offline_template.txt）
 - ✅ DB拡張（live_status, content_type）
 - ✅ 全テスト完了（単体 12、統合 10）
+
+**注記**: v3 では YouTube Live 判定がプラグインではなく `youtube_core/` モジュールとして実装され、より高度な動画分類機能を提供します。
 
 #### v2.1.0 Bluesky 投稿の安定性向上（2025-12-17）
 
