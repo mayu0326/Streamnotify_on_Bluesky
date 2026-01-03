@@ -146,35 +146,18 @@ class YouTubeWebSub:
                     published_at = item.get("published_at", "")
                     channel_name = item.get("channel_name", "")
 
-                    # ★ v3.4.0: WebSub から取得した channel_name が空の場合、キャッシュまたは API から取得
+                    # ★ v3.4.0: WebSub から取得した channel_name が空の場合、フォールバックで取得
+                    # （API 呼び出しを最小化するため、API に頼らず自動生成フォールバック）
                     if not channel_name:
                         try:
-                            # YouTube API キャッシュから channelTitle を取得
-                            from plugins.youtube.youtube_api_plugin import YouTubeAPIPlugin
-                            api_plugin = YouTubeAPIPlugin()
-
-                            if api_plugin.is_available():
-                                # API から動画詳細を取得
-                                details = api_plugin.fetch_video_detail(video_id)
-                                if details:
-                                    video_info = api_plugin._extract_video_info(details)
-                                    channel_name = video_info.get("channel_name", "")
-                                    if channel_name:
-                                        logger.debug(f"✅ YouTube API から channel_name を取得: {channel_name}")
+                            from config import get_config
+                            config = get_config("settings.env")
+                            channel_id = config.youtube_channel_id if hasattr(config, "youtube_channel_id") else ""
+                            if channel_id:
+                                channel_name = f"Channel ({channel_id[:8]}...)"
+                                logger.debug(f"✅ WebSub の channel_name が空だったため、チャンネル ID からフォールバック: {channel_name}")
                         except Exception as e:
-                            logger.debug(f"⚠️ YouTube API からの channel_name 取得失敗: {e}")
-
-                        # API でも取得できない場合はフォールバック
-                        if not channel_name:
-                            try:
-                                from config import get_config
-                                config = get_config("settings.env")
-                                channel_id = config.youtube_channel_id if hasattr(config, "youtube_channel_id") else ""
-                                if channel_id:
-                                    channel_name = f"Channel ({channel_id[:8]}...)"
-                                    logger.debug(f"✅ WebSub の channel_name が空だったため、チャンネル ID からフォールバック: {channel_name}")
-                            except Exception as e:
-                                logger.debug(f"⚠️ チャンネル ID からのフォールバック失敗: {e}")
+                            logger.debug(f"⚠️ チャンネル ID からのフォールバック失敗: {e}")
 
                     if not video_id:
                         logger.warning(f"⚠️ video_id が不正です。アイテムをスキップします: {item}")
