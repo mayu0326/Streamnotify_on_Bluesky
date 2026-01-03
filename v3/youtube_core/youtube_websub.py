@@ -269,6 +269,56 @@ class YouTubeWebSub:
             youtube_logger.warning("deleted_video_cache モジュールが見つかりません")
             deleted_cache = None
 
+# ★ 新: 重複排除ロジック（video_id + タイトル + live_status + チャンネル名 の4つが同じ場合のみ）
+        # v3.3.1+: 同じ動画の完全な重複を検出（4つの条件すべてが同じケースはレア）
+        # 理由：video_id が異なれば別の動画、live_status が異なれば別のイベント状態
+        try:
+            from config import get_config
+            config = get_config("settings.env")
+            youtube_dedup_enabled = getattr(config, 'youtube_dedup_enabled', True)  # デフォルト: True
+        except Exception:
+            youtube_dedup_enabled = True  # エラー時はデフォルト有効
+
+        # 動画をグループ化（video_id + タイトル + live_status + チャンネル名）
+        video_groups = {}
+        for video in videos:
+            # グループキー：video_id + タイトル + live_status + チャンネル名
+            group_key = (
+                video.get("video_id", ""),
+                video.get("title", ""),
+                video.get("live_status", "none"),  # デフォルト: "none"
+                video.get("channel_name", "")
+            )
+            if group_key not in video_groups:
+                video_groups[group_key] = []
+            video_groups[group_key].append(video)
+
+        # 重複排除を適用
+        filtered_videos = []
+        if youtube_dedup_enabled and len(video_groups) > 0:
+            youtube_logger.debug(f"🔄 YouTube重複排除: {len(video_groups)}個のグループを処理中...")
+
+            for (video_id, title, live_status, channel_name), group_videos in video_groups.items():
+                if len(group_videos) == 1:
+                    # グループに1つだけの場合はそのまま追加
+                    filtered_videos.append(group_videos[0])
+                else:
+                    # 複数ある場合（実質的にはレアケース）
+                    # video_id + タイトル + live_status + チャンネル が完全に同じ場合は最初の1件のみ追加
+                    filtered_videos.append(group_videos[0])
+                    youtube_logger.info(
+                        f"📊 重複検知（完全一致）: video_id={video_id}, title={title}, "
+                        f"live_status={live_status}, channel={channel_name} → "
+                        f"{len(group_videos)}件中1件を使用"
+                    )
+        else:
+            # 重複排除無効の場合、すべての動画を処理
+            filtered_videos = videos
+            if not youtube_dedup_enabled:
+                youtube_logger.debug(f"ℹ️ 重複排除が無効のため、{len(videos)}件すべてを処理します")
+
+        youtube_logger.debug(f"✅ 重複排除後の動画数: {len(filtered_videos)}件")
+
         # YouTube API プラグインを取得（API有効時のみ）
         youtube_api_plugin = None
         try:
@@ -290,7 +340,7 @@ class YouTubeWebSub:
         db_module.logger = youtube_logger
 
         try:
-            for video in videos:
+            for video in filtered_videos:
                 # 除外動画リスト確認
                 if deleted_cache and deleted_cache.is_deleted(video["video_id"], source="youtube"):
                     youtube_logger.info(

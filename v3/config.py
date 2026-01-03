@@ -141,6 +141,15 @@ class Config:
         duplicate_prevention_str = os.getenv("PREVENT_DUPLICATE_POSTS", "false").strip().lower()
         self.prevent_duplicate_posts = duplicate_prevention_str in ("true", "1", "yes", "on")
 
+        # YouTube重複排除オプション（デフォルト: True）
+        # 同じタイトル+チャンネルの動画は優先度ベースで管理（v3.3.1実装）
+        youtube_dedup_str = os.getenv("YOUTUBE_DEDUP_ENABLED", "true").strip().lower()
+        self.youtube_dedup_enabled = youtube_dedup_str in ("true", "1", "yes", "on")
+        if self.youtube_dedup_enabled:
+            logger.info("✅ YouTube重複排除: 有効（優先度ベース管理）")
+        else:
+            logger.info("ℹ️ YouTube重複排除: 無効（すべての動画を登録）")
+
         # デバッグモード（デフォルト: False）
         debug_mode_str = os.getenv("DEBUG_MODE", "false").strip().lower()
         self.debug_mode = debug_mode_str in ("true", "1", "yes", "on")

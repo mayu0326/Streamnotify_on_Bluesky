@@ -130,6 +130,8 @@ class YouTubeRSS:
            - Live関連 → LiveModule.register_from_classified() で登録
            - 通常動画 → 既存処理で続行
 
+        ★ v3.4.1+ 重複排除: video_id + タイトル + live_status + チャンネル名 が同じ場合のみ除外
+
         Args:
             database: Database オブジェクト
             classifier: YouTubeVideoClassifier インスタンス（オプション）
@@ -145,6 +147,15 @@ class YouTubeRSS:
         live_registered_count = 0
         youtube_logger = logging.getLogger("YouTubeLogger")
 
+        # ★ 新: 重複排除ロジック（video_id + タイトル + live_status + チャンネル名）
+        # RSS データに video 分類から live_status を付与した後、重複排除を実行
+        try:
+            from config import get_config
+            config = get_config("settings.env")
+            youtube_dedup_enabled = getattr(config, 'youtube_dedup_enabled', True)  # デフォルト: True
+        except Exception:
+            youtube_dedup_enabled = True  # エラー時はデフォルト有効
+
         youtube_logger.info(f"[YouTube RSS] 取得した {len(videos)} 個の動画を DB に照合しています...")
 
         # ★ 新: 除外動画リストを取得
@@ -154,6 +165,52 @@ class YouTubeRSS:
         except ImportError:
             youtube_logger.warning("deleted_video_cache モジュールが見つかりません")
             deleted_cache = None
+
+        # ★ v3.4.1+: 重複排除処理（RSS の videos が取得された直後に実行）
+        # video_id + タイトル + live_status + チャンネル名 が同じ場合のみ除外
+        # NOTE: このポイントでは live_status はまだ "none" （classifier で分類される前）
+        # 最終的な live_status は分類後に確定するため、フィルタリング後に分類を実行
+        video_groups = {}
+        for video in videos:
+            # グループキー：video_id + タイトル + live_status + チャンネル名
+            # この段階では live_status = "none"（まだ分類前）
+            group_key = (
+                video.get("video_id", ""),
+                video.get("title", ""),
+                "none",  # RSS 取得時はまだ分類前のため "none"
+                video.get("channel_name", "")
+            )
+            if group_key not in video_groups:
+                video_groups[group_key] = []
+            video_groups[group_key].append(video)
+
+        # 重複排除を適用
+        filtered_videos = []
+        if youtube_dedup_enabled and len(video_groups) > 0:
+            youtube_logger.debug(f"🔄 YouTube重複排除: {len(video_groups)}個のグループを処理中...")
+
+            for (video_id, title, live_status, channel_name), group_videos in video_groups.items():
+                if len(group_videos) == 1:
+                    # グループに1つだけの場合はそのまま追加
+                    filtered_videos.append(group_videos[0])
+                else:
+                    # 複数ある場合（実質的にはレアケース）
+                    # video_id + タイトル + live_status + チャンネル が完全に同じ場合は最初の1件のみ追加
+                    filtered_videos.append(group_videos[0])
+                    youtube_logger.info(
+                        f"📊 重複検知（完全一致）: video_id={video_id}, title={title}, "
+                        f"channel={channel_name} → {len(group_videos)}件中1件を使用"
+                    )
+        else:
+            # 重複排除無効の場合、すべての動画を処理
+            filtered_videos = videos
+            if not youtube_dedup_enabled:
+                youtube_logger.debug(f"ℹ️ 重複排除が無効のため、{len(videos)}件すべてを処理します")
+
+        youtube_logger.debug(f"✅ 重複排除後の動画数: {len(filtered_videos)}件")
+
+        # 重複排除後の動画リストで処理を続行
+        videos = filtered_videos
 
         # ★ 新: YouTube API プラグインを取得（API有効時のみ）
         youtube_api_plugin = None
