@@ -92,9 +92,9 @@ class YouTubeAPIPlugin(NotificationPlugin):
             if self.channel_id:
                 # UC形式またはAPIで解決済み
                 if self.channel_identifier.startswith("UC"):
-                    logger.info(f"✅ YouTube API: UC形式IDのためAPIアクセスは不要です: {self.channel_id}")
+                    logger.debug(f"✅ YouTube API: UC形式IDのためAPIアクセスは不要です: {self.channel_id}")
                 else:
-                    logger.info(f"✅ YouTube API: チャンネルIDを解決しました: {self.channel_id}")
+                    logger.debug(f"✅ YouTube API: チャンネルIDを解決しました: {self.channel_id}")
             else:
                 logger.warning("⚠️ YouTube API: チャンネルIDの解決に失敗しました。UC形式のID、または有効な API キーを確認してください.")
         self._initialized = True
@@ -221,7 +221,7 @@ class YouTubeAPIPlugin(NotificationPlugin):
                         self.video_detail_cache[video_id] = entry.get("data", {})
                         self.cache_timestamps[video_id] = entry.get("timestamp", 0)
 
-                logger.info(f"📦 ビデオ詳細キャッシュを読み込みました: {len(self.video_detail_cache)} 件")
+                logger.debug(f"📦 ビデオ詳細キャッシュを読み込みました: {len(self.video_detail_cache)} 件")
         except Exception as e:
             logger.warning(f"⚠️ ビデオ詳細キャッシュ読み込みエラー: {e}")
 
