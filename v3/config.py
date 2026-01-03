@@ -104,9 +104,9 @@ class Config:
             self.youtube_feed_mode = "poll"
 
         if self.youtube_feed_mode == "poll":
-            logger.info("📡 YouTube フィード取得モード: RSS ポーリング")
+            logger.debug("📡 YouTube フィード取得モード: RSS ポーリング")
         elif self.youtube_feed_mode == "websub":
-            logger.info("📡 YouTube フィード取得モード: WebSub（Websubサーバー HTTP API 経由）")
+            logger.debug("📡 YouTube フィード取得モード: WebSub（Websubサーバー HTTP API 経由）")
         # ★ hybridモードはコメントアウト（不使用）
 
         # ポーリング間隔（RSS とWebSub で異なる範囲）
@@ -117,7 +117,7 @@ class Config:
                 if self.poll_interval_minutes < 3 or self.poll_interval_minutes > 30:
                     logger.warning(f"WebSub ポーリング間隔が範囲外です (3〜30): {self.poll_interval_minutes}。5分に設定します。")
                     self.poll_interval_minutes = 5
-                logger.info(f"📡 WebSub ポーリング間隔: {self.poll_interval_minutes} 分")
+                logger.debug(f"📡 WebSub ポーリング間隔: {self.poll_interval_minutes} 分")
             except ValueError:
                 logger.warning("YOUTUBE_WEBSUB_POLL_INTERVAL_MINUTES が無効です。5分に設定します。")
                 self.poll_interval_minutes = 5
@@ -128,7 +128,7 @@ class Config:
                 if self.poll_interval_minutes < 10 or self.poll_interval_minutes > 60:
                     logger.warning(f"RSS ポーリング間隔が範囲外です (10〜60): {self.poll_interval_minutes}。10分に設定します。")
                     self.poll_interval_minutes = 10
-                logger.info(f"📡 RSS ポーリング間隔: {self.poll_interval_minutes} 分")
+                logger.debug(f"📡 RSS ポーリング間隔: {self.poll_interval_minutes} 分")
             except ValueError:
                 logger.warning("YOUTUBE_RSS_POLL_INTERVAL_MINUTES が無効です。10分に設定します。")
                 self.poll_interval_minutes = 10
@@ -177,9 +177,6 @@ class Config:
         # 後方互換性のため is_collect_mode を保持
         self.is_collect_mode = (self.operation_mode == OperationMode.COLLECT)
 
-        # 動作モードのログ出力
-        self._log_operation_mode()
-
         # タイムゾーン（オプション）
         self.timezone = os.getenv("TIMEZONE", "system")
 
@@ -194,14 +191,14 @@ class Config:
         self.niconico_user_id = os.getenv("NICONICO_USER_ID", "").strip()
         if self.niconico_plugin_exists:
             if self.niconico_user_id:
-                logger.info("有効なユーザーIDが設定されています。")
-                logger.info("ニコニコ連携機能を有効化しました。")
+                logger.debug("有効なユーザーIDが設定されています。")
+                logger.debug("ニコニコ連携機能を有効化しました。")
             else:
-                logger.info("有効なユーザーIDが設定されていません。")
-                logger.info("ニコニコ連携機能を無効化しました。")
+                logger.debug("有効なユーザーIDが設定されていません。")
+                logger.debug("ニコニコ連携機能を無効化しました。")
         else:
-            # バリデーション段階ではINFOのみ
-            logger.info("ニコニコプラグインが導入されていません。RSS取得のみで動作します。")
+            # バリデーション段階ではDEBUGレベルで抑制
+            logger.debug("ニコニコプラグインが導入されていません。RSS取得のみで動作します。")
 
         # ニコニコポーリング間隔（分）
         try:
