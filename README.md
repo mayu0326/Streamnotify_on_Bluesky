@@ -298,17 +298,17 @@ python main_v2.py
 - [アーキテクチャと設計 ガイド](v3/docs/Technical/ARCHITECTURE_AND_DESIGN.md)
 - [アセットマネージャー ガイド](v3/docs/Technical/ASSET_MANAGER_INTEGRATION_v3.md)
 - [DEBUG ログとドライラン機能 ガイド](v3/docs/Technical/DEBUG_DRY_RUN_GUIDE.md)
-- [削除済み動画除外リスト ガイド](v3/docs/Technical/DELETED_VIDEO_CACHE.md)
+- [削除済み動画除外リスト ガイド](v3/docs/Technical/VIDEO/DELETED_VIDEO_CACHE.md)
 - [GUI フィルタ・重複投稿防止ガイド](v3/docs/Technical/GUI_FILTER_AND_DUPLICATE_PREVENTION.md)
 - [画像リサイズ機能 ガイド](v3/docs/Technical/IMAGE_RESIZE_GUIDE.md)
 - [プラグインシステム ガイド](v3/docs/Technical/PLUGIN_SYSTEM.md)
 - [Bluesky リッチテキスト ガイド](v3/docs/Technical/RICHTEXT_FACET_SPECIFICATION.md)
 - [テンプレートシステム ガイド](v3/docs/Technical/TEMPLATE_SYSTEM.md)
-- [WebSub 実装ガイド](v3/docs/Technical/WEBSUB_IMPLEMENTATION.md)
-- [WebSub クライアント ガイド](v3/docs/Technical/WEBSUB_CLIENT_IMPLEMENTATION.md)
-- [YouTube 重複排除設定ガイド](v3/docs/Technical/YOUTUBE_DEDUP_SETTING.md)
+- [WebSub 実装ガイド](v3/docs/Technical/WEBSUB/WEBSUB_IMPLEMENTATION.md)
+- [WebSub クライアント ガイド](v3/docs/Technical/WEBSUB/WEBSUB_CLIENT_IMPLEMENTATION.md)
+- [YouTube 重複排除設定ガイド](v3/docs/Technical/YouTube/YOUTUBE_DEDUP_SETTING.md)
 - [プラグイン実装タスク管理](v3/docs/Technical/V3_PLUGIN_IMPLEMENTATION_TASKS.md)
-- [**Twitch API ポーリング実装ガイド**](v3/docs/Technical/TWITCH_POLLING_IMPLEMENTATION.md)
+- [**Twitch API ポーリング実装ガイド**](v3/docs/Technical/TWITCH/TWITCH_POLLING_IMPLEMENTATION.md)
 
 ## 📚 YouTube関連資料
 - [YouTube API キャシュ実装](v3/docs/Technical/YouTube/YOUTUBE_API_CACHING_IMPLEMENTATION.md)
@@ -350,18 +350,6 @@ Git による公開リポジトリには含めないでください（`.gitignor
 ## リリースノート
 
 - [リリースノート一覧](./Release_Notes/)
-
-## デバッグ・ユーティリティスクリプトについて
-
-デバッグ・検証・分析スクリプトを `v3/utils/` 配下に体系的に整理しました：
-
-- ✅ **database/**: DB操作・検証スクリプト（5ファイル）
-- ✅ **cache/**: キャッシュ管理スクリプト（2ファイル）
-- ✅ **classification/**: 分類・検証スクリプト（4ファイル）
-- ✅ **analysis/**: API・環境検証スクリプト（4ファイル）
-- ✅ **DEBUGGING_UTILITIES.md**: 包括的ドキュメント（200+ 行）
-
-詳細は [v3/utils/DEBUGGING_UTILITIES.md](v3/utils/DEBUGGING_UTILITIES.md) を参照してください。
 
 ## 既知の不具合・仕様
 
