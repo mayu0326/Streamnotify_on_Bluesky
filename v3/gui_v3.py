@@ -331,7 +331,7 @@ class StreamNotifyGUI:
 
             # DB を再読込して表示更新
             self.refresh_data()
-            logger.info(f"✅ フィード手動更新完了: {added_count} 件追加（{feed_mode} モード、YouTube Live自動分類 {youtube_live_classified} 件）")
+            logger.info(f"✅ フィード手動更新完了: {added_count} 件追加（{feed_mode} モード）")
 
         except ImportError as e:
             logger.error(f"❌ インポートエラー: {e}")
@@ -342,41 +342,134 @@ class StreamNotifyGUI:
             messagebox.showerror("エラー", f"RSS更新中にエラーが発生しました:\n{e}")
 
     def classify_youtube_live_manually(self):
-        """YouTube Live 判定を手動で実行（プラグイン非導入時のメッセージ表示対応）"""
-        try:
-            # YouTubeLive プラグインを取得
-            youtube_live_plugin = self.plugin_manager.get_plugin("youtube_live_plugin")
+        """YouTube Live キャッシュ更新・分類を手動で実行
 
-            if not youtube_live_plugin:
-                messagebox.showinfo("情報", "YouTube Live プラグインが導入されていません。\n\n将来的に対応予定です。")
-                logger.info("ℹ️ YouTube Live プラグインは導入されていません")
+        処理フロー：
+        1. DB から Live 関連動画を取得
+        2. 各動画のキャッシュを確認
+        3. 30分以上古い場合、API から最新情報を取得してキャッシュ更新
+        4. 分類・検針・DB更新を実行
+        5. 動画取得と自動投稿はしない
+        """
+        try:
+            # YouTube API プラグインを取得
+            youtube_api_plugin = self.plugin_manager.get_plugin("youtube_api_plugin")
+
+            if not youtube_api_plugin:
+                messagebox.showinfo(
+                    "情報",
+                    "YouTube API プラグインが導入されていません。\n"
+                    "YOUTUBE_API_KEY を settings.env に設定してください。"
+                )
+                logger.info("ℹ️ YouTube API プラグインは導入されていません")
                 return
 
-            if not youtube_live_plugin.is_available():
-                messagebox.showwarning("警告", "YouTube Live プラグインが利用不可です。\n（YouTube API キーが設定されていない可能性があります）")
+            if not youtube_api_plugin.is_available():
+                messagebox.showwarning(
+                    "警告",
+                    "YouTube API プラグインが利用不可です。\n"
+                    "YOUTUBE_API_KEY が正しく設定されていることを確認してください。"
+                )
                 return
 
             # 判定開始を通知
-            messagebox.showinfo("YouTube Live判定", "未判定動画のYouTube Live判定を実行中...\n（ウィンドウを閉じないでください）")
+            messagebox.showinfo(
+                "YouTube Live 判定",
+                "Live キャッシュ確認・更新を実行中...\n"
+                "（ウィンドウを閉じないでください）"
+            )
 
-            # YouTube Live 判定を実行
-            updated_count = youtube_live_plugin._update_unclassified_videos()
+            # 実行処理
+            import time
+            from database import get_database
+            from youtube_core.youtube_video_classifier import get_video_classifier
+
+            db = get_database()
+            classifier = get_video_classifier(api_key=os.getenv("YOUTUBE_API_KEY"))
+
+            # DB から Live 関連動画を取得
+            all_videos = db.get_all_videos()
+            live_videos = [
+                v for v in all_videos
+                if v.get("content_type") in ["schedule", "live", "completed", "archive"]
+            ]
+
+            if not live_videos:
+                messagebox.showinfo("YouTube Live 判定", "Live 関連動画がありません。")
+                logger.info("ℹ️ Live 関連動画なし")
+                return
+
+            logger.info(f"🎬 {len(live_videos)} 件の Live 動画をキャッシュ更新・判定中...")
+
+            # キャッシュの有効期限（秒）: 30分
+            CACHE_VALIDITY_SECONDS = 30 * 60
+            current_time = time.time()
+
+            updated_count = 0
+            refreshed_count = 0
+
+            for video in live_videos:
+                video_id = video.get("video_id")
+                if not video_id:
+                    continue
+
+                # キャッシュの確認
+                timestamp = youtube_api_plugin.cache_timestamps.get(video_id, 0)
+                cache_age_seconds = current_time - timestamp
+                is_cache_old = cache_age_seconds > CACHE_VALIDITY_SECONDS
+
+                if is_cache_old:
+                    # ★ API から最新情報を取得
+                    logger.debug(f"📡 API から取得（キャッシュ {int(cache_age_seconds/60)} 分前）: {video_id}")
+                    classification_result = classifier.classify_video(video_id)
+                    refreshed_count += 1
+                else:
+                    # ★ キャッシュから取得
+                    logger.debug(f"📦 キャッシュから取得（{int(cache_age_seconds/60)} 分前）: {video_id}")
+                    classification_result = classifier.classify_video(video_id)
+
+                if not classification_result.get("success"):
+                    logger.debug(f"⏭️ 分類失敗（スキップ）: {video_id}")
+                    continue
+
+                # ★ 分類結果を DB に反映（投稿なし）
+                from plugins.youtube.live_module import get_live_module
+                live_module = get_live_module()
+
+                content_type = classification_result.get("type", "video")
+                live_status = classification_result.get("live_status")
+
+                # ★ DB を更新（ただし投稿はしない）
+                success = db.update_video_status(video_id, content_type, live_status)
+                if success:
+                    updated_count += 1
+                    logger.info(f"✅ 更新: {video_id} (type={content_type}, status={live_status})")
 
             # 結果をメッセージボックスで表示
-            result_msg = f"""✅ YouTube Live判定完了
+            result_msg = f"""✅ YouTube Live 判定完了
 
-判定結果: {updated_count} 件更新
+キャッシュ確認: {len(live_videos)} 件
+API 更新: {refreshed_count} 件
+DB 更新: {updated_count} 件
 
+※ 動画取得と自動投稿はしていません。
 DB を再読込みします。"""
-            messagebox.showinfo("YouTube Live判定完了", result_msg)
+            messagebox.showinfo("YouTube Live 判定完了", result_msg)
 
             # DB を再読込して表示更新
             self.refresh_data()
-            logger.info(f"✅ YouTube Live 手動判定完了: {updated_count} 件更新")
+            logger.info(f"✅ YouTube Live 判定完了: キャッシュ確認 {len(live_videos)} 件、API 更新 {refreshed_count} 件、DB 更新 {updated_count} 件")
+
+        except ImportError as ie:
+            logger.error(f"❌ インポートエラー: {ie}")
+            messagebox.showwarning(
+                "警告",
+                f"必要なモジュールが見つかりません。\nv3 の plugins/youtube/ ディレクトリを確認してください。\n\nエラー: {ie}"
+            )
 
         except Exception as e:
-            logger.error(f"❌ YouTube Live判定中にエラー: {e}")
-            messagebox.showerror("エラー", f"YouTube Live判定中にエラーが発生しました:\n{e}")
+            logger.error(f"❌ YouTube Live 判定中にエラー: {e}")
+            messagebox.showerror("エラー", f"YouTube Live 判定中にエラーが発生しました:\n{e}")
 
     def apply_filters(self):
         """現在のフィルタ条件をツリーに適用"""
@@ -1303,17 +1396,25 @@ YouTube:      {youtube_count} 件 (投稿済み: {youtube_posted})
         messagebox.showinfo("統計情報", stats)
 
     def youtube_live_settings(self):
-        """YouTube Live 投稿設定パネル（プラグイン非導入対応）"""
-        # YouTubeLive プラグインの存在をチェック
-        youtube_live_plugin = self.plugin_manager.get_plugin("youtube_live_plugin")
+        """YouTube Live 投稿設定パネル（v3 API プラグイン対応）"""
+        # YouTube API プラグインの存在をチェック（v3では Live はAPI プラグインに統合）
+        youtube_api_plugin = self.plugin_manager.get_plugin("youtube_api_plugin")
 
-        if not youtube_live_plugin:
-            messagebox.showinfo("情報", "YouTube Live プラグインが導入されていません。\n\n将来的に対応予定です。")
-            logger.info("ℹ️ YouTube Live プラグインは導入されていません")
+        if not youtube_api_plugin:
+            messagebox.showinfo(
+                "情報",
+                "YouTube API プラグインが導入されていません。\n"
+                "YOUTUBE_API_KEY を settings.env に設定してください。"
+            )
+            logger.info("ℹ️ YouTube API プラグインは導入されていません")
             return
 
-        if not youtube_live_plugin.is_available():
-            messagebox.showwarning("警告", "YouTube Live プラグインが利用不可です。\n（YouTube API キーが設定されていない可能性があります）")
+        if not youtube_api_plugin.is_available():
+            messagebox.showwarning(
+                "警告",
+                "YouTube API プラグインが利用不可です。\n"
+                "YOUTUBE_API_KEY が正しく設定されていることを確認してください。"
+            )
             return
 
         settings_window = tk.Toplevel(self.root)
@@ -1479,7 +1580,7 @@ YouTube:      {youtube_count} 件 (投稿済み: {youtube_posted})
                     f.write(content)
 
             messagebox.showinfo("成功", "YouTube Live 設定を保存しました。\n\n※ アプリ再起動時に反映されます。")
-            logger.info("✅ YouTube Live 設定を保存しました")
+            logger.info("✅ YouTube Live 設定を保存しました（API プラグイン経由）")
             window.destroy()
 
         except Exception as e:

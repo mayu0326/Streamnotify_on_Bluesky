@@ -67,12 +67,43 @@ class YouTubeRSS:
                     logger.warning(f"⚠️ RSS 日時の JST 変換失敗、元の値を使用: {e}")
                     published_at_jst = rss_published_at
 
+                # ★ v3.4.0: channel_name が空の場合、キャッシュまたは API から取得
+                channel_name = entry.author if hasattr(entry, "author") else ""
+                if not channel_name:
+                    try:
+                        # YouTube API キャッシュから channelTitle を取得
+                        from plugins.youtube.youtube_api_plugin import YouTubeAPIPlugin
+                        api_plugin = YouTubeAPIPlugin()
+
+                        if api_plugin.is_available():
+                            # API から動画詳細を取得
+                            details = api_plugin.fetch_video_detail(entry.yt_videoid)
+                            if details:
+                                video_info = api_plugin._extract_video_info(details)
+                                channel_name = video_info.get("channel_name", "")
+                                if channel_name:
+                                    logger.debug(f"✅ YouTube API から channel_name を取得: {channel_name}")
+                    except Exception as e:
+                        logger.debug(f"⚠️ YouTube API からの channel_name 取得失敗: {e}")
+
+                    # API でも取得できない場合はフォールバック
+                    if not channel_name:
+                        try:
+                            from config import get_config
+                            config = get_config("settings.env")
+                            channel_id = config.youtube_channel_id if hasattr(config, "youtube_channel_id") else ""
+                            if channel_id:
+                                channel_name = f"Channel ({channel_id[:8]}...)"
+                                logger.debug(f"✅ RSS の channel_name が空だったため、チャンネル ID からフォールバック: {channel_name}")
+                        except Exception as e:
+                            logger.debug(f"⚠️ チャンネル ID からのフォールバック失敗: {e}")
+
                 video = {
                     "video_id": entry.yt_videoid,
                     "title": entry.title,
                     "video_url": entry.link,
                     "published_at": published_at_jst,  # ★ JST 変換済みの値を使用
-                    "channel_name": entry.author if hasattr(entry, "author") else "",
+                    "channel_name": channel_name,
                 }
                 videos.append(video)
 
@@ -84,7 +115,7 @@ class YouTubeRSS:
             logger.error(f"RSS 取得に失敗しました: {e}")
             return []
 
-    def save_to_db(self, database) -> int:
+    def save_to_db(self, database, classifier=None, live_module=None) -> tuple:
         """
         RSS から取得した動画を DB に保存
 
@@ -94,17 +125,36 @@ class YouTubeRSS:
         ★ v3.3.0+ YouTube API優先: RSS登録後、YouTube API で最新情報を確認し、
            scheduledStartTime が存在する場合は上書きします。
 
+        ★ v3.4.0+ YouTubeVideoClassifier + LiveModule 統合:
+           - YouTubeVideoClassifier で動画を分類（schedule/live/completed/archive vs 通常動画）
+           - Live関連 → LiveModule.register_from_classified() で登録
+           - 通常動画 → 既存処理で続行
+
+        ★ v3.4.1+ 重複排除: video_id + タイトル + live_status + チャンネル名 が同じ場合のみ除外
+
         Args:
             database: Database オブジェクト
+            classifier: YouTubeVideoClassifier インスタンス（オプション）
+            live_module: LiveModule インスタンス（オプション）
 
         Returns:
-            保存された動画数
+            (保存された動画数, Live登録数) のタプル
         """
         videos = self.fetch_feed()
         saved_count = 0
         existing_count = 0
         blacklist_skip_count = 0
+        live_registered_count = 0
         youtube_logger = logging.getLogger("YouTubeLogger")
+
+        # ★ 新: 重複排除ロジック（video_id + タイトル + live_status + チャンネル名）
+        # RSS データに video 分類から live_status を付与した後、重複排除を実行
+        try:
+            from config import get_config
+            config = get_config("settings.env")
+            youtube_dedup_enabled = getattr(config, 'youtube_dedup_enabled', True)  # デフォルト: True
+        except Exception:
+            youtube_dedup_enabled = True  # エラー時はデフォルト有効
 
         youtube_logger.info(f"[YouTube RSS] 取得した {len(videos)} 個の動画を DB に照合しています...")
 
@@ -115,6 +165,52 @@ class YouTubeRSS:
         except ImportError:
             youtube_logger.warning("deleted_video_cache モジュールが見つかりません")
             deleted_cache = None
+
+        # ★ v3.4.1+: 重複排除処理（RSS の videos が取得された直後に実行）
+        # video_id + タイトル + live_status + チャンネル名 が同じ場合のみ除外
+        # NOTE: このポイントでは live_status はまだ "none" （classifier で分類される前）
+        # 最終的な live_status は分類後に確定するため、フィルタリング後に分類を実行
+        video_groups = {}
+        for video in videos:
+            # グループキー：video_id + タイトル + live_status + チャンネル名
+            # この段階では live_status = "none"（まだ分類前）
+            group_key = (
+                video.get("video_id", ""),
+                video.get("title", ""),
+                "none",  # RSS 取得時はまだ分類前のため "none"
+                video.get("channel_name", "")
+            )
+            if group_key not in video_groups:
+                video_groups[group_key] = []
+            video_groups[group_key].append(video)
+
+        # 重複排除を適用
+        filtered_videos = []
+        if youtube_dedup_enabled and len(video_groups) > 0:
+            youtube_logger.debug(f"🔄 YouTube重複排除: {len(video_groups)}個のグループを処理中...")
+
+            for (video_id, title, live_status, channel_name), group_videos in video_groups.items():
+                if len(group_videos) == 1:
+                    # グループに1つだけの場合はそのまま追加
+                    filtered_videos.append(group_videos[0])
+                else:
+                    # 複数ある場合（実質的にはレアケース）
+                    # video_id + タイトル + live_status + チャンネル が完全に同じ場合は最初の1件のみ追加
+                    filtered_videos.append(group_videos[0])
+                    youtube_logger.info(
+                        f"📊 重複検知（完全一致）: video_id={video_id}, title={title}, "
+                        f"channel={channel_name} → {len(group_videos)}件中1件を使用"
+                    )
+        else:
+            # 重複排除無効の場合、すべての動画を処理
+            filtered_videos = videos
+            if not youtube_dedup_enabled:
+                youtube_logger.debug(f"ℹ️ 重複排除が無効のため、{len(videos)}件すべてを処理します")
+
+        youtube_logger.debug(f"✅ 重複排除後の動画数: {len(filtered_videos)}件")
+
+        # 重複排除後の動画リストで処理を続行
+        videos = filtered_videos
 
         # ★ 新: YouTube API プラグインを取得（API有効時のみ）
         youtube_api_plugin = None
@@ -191,72 +287,92 @@ class YouTubeRSS:
                     except Exception as e:
                         youtube_logger.warning(f"⚠️ API 確認処理でエラー（RSS日時を使用）: {e}")
 
-                # DB に保存（published_at は API優先、なければ RSS）
-                # ★ 重要: JST 変換済みの値を使用（api_scheduled_start_time）、または RSS の値（既に JST）
-                final_published_at = api_scheduled_start_time if api_scheduled_start_time else video["published_at"]
+                # ★ 重要: 先に分類を行い、Live 系か通常動画か判定
+                # これにより、Live系は通常の insert_video をスキップ、LiveModule に任せられる
+                video_type = None
+                classification_result = None
 
-                is_new = database.insert_video(
-                    video_id=video["video_id"],
-                    title=video["title"],
-                    video_url=video["video_url"],
-                    published_at=final_published_at,  # ★ API優先の日時を使用（JST 変換済み）
-                    channel_name=video["channel_name"],
-                    thumbnail_url=thumbnail_url,
-                    source="youtube",
-                )
-
-                if is_new:
-                    saved_count += 1
-                    youtube_logger.debug(f"[YouTube RSS] 新動画を DB に保存しました: {video['title']}")
-                else:
-                    # ★ 修正3: is_new = False の場合のイベント判定ロジック改善
-                    # DB に実際に存在するかを確認
+                if classifier and live_module:
                     try:
-                        check_conn = database._get_connection()
-                        check_cursor = check_conn.cursor()
-                        check_cursor.execute("SELECT COUNT(*) FROM videos WHERE video_id = ?", (video["video_id"],))
-                        db_count = check_cursor.fetchone()[0]
-                        check_conn.close()
-
-                        if db_count > 0:
-                            # ★ DB に存在 → 既存動画として扱う
-                            existing_count += 1
-                            youtube_logger.debug(f"[YouTube RSS] 既存動画です: {video['title']}")
-
-                            # 既存動画の場合、API データで published_at を上書き（★ 重要: API が RSS より優先）
-                            # API から scheduledStartTime/actualStartTime が取得できた場合は、DB の値を上書き
-                            if api_scheduled_start_time:
-                                # DB の既存 published_at と異なる場合のみ上書き（無駄な更新を避ける）
-                                try:
-                                    conn = database._get_connection()
-                                    conn.row_factory = sqlite3.Row
-                                    cursor = conn.cursor()
-                                    cursor.execute("SELECT published_at FROM videos WHERE video_id = ?", (video["video_id"],))
-                                    row = cursor.fetchone()
-                                    conn.close()
-
-                                    if row:
-                                        db_published_at = row[0] if isinstance(row, tuple) else row["published_at"]
-                                        if api_scheduled_start_time != db_published_at:
-                                            database.update_published_at(video["video_id"], api_scheduled_start_time)
-                                            youtube_logger.info(f"✅ 既存動画の published_at を API データで上書きしました: {video['title']}")
-                                            youtube_logger.debug(f"   旧: {db_published_at} → 新: {api_scheduled_start_time}")
-                                except Exception as e:
-                                    youtube_logger.warning(f"⚠️ 既存動画の published_at 上書きに失敗: {e}")
+                        classification_result = classifier.classify_video(video["video_id"])
+                        if classification_result.get("success"):
+                            video_type = classification_result.get("type")
+                            youtube_logger.debug(f"🎬 動画を分類: {video.get('title')} (type={video_type})")
                         else:
-                            # ★ DB に不存在 → 削除済み動画として扱う
-                            blacklist_skip_count += 1
-                            youtube_logger.info(f"↩️ 削除済み動画のため、スキップしました: {video['title']}")
+                            youtube_logger.debug(f"⏭️ 分類失敗（通常動画として処理）: {video['video_id']} - {classification_result.get('error')}")
+                            video_type = "video"  # デフォルトは通常動画
                     except Exception as e:
-                        youtube_logger.warning(f"⚠️ DB 確認処理でエラー: {e}")
-                        # フォールバック: 既存動画として扱う
-                        existing_count += 1
+                        youtube_logger.warning(f"⚠️ YouTube VideoClassifier 呼び出しエラー（通常動画として処理）: {e}")
+                        video_type = "video"  # エラー時もデフォルトは通常動画
+
+                # ★ Live 系（schedule/live/completed/archive）の場合、通常の insert は実行しない
+                # LiveModule.register_from_classified() が すべて処理する
+                if video_type in ["schedule", "live", "completed", "archive"]:
+                    # Live 関連 → LiveModule に完全に処理させる
+                    if classification_result:
+                        youtube_logger.info(f"🎬 Live関連動画を LiveModule に完全委譲: {video.get('title')} (type={video_type})")
+                        try:
+                            live_result = live_module.register_from_classified(classification_result)
+                            if live_result > 0:
+                                live_registered_count += live_result
+                                youtube_logger.info(f"✅ Live動画をLiveModuleで登録完了: {video_type}（通常動画処理はスキップ）")
+                        except Exception as e:
+                            youtube_logger.error(f"❌ Live動画の LiveModule 登録失敗: {e}")
+                else:
+                    # 通常動画（video / premiere）のみ、通常の insert_video を実行
+                    final_published_at = api_scheduled_start_time if api_scheduled_start_time else video["published_at"]
+
+                    # ★ 【重要】YouTubeVideoClassifier から representative_time_utc を取得
+                    # classification_result が成功していれば、そこから取得
+                    # 失敗していれば、フォールバックで published_at を使用
+                    representative_time_utc = None
+                    representative_time_jst = final_published_at  # JST版は final_published_at を使用
+
+                    if classification_result and classification_result.get("success"):
+                        # classifier から representative_time_utc を取得
+                        rep_time_utc = classification_result.get("representative_time_utc")
+                        if rep_time_utc:
+                            representative_time_utc = rep_time_utc
+                            # UTC → JST に変換
+                            try:
+                                from utils_v3 import format_datetime_filter
+                                representative_time_jst = format_datetime_filter(rep_time_utc, fmt="%Y-%m-%d %H:%M:%S")
+                                youtube_logger.debug(f"📡 YouTubeVideoClassifier から representative_time を取得: {rep_time_utc} → {representative_time_jst}")
+                            except Exception as e:
+                                youtube_logger.warning(f"⚠️ representative_time_utc の JST 変換失敗: {e}")
+                                representative_time_jst = final_published_at  # フォールバック
+
+                    # フォールバック: classifier が失敗したか representative_time_utc が空の場合
+                    if not representative_time_utc:
+                        representative_time_utc = video.get("published_at")  # RSS では already JST
+                        youtube_logger.debug(f"📡 フォールバック: RSS の published_at を representative_time として使用")
+
+                    is_new = database.insert_video(
+                        video_id=video["video_id"],
+                        title=video["title"],
+                        video_url=video["video_url"],
+                        published_at=final_published_at,  # ★ API優先の日時を使用（JST 変換済み）
+                        channel_name=video["channel_name"],
+                        thumbnail_url=thumbnail_url,
+                        source="youtube",
+                        # ★ 【重要】YouTubeVideoClassifier から取得した基準時刻を保存
+                        representative_time_utc=representative_time_utc,
+                        representative_time_jst=representative_time_jst
+                    )
+
+                    if is_new:
+                        saved_count += 1
+                        youtube_logger.debug(f"[YouTube RSS] 新動画を DB に保存しました: {video['title']} (type={video_type})")
+                    else:
+                        youtube_logger.debug(f"[YouTube RSS] 既存動画です: {video['title']}")
 
             summary = f"✅ 保存完了: 新規 {saved_count}, 既存 {existing_count}"
+            if live_registered_count > 0:
+                summary += f", Live登録 {live_registered_count}"
             if blacklist_skip_count > 0:
                 summary += f", 除外動画リスト {blacklist_skip_count}"
 
-            if saved_count > 0:
+            if saved_count > 0 or live_registered_count > 0:
                 youtube_logger.info(summary)
             elif blacklist_skip_count > 0:
                 youtube_logger.info(summary)
@@ -267,7 +383,7 @@ class YouTubeRSS:
             # ロガーを元に戻す
             db_module.logger = original_logger
 
-        return saved_count
+        return (saved_count, live_registered_count)
 
     def poll_videos(self):
         """RSSフィードをポーリングし、キャッシュを更新"""
@@ -275,7 +391,17 @@ class YouTubeRSS:
         for video in videos:
             video_id = video['video_id']
             if video_id not in self.deleted_cache:
-                self.db.insert_video(video_id, video['title'], video['video_url'], video['published_at'], video['channel_name'])
+                # ★ 【新】通常動画の基準時刻は published_at
+                representative_time_utc = video.get('published_at')
+                self.db.insert_video(
+                    video_id,
+                    video['title'],
+                    video['video_url'],
+                    video['published_at'],
+                    video['channel_name'],
+                    representative_time_utc=representative_time_utc,
+                    representative_time_jst=video['published_at']  # RSS も UTC で返されるため、同じ値を使用
+                )
                 # キャッシュ更新を追加
                 self.plugin.update_video_detail_cache(video_id, video)
 

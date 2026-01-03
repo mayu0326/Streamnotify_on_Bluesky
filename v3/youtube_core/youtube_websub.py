@@ -146,6 +146,19 @@ class YouTubeWebSub:
                     published_at = item.get("published_at", "")
                     channel_name = item.get("channel_name", "")
 
+                    # ★ v3.4.0: WebSub から取得した channel_name が空の場合、フォールバックで取得
+                    # （API 呼び出しを最小化するため、API に頼らず自動生成フォールバック）
+                    if not channel_name:
+                        try:
+                            from config import get_config
+                            config = get_config("settings.env")
+                            channel_id = config.youtube_channel_id if hasattr(config, "youtube_channel_id") else ""
+                            if channel_id:
+                                channel_name = f"Channel ({channel_id[:8]}...)"
+                                logger.debug(f"✅ WebSub の channel_name が空だったため、チャンネル ID からフォールバック: {channel_name}")
+                        except Exception as e:
+                            logger.debug(f"⚠️ チャンネル ID からのフォールバック失敗: {e}")
+
                     if not video_id:
                         logger.warning(f"⚠️ video_id が不正です。アイテムをスキップします: {item}")
                         continue
@@ -215,7 +228,7 @@ class YouTubeWebSub:
             logger.warning(f"⚠️ WebSub 日時の JST 変換失敗、元の値を使用: {e}")
             return published_at
 
-    def save_to_db(self, database) -> int:
+    def save_to_db(self, database, classifier=None, live_module=None) -> tuple:
         """
         WebSub から取得した動画を DB に保存
 
@@ -225,16 +238,24 @@ class YouTubeWebSub:
         ★ v3.3.0+ YouTube API優先: WebSub登録後、YouTube API で最新情報を確認し、
            scheduledStartTime が存在する場合は上書きします。
 
+        ★ v3.4.0+ YouTubeVideoClassifier + LiveModule 統合:
+           - YouTubeVideoClassifier で動画を分類（schedule/live/completed/archive vs 通常動画）
+           - Live関連 → LiveModule.register_from_classified() で登録
+           - 通常動画 → 既存処理で続行
+
         Args:
             database: Database オブジェクト
+            classifier: YouTubeVideoClassifier インスタンス（オプション）
+            live_module: LiveModule インスタンス（オプション）
 
         Returns:
-            保存された動画数
+            (保存された動画数, Live登録数) のタプル
         """
         videos = self.fetch_feed()
         saved_count = 0
         existing_count = 0
         blacklist_skip_count = 0
+        live_registered_count = 0
         youtube_logger = logging.getLogger("YouTubeLogger")
 
         youtube_logger.info(f"[YouTube WebSub] 取得した {len(videos)} 個の動画を DB に照合しています...")
@@ -247,6 +268,56 @@ class YouTubeWebSub:
         except ImportError:
             youtube_logger.warning("deleted_video_cache モジュールが見つかりません")
             deleted_cache = None
+
+# ★ 新: 重複排除ロジック（video_id + タイトル + live_status + チャンネル名 の4つが同じ場合のみ）
+        # v3.3.1+: 同じ動画の完全な重複を検出（4つの条件すべてが同じケースはレア）
+        # 理由：video_id が異なれば別の動画、live_status が異なれば別のイベント状態
+        try:
+            from config import get_config
+            config = get_config("settings.env")
+            youtube_dedup_enabled = getattr(config, 'youtube_dedup_enabled', True)  # デフォルト: True
+        except Exception:
+            youtube_dedup_enabled = True  # エラー時はデフォルト有効
+
+        # 動画をグループ化（video_id + タイトル + live_status + チャンネル名）
+        video_groups = {}
+        for video in videos:
+            # グループキー：video_id + タイトル + live_status + チャンネル名
+            group_key = (
+                video.get("video_id", ""),
+                video.get("title", ""),
+                video.get("live_status", "none"),  # デフォルト: "none"
+                video.get("channel_name", "")
+            )
+            if group_key not in video_groups:
+                video_groups[group_key] = []
+            video_groups[group_key].append(video)
+
+        # 重複排除を適用
+        filtered_videos = []
+        if youtube_dedup_enabled and len(video_groups) > 0:
+            youtube_logger.debug(f"🔄 YouTube重複排除: {len(video_groups)}個のグループを処理中...")
+
+            for (video_id, title, live_status, channel_name), group_videos in video_groups.items():
+                if len(group_videos) == 1:
+                    # グループに1つだけの場合はそのまま追加
+                    filtered_videos.append(group_videos[0])
+                else:
+                    # 複数ある場合（実質的にはレアケース）
+                    # video_id + タイトル + live_status + チャンネル が完全に同じ場合は最初の1件のみ追加
+                    filtered_videos.append(group_videos[0])
+                    youtube_logger.info(
+                        f"📊 重複検知（完全一致）: video_id={video_id}, title={title}, "
+                        f"live_status={live_status}, channel={channel_name} → "
+                        f"{len(group_videos)}件中1件を使用"
+                    )
+        else:
+            # 重複排除無効の場合、すべての動画を処理
+            filtered_videos = videos
+            if not youtube_dedup_enabled:
+                youtube_logger.debug(f"ℹ️ 重複排除が無効のため、{len(videos)}件すべてを処理します")
+
+        youtube_logger.debug(f"✅ 重複排除後の動画数: {len(filtered_videos)}件")
 
         # YouTube API プラグインを取得（API有効時のみ）
         youtube_api_plugin = None
@@ -269,7 +340,7 @@ class YouTubeWebSub:
         db_module.logger = youtube_logger
 
         try:
-            for video in videos:
+            for video in filtered_videos:
                 # 除外動画リスト確認
                 if deleted_cache and deleted_cache.is_deleted(video["video_id"], source="youtube"):
                     youtube_logger.info(
@@ -345,73 +416,63 @@ class YouTubeWebSub:
                     except Exception as e:
                         youtube_logger.debug(f"⚠️ YouTube API での詳細取得失敗: {e}")
 
-                # 最終的に使用する published_at を決定
-                final_published_at = (
-                    api_scheduled_start_time if api_scheduled_start_time else video["published_at"]
-                )
+                # ★ 重要: 先に分類を行い、Live 系か通常動画か判定
+                # これにより、Live系は通常の insert_video をスキップ、LiveModule に任せられる
+                video_type = None
+                classification_result = None
 
-                is_new = database.insert_video(
-                    video_id=video["video_id"],
-                    title=video["title"],
-                    video_url=video["video_url"],
-                    published_at=final_published_at,
-                    channel_name=video["channel_name"],
-                    thumbnail_url=thumbnail_url,
-                    source="youtube",
-                )
-
-                if is_new:
-                    saved_count += 1
-                    youtube_logger.debug(f"[YouTube WebSub] 新規動画を保存: {video['title']}")
-                else:
-                    # ★ 修正3: is_new = False の場合のイベント判定ロジック改善
-                    # DB に実際に存在するかを確認
+                if classifier and live_module:
                     try:
-                        check_conn = database._get_connection()
-                        check_cursor = check_conn.cursor()
-                        check_cursor.execute("SELECT COUNT(*) FROM videos WHERE video_id = ?", (video["video_id"],))
-                        db_count = check_cursor.fetchone()[0]
-                        check_conn.close()
-
-                        if db_count > 0:
-                            # ★ DB に存在 → 既存動画として扱う
-                            existing_count += 1
-                            youtube_logger.debug(f"[YouTube WebSub] 既存動画です: {video['title']}")
-
-                            # 既存動画の場合、API データで published_at を上書き（★ 重要: API が WebSub より優先）
-                            # API から scheduledStartTime/actualStartTime が取得できた場合は、DB の値を上書き
-                            if api_scheduled_start_time:
-                                # DB の既存 published_at と異なる場合のみ上書き（無駄な更新を避ける）
-                                try:
-                                    conn = database._get_connection()
-                                    conn.row_factory = sqlite3.Row
-                                    cursor = conn.cursor()
-                                    cursor.execute("SELECT published_at FROM videos WHERE video_id = ?", (video["video_id"],))
-                                    row = cursor.fetchone()
-                                    conn.close()
-
-                                    if row:
-                                        db_published_at = row[0] if isinstance(row, tuple) else row["published_at"]
-                                        if api_scheduled_start_time != db_published_at:
-                                            database.update_published_at(video["video_id"], api_scheduled_start_time)
-                                            youtube_logger.info(f"✅ 既存動画の published_at を API データで上書きしました: {video['title']}")
-                                            youtube_logger.debug(f"   旧: {db_published_at} → 新: {api_scheduled_start_time}")
-                                except Exception as e:
-                                    youtube_logger.warning(f"⚠️ 既存動画の published_at 上書きに失敗: {e}")
+                        classification_result = classifier.classify_video(video["video_id"])
+                        if classification_result.get("success"):
+                            video_type = classification_result.get("type")
+                            youtube_logger.debug(f"🎬 動画を分類: {video.get('title')} (type={video_type})")
                         else:
-                            # ★ DB に不存在 → 削除済み動画として扱う
-                            blacklist_skip_count += 1
-                            youtube_logger.info(f"↩️ 削除済み動画のため、スキップしました: {video['title']}")
+                            youtube_logger.debug(f"⏭️ 分類失敗（通常動画として処理）: {video['video_id']} - {classification_result.get('error')}")
+                            video_type = "video"  # デフォルトは通常動画
                     except Exception as e:
-                        youtube_logger.warning(f"⚠️ DB 確認処理でエラー: {e}")
-                        # フォールバック: 既存動画として扱う
-                        existing_count += 1
+                        youtube_logger.warning(f"⚠️ YouTube VideoClassifier 呼び出しエラー（通常動画として処理）: {e}")
+                        video_type = "video"  # エラー時もデフォルトは通常動画
+
+                # ★ Live 系（schedule/live/completed/archive）の場合、通常の insert は実行しない
+                # LiveModule.register_from_classified() が すべて処理する
+                if video_type in ["schedule", "live", "completed", "archive"]:
+                    # Live 関連 → LiveModule に完全に処理させる
+                    if classification_result:
+                        youtube_logger.info(f"🎬 Live関連動画を LiveModule に完全委譲: {video.get('title')} (type={video_type})")
+                        try:
+                            live_result = live_module.register_from_classified(classification_result)
+                            if live_result > 0:
+                                live_registered_count += live_result
+                                youtube_logger.info(f"✅ Live動画をLiveModuleで登録完了: {video_type}（通常動画処理はスキップ）")
+                        except Exception as e:
+                            youtube_logger.error(f"❌ Live動画の LiveModule 登録失敗: {e}")
+                else:
+                    # 通常動画（video / premiere）のみ、通常の insert_video を実行
+                    final_published_at = api_scheduled_start_time if api_scheduled_start_time else video["published_at"]
+
+                    is_new = database.insert_video(
+                        video_id=video["video_id"],
+                        title=video["title"],
+                        video_url=video["video_url"],
+                        published_at=final_published_at,
+                        channel_name=video["channel_name"],
+                        thumbnail_url=thumbnail_url,
+                        source="youtube",
+                    )
+                    if is_new:
+                        saved_count += 1
+                        youtube_logger.debug(f"[YouTube WebSub] 新規動画を保存: {video['title']} (type={video_type})")
+                    else:
+                        youtube_logger.debug(f"[YouTube WebSub] 既存動画です: {video['title']}")
 
             summary = f"✅ 保存完了: 新規 {saved_count}, 既存 {existing_count}"
+            if live_registered_count > 0:
+                summary += f", Live登録 {live_registered_count}"
             if blacklist_skip_count > 0:
                 summary += f", 除外動画リスト {blacklist_skip_count}"
 
-            if saved_count > 0:
+            if saved_count > 0 or live_registered_count > 0:
                 youtube_logger.info(summary)
             elif blacklist_skip_count > 0:
                 youtube_logger.info(summary)
@@ -423,11 +484,13 @@ class YouTubeWebSub:
             db_module.logger = original_logger
 
         summary = f"新規 {saved_count} 件 / 既存 {existing_count} 件"
+        if live_registered_count > 0:
+            summary += f" / Live登録 {live_registered_count} 件"
         if blacklist_skip_count > 0:
             summary += f" / 除外 {blacklist_skip_count} 件"
         youtube_logger.info(f"[YouTube WebSub] 保存結果: {summary}")
 
-        return saved_count
+        return (saved_count, live_registered_count)
 
     def poll_videos(self):
         """WebSub からポーリングし、キャッシュを更新"""

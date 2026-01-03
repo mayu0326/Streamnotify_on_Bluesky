@@ -13,6 +13,7 @@ import os
 import time
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 logger = logging.getLogger("AppLogger")
 post_logger = logging.getLogger("PostLogger")
@@ -139,6 +140,8 @@ class Database:
                     image_mode TEXT,
                     image_filename TEXT,
                     source TEXT DEFAULT 'youtube',
+                    representative_time_utc TEXT,
+                    representative_time_jst TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
@@ -177,6 +180,15 @@ class Database:
                 logger.info("🔄 カラムを追加します: broadcast_status")
                 cursor.execute("ALTER TABLE videos ADD COLUMN broadcast_status TEXT")
 
+            # Representative time カラム（v3.3.1+: 動画種別ごとに基準時刻を切り替える）
+            if "representative_time_utc" not in columns:
+                logger.info("🔄 カラムを追加します: representative_time_utc")
+                cursor.execute("ALTER TABLE videos ADD COLUMN representative_time_utc TEXT")
+
+            if "representative_time_jst" not in columns:
+                logger.info("🔄 カラムを追加します: representative_time_jst")
+                cursor.execute("ALTER TABLE videos ADD COLUMN representative_time_jst TEXT")
+
             conn.commit()
             conn.close()
 
@@ -184,7 +196,7 @@ class Database:
             logger.error(f"スキーママイグレーションエラー: {e}")
             raise
 
-    def insert_video(self, video_id, title, video_url, published_at, channel_name="", thumbnail_url="", content_type="video", live_status=None, is_premiere=False, source="youtube", skip_dedup=False):
+    def insert_video(self, video_id, title, video_url, published_at, channel_name="", thumbnail_url="", content_type="video", live_status=None, is_premiere=False, source="youtube", skip_dedup=False, representative_time_utc=None, representative_time_jst=None):
         """
         動画情報を挿入（リトライ付き、YouTube重複排除対応）
 
@@ -200,6 +212,8 @@ class Database:
             is_premiere: プレミア配信フラグ
             source: 配信元（"youtube"/"niconico"など）
             skip_dedup: 重複排除をスキップするか（手動追加時 True）
+            representative_time_utc: 基準時刻（UTC）
+            representative_time_jst: 基準時刻（JST）
         """
         # バリデーション
         content_type = self._validate_content_type(content_type)
@@ -235,9 +249,9 @@ class Database:
                 cursor = conn.cursor()
 
                 cursor.execute("""
-                    INSERT INTO videos (video_id, title, video_url, published_at, channel_name, thumbnail_url, content_type, live_status, is_premiere, source)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (video_id, title, video_url, published_at, channel_name, thumbnail_url, content_type, live_status, 1 if is_premiere else 0, source))
+                    INSERT INTO videos (video_id, title, video_url, published_at, channel_name, thumbnail_url, content_type, live_status, is_premiere, source, representative_time_utc, representative_time_jst)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (video_id, title, video_url, published_at, channel_name, thumbnail_url, content_type, live_status, 1 if is_premiere else 0, source, representative_time_utc, representative_time_jst))
 
                 conn.commit()
                 conn.close()
@@ -284,6 +298,34 @@ class Database:
         except Exception as e:
             logger.error(f"未投稿動画の取得に失敗しました: {e}")
             return []
+
+    def get_video_by_id(self, video_id: str) -> Optional[dict]:
+        """
+        video_id で動画を取得
+
+        Args:
+            video_id: 動画ID
+
+        Returns:
+            dict: 動画情報（見つからない場合は None）
+        """
+        try:
+            conn = self._get_connection()
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+
+            cursor.execute("""
+                SELECT * FROM videos WHERE video_id = ?
+            """, (video_id,))
+
+            row = cursor.fetchone()
+            conn.close()
+
+            return dict(row) if row else None
+
+        except Exception as e:
+            logger.error(f"動画の取得に失敗しました（video_id={video_id}）: {e}")
+            return None
 
     def get_selected_videos(self):
         """投稿選択された未投稿動画を取得（スケジュール順）"""

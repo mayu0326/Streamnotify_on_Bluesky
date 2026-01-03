@@ -1,7 +1,7 @@
 ﻿# v3 テンプレートシステム - 完全ガイド
 
-**対象バージョン**: v3.1.0 以降
-**最終更新**: 2025-12-18
+**対象バージョン**: v3.3.0 以降
+**最終更新**: 2026-01-03
 **ステータス**: ✅ 実装完了・検証済み
 
 ---
@@ -32,14 +32,15 @@
 
 ### 対応プラットフォーム・イベント
 
-| プラットフォーム | イベント | テンプレート名 | 対応状況 | ファイル |
-|:--|:--|:--|:--:|:--|
-| YouTube | 新着動画投稿 | YouTube 新着動画 | ✅ v3.1.0 | `yt_new_video_template.txt` |
-| YouTube | 配信開始 | YouTube Live 開始 | ✅ v3.1.0 | `yt_online_template.txt` |
-| YouTube | 配信終了 | YouTube Live 終了 | 🔜 将来実装 | `yt_offline_template.txt` |
-| YouTube | アーカイブ | YouTube アーカイブ | ✅ v3.1.0 | `yt_archive_template.txt` |
-| ニコニコ | 新着動画投稿 | ニコニコ 新着動画 | ✅ v3.1.0 | `nico_new_video_template.txt` |
-| Twitch | 配信開始 | Twitch 配信開始 | 🔜 将来実装 | `twitch_online_template.txt` |
+| プラットフォーム | イベント | テンプレート名 | 対応状況 | ファイル | 備考 |
+|:--|:--|:--|:--:|:--|:--|
+| YouTube | 新着動画投稿 | YouTube 新着動画 | ✅ v3.1.0 | `yt_new_video_template.txt` | - |
+| YouTube | 放送枠予約通知 | YouTube 放送枠予約 | ✅ v3.2.0 | `yt_schedule_template.txt` | - |
+| YouTube | 配信開始 | YouTube Live 開始 | ✅ v3.1.0 | `yt_online_template.txt` | v3.3.0で plugins/youtube/ に統合 |
+| YouTube | 配信終了 | YouTube Live 終了 | ✅ v3.1.0 | `yt_offline_template.txt` | v3.3.0で plugins/youtube/ に統合 |
+| YouTube | アーカイブ | YouTube アーカイブ | ✅ v3.2.0 | `yt_archive_template.txt` | - |
+| ニコニコ | 新着動画投稿 | ニコニコ 新着動画 | ✅ v3.1.0 | `nico_new_video_template.txt` | - |
+| Twitch | 配信開始 | Twitch 配信開始 | 🔜 将来実装 | `twitch_online_template.txt` | v3.4.0+ 予定 |
 
 **✅** = 現在利用可能 | **🔜** = 今後実装予定
 
@@ -57,14 +58,16 @@ Streamnotify_on_Bluesky/v3/
 │   ├── youtube/                          # YouTube 用テンプレート
 │   │   ├── yt_new_video_template.txt     ← 新着動画投稿用
 │   │   ├── yt_online_template.txt        ← 配信開始用
-│   │   ├── yt_offline_template.txt       ← 配信終了用（将来）
-│   │   └── yt_archive_template.txt       ← アーカイブ投稿用（新規）
+│   │   ├── yt_offline_template.txt       ← 配信終了用
+│   │   └── yt_archive_template.txt       ← アーカイブ投稿用
 │   │
 │   ├── niconico/                         # ニコニコ用テンプレート
 │   │   └── nico_new_video_template.txt   ← 新着動画投稿用
 │   │
-│   └── .templates/                       # デフォルト・フォールバック用
-│       └── default_template.txt          ← エラー時の代替テンプレート
+│   └── default/                          # デフォルト・フォールバック用
+│       ├── default_template.txt          ← エラー時の代替テンプレート
+│       ├── default_online_template.txt   ← デフォルト配信開始用
+│       └── default_offline_template.txt  ← デフォルト配信終了用
 │
 └── settings.env                          # テンプレート設定
 ```
@@ -122,7 +125,7 @@ Streamnotify_on_Bluesky/v3/
 
 テンプレート内では、 `{{ 変数名 }}` の形式で様々な内容を表示できます：
 
-- [投稿テンプレート変数リファレンス](v3/docs/Guides/TEMPLATE_GUIDE.md) を参照してください。
+- [投稿テンプレート変数リファレンス](../Guides/TEMPLATE_GUIDE.md) を参照してください。
 
 ### よくある質問（FAQ）
 
@@ -235,19 +238,39 @@ Bluesky へ投稿
 # YouTube 新着動画テンプレート
 TEMPLATE_YOUTUBE_NEW_VIDEO_PATH=templates/youtube/yt_new_video_template.txt
 
+# YouTube Live 放送枠予約通知テンプレート（v3.2.0+）
+# TEMPLATE_YOUTUBE_SCHEDULE_PATH=templates/youtube/yt_schedule_template.txt
+
+# YouTube Live 配信開始通知テンプレート（v3.3.0+ plugins/youtube に統合）
+# TEMPLATE_YOUTUBE_ONLINE_PATH=templates/youtube/yt_online_template.txt
+
+# YouTube Live 配信終了通知テンプレート（v3.3.0+ plugins/youtube に統合）
+# TEMPLATE_YOUTUBE_OFFLINE_PATH=templates/youtube/yt_offline_template.txt
+
+# YouTube アーカイブ投稿テンプレート（v3.2.0+）
+# TEMPLATE_YOUTUBE_ARCHIVE_PATH=templates/youtube/yt_archive_template.txt
+
 # ニコニコ新着動画テンプレート
 TEMPLATE_NICO_NEW_VIDEO_PATH=templates/niconico/nico_new_video_template.txt
 ```
 
-### 環境変数の解決順序
+**注記**: コメント（`#`）で始まる行は未設定の場合を示します。必要に応じてコメントを外して使用してください。
 
-テンプレートパスは以下の優先度で解決されます：
+### テンプレート解決のロジック
 
-1. **明示的に指定された環境変数名**（コード内で明示的に指定された場合）
-2. **新形式**: `TEMPLATE_YOUTUBE_NEW_VIDEO_PATH` など（推奨）
-3. **レガシー形式**: `BLUESKY_YT_NEW_VIDEO_TEMPLATE_PATH` など（後方互換性のため存在）
-4. **デフォルトテンプレート**（上記が未設定の場合）
-5. **自動推論**（`templates/{service}/{event}_template.txt`）
+テンプレートの選択は以下の優先度で決定されます：
+
+| 優先度 | 方法 | 説明 |
+|:--|:--|:--|
+| 1 | **環境変数で明示的に指定** | `settings.env` の `TEMPLATE_*_PATH` で指定されたパス |
+| 2 | **自動推論** | `templates/{service}/{event}_template.txt` 形式で自動検出 |
+| 3 | **デフォルトテンプレート** | `templates/default/default_template.txt` にフォールバック |
+| 4 | **ハードコードフォーマット** | テンプレート処理失敗時、従来フォーマットで投稿 |
+
+**例**: YouTube 新着動画の場合
+1. `TEMPLATE_YOUTUBE_NEW_VIDEO_PATH` に値があるか → あれば使用
+2. `templates/youtube/yt_new_video_template.txt` が存在するか → あれば使用
+3. `templates/default/default_template.txt` → これが最後の手段
 
 ### 根本原因: os.getenv() が settings.env を読み込まない
 
@@ -398,10 +421,28 @@ def _get_env_var_from_file(file_path: str, env_var_name: str) -> Optional[str]:
 - ✅ テンプレート必須キー - すべてのテンプレートで定義済み
 
 ### 🔄 今後の拡張予定
-
 - **詳細は [FUTURE_ROADMAP_v3.md](../References/FUTURE_ROADMAP_v3.md) を参照**。  \
-テンプレート関連の将来実装計画が記載されています。
+## v3.3.0 での主な変更
 
+### YouTube Live プラグインのリファクタリング
+
+v3.3.0 では、YouTube Live 機能が以下のように統合されました：
+
+- **プラグイン構成の変更**: `youtube_live_plugin.py` → `plugins/youtube/live_module.py`
+- **ステータス分類の統合**: `content_type` + `live_status` による多段階分類
+- **テンプレート対応**: 配信開始・終了テンプレートはプラグイン内で処理
+- **API ポーリング動的制御**: キャッシュ状態に応じた最適なポーリング間隔
+
+### テンプレートパス関連の改善
+
+- `templates/.templates/` → `templates/default/` へ移行
+- デフォルトテンプレートの拡充（online/offline 用テンプレート追加）
+- 設定ファイルのコメント化による柔軟な構成管理
+
+---
+
+**作成日**: 2025-12-18
+**最後の修正**: 2026-01-03
 | 機能 | 状況 | 予定 |
 |:--|:--|:--|
 | YouTube Live テンプレート | ⏳ 将来実装 | v3.x |
@@ -421,5 +462,5 @@ def _get_env_var_from_file(file_path: str, env_var_name: str) -> Optional[str]:
 ---
 
 **作成日**: 2025-12-18
-**最後の修正**: 2025-12-18
+**最後の修正**: 2026-01-03
 **ステータス**: ✅ 完成・検証済み

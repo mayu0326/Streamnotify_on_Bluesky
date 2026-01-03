@@ -18,7 +18,7 @@ import logging
 import threading
 import tkinter as tk
 import gc
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # バージョン情報
 from app_version import get_version_info, get_full_version_info
@@ -110,6 +110,9 @@ def main():
         logger = setup_logging(debug_mode=config.debug_mode)
         logger.info(f"StreamNotify on Bluesky {get_version_info()}")
         logger.info(f"動作モードは: {config.operation_mode} に設定されています。")
+
+        # ★ 設定ログ出力（初期化時に1回だけ）
+        config._log_operation_mode()
     except Exception as e:
         print(f"設定の読み込みに失敗しました: {e}")
         sys.exit(1)
@@ -139,6 +142,24 @@ def main():
     except Exception as e:
         logger.error(f"除外動画リストの初期化に失敗しました: {e}")
 
+    # ★ 新: YouTubeVideoClassifier を初期化
+    try:
+        from youtube_core.youtube_video_classifier import get_video_classifier
+        classifier = get_video_classifier(api_key=config.youtube_api_key)
+        logger.info("✅ YouTube動画分類器を初期化しました")
+    except Exception as e:
+        logger.warning(f"⚠️ YouTube動画分類器の初期化に失敗しました: {e}")
+        classifier = None
+
+    # ★ 新: LiveModule を初期化
+    try:
+        from plugins.youtube.live_module import get_live_module
+        live_module = get_live_module(db=db, plugin_manager=None)  # plugin_manager は後で注入
+        logger.info("✅ YouTubeLiveモジュールを初期化しました")
+    except Exception as e:
+        logger.warning(f"⚠️ YouTubeLiveモジュールの初期化に失敗しました: {e}")
+        live_module = None
+
     # ===== YouTube フィード取得モード分岐 =====
     try:
         if config.youtube_feed_mode == "websub":
@@ -166,6 +187,11 @@ def main():
 
     plugin_manager = PluginManager(plugins_dir="plugins")
     loaded_names = set()
+
+    # ★ 新: LiveModule に plugin_manager を注入
+    if live_module:
+        live_module.set_plugin_manager(plugin_manager)
+        logger.debug("✅ LiveModule に PluginManager を注入しました")
 
     # Asset マネージャーの初期化（プラグイン導入時に資源を配置）
     asset_manager = get_asset_manager()
@@ -323,8 +349,9 @@ def main():
                 # WebSub: ProductionServerAPI 経由で動画情報を取得
                 from youtube_core.youtube_websub import YouTubeWebSub
                 yt_websub = YouTubeWebSub(config.youtube_channel_id)
-                saved_count = yt_websub.save_to_db(db)
-                logger.info(f"[YouTube] WebSub DB保存完了: {saved_count} 件")
+                # ★ 修正: classifier と live_module を渡す
+                saved_count, live_count = yt_websub.save_to_db(db, classifier=classifier, live_module=live_module)
+                logger.info(f"[YouTube] WebSub DB保存完了: {saved_count} 件（Live登録: {live_count} 件）")
 
                 # ★ 重要: WebSub から取得した動画のサムネイルを処理
                 # 新規動画は thumb_mgr.ensure_websub_images で即座に処理
@@ -354,11 +381,26 @@ def main():
             else:
                 logger.info("[YouTube] YouTubeRSS から情報を取得しています...")
                 # RSS ポーリング: RSS フェッチ・DB 保存・画像自動処理を一体実行
-                saved_count = thumb_mgr.fetch_and_ensure_images(config.youtube_channel_id)
+                # ★ 修正: classifier と live_module を渡す
+                from youtube_core.youtube_rss import YouTubeRSS
+                yt_rss = YouTubeRSS(config.youtube_channel_id)
+                saved_count, live_count = yt_rss.save_to_db(db, classifier=classifier, live_module=live_module)
+                logger.info(f"[YouTube] RSS DB保存完了: {saved_count} 件（Live登録: {live_count} 件）")
 
+                # ★ サムネイル処理：fetch_and_ensure_images の結果をマージ
+                thumb_mgr.fetch_and_ensure_images(config.youtube_channel_id)
 
-            # YouTubeLive プラグインは v3.3.0+ で廃止されました
-
+            # ★ 新: Live ポーリング（Live関連動画の状態遷移を検知・自動投稿）
+            if live_module:
+                logger.info("[YouTube] Live動画をポーリング中...")
+                try:
+                    polled_count = live_module.poll_lives()
+                    if polled_count > 0:
+                        logger.info(f"✅ Live ポーリング完了: {polled_count} 件を処理しました")
+                    else:
+                        logger.debug("ℹ️ Live ポーリング: 状態遷移なし")
+                except Exception as e:
+                    logger.error(f"❌ Live ポーリングエラー: {e}")
 
             if config.is_collect_mode:
                 logger.info("[モード] 収集モード のため、投稿処理をスキップします。")
