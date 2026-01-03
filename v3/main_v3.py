@@ -110,6 +110,9 @@ def main():
         logger = setup_logging(debug_mode=config.debug_mode)
         logger.info(f"StreamNotify on Bluesky {get_version_info()}")
         logger.info(f"動作モードは: {config.operation_mode} に設定されています。")
+
+        # ★ 設定ログ出力（初期化時に1回だけ）
+        config._log_operation_mode()
     except Exception as e:
         print(f"設定の読み込みに失敗しました: {e}")
         sys.exit(1)
