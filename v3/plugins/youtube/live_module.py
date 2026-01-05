@@ -46,6 +46,11 @@ class LiveModule:
 
     YouTubeVideoClassifier の分類結果を受け取り、
     DB 登録、状態遷移検知、自動投稿を一元処理する。
+
+    ★ v3.4.0 改訂：複雑なポーリング追跡戦略に対応
+    - completed のみ時：1～3時間毎に確認
+    - archive化後：元completed動画について3時間毎に最大4回確認
+    - LIVE なし時：判定ロジック休止（RSS/WebSubから新規動画まで待機）
     """
 
     def __init__(self, db: Optional[Database] = None, plugin_manager=None):
@@ -59,6 +64,12 @@ class LiveModule:
         self.db = db or self._get_db()
         self.plugin_manager = plugin_manager
         self.config = get_config("settings.env")
+
+        # ★ メモリ内追跡情報（アプリケーション実行中のみ保持）
+        # {video_id: {"last_poll_time": float, "archive_check_count": int}}
+        self.archive_tracking = {}
+
+        logger.debug("📝 Live追跡情報マップを初期化しました")
 
     def _get_db(self) -> Database:
         """Database シングルトンを取得"""
@@ -256,6 +267,96 @@ class LiveModule:
                 logger.error(f"❌ Live動画の登録に失敗しました: {video_id} - {e}")
                 return 0
 
+    def get_next_poll_interval_minutes(self) -> int:
+        """
+        次回のポーリング間隔を決定（動的ポーリング間隔戦略 v3.4.0+ 改訂版）
+
+        複雑な3段階戦略：
+        1. ACTIVE（schedule/live あり）: 短い固定間隔
+        2. COMPLETED（completed のみ）: 1～3時間毎（段階的に拡大）
+        3. NO_LIVE（いずれもなし）: ポーリングロジック休止（次回は RSS/WebSub 次第）
+           → RSS/WebSub から新規動画がくるまで判定ロジックは実行しない
+
+        Returns:
+            int: 次回ポーリングまでの待機分数（分単位）、
+                 または 0（ポーリング不要）
+        """
+        import time
+
+        try:
+            # DB から Live 関連動画の状態を確認
+            all_videos = self.db.get_all_videos()
+            live_videos = [
+                v for v in all_videos
+                if v.get("content_type") in [VIDEO_TYPE_SCHEDULE, VIDEO_TYPE_LIVE, VIDEO_TYPE_COMPLETED, VIDEO_TYPE_ARCHIVE]
+            ]
+
+            # ACTIVE か COMPLETED か NO_LIVE かを判定
+            has_schedule_or_live = any(
+                v.get("content_type") in [VIDEO_TYPE_SCHEDULE, VIDEO_TYPE_LIVE]
+                for v in live_videos
+            )
+            has_completed_only = any(
+                v.get("content_type") == VIDEO_TYPE_COMPLETED
+                for v in live_videos
+            ) and not has_schedule_or_live
+
+            # 判定結果に基づいて間隔を決定
+            if has_schedule_or_live:
+                # ACTIVE: schedule または live 状態がある
+                interval = self.config.youtube_live_poll_interval_active
+                logger.debug(f"🔄 次回ポーリング間隔: {interval} 分（ACTIVE: schedule/live あり）")
+                return interval
+
+            elif has_completed_only:
+                # COMPLETED のみ: 1～3時間毎（段階的に拡大）
+                # archive化前の動画を追跡して確認間隔を拡大
+                current_time = time.time()
+                min_interval = self.config.youtube_live_poll_interval_completed_min
+                max_interval = self.config.youtube_live_poll_interval_completed_max
+
+                # 追跡中の completed 動画の最長未確認時間を計算
+                max_age_minutes = 0
+                for video in live_videos:
+                    if video.get("content_type") == VIDEO_TYPE_COMPLETED:
+                        video_id = video.get("video_id")
+                        if video_id in self.archive_tracking:
+                            last_poll = self.archive_tracking[video_id]["last_poll_time"]
+                            age_minutes = (current_time - last_poll) / 60
+                            max_age_minutes = max(max_age_minutes, age_minutes)
+
+                # 未確認時間に基づいて次回間隔を決定（段階的に拡大）
+                if max_age_minutes < min_interval:
+                    # 初回：最短間隔で確認
+                    interval = min_interval
+                else:
+                    # 段階的に最大間隔まで拡大（1時間 → 2時間 → 3時間）
+                    elapsed_hours = max_age_minutes / 60
+                    if elapsed_hours < 2:
+                        interval = min(max_interval, int(min_interval * 1.5))
+                    elif elapsed_hours < 4:
+                        interval = int((min_interval + max_interval) / 2)
+                    else:
+                        interval = max_interval
+
+                logger.debug(f"🔄 次回ポーリング間隔: {interval} 分（COMPLETED: completed のみ、段階拡大）")
+                return interval
+
+            else:
+                # NO_LIVE: LIVE 関連動画がない
+                # ★ 判定ロジック休止：RSS/WebSub から新規動画がくるまで待機
+                # RSS/WebSub からの新規取得は独立して動作しているため、
+                # Live ポーリング自体をスキップしても問題なし
+                logger.debug(f"🔄 次回ポーリング: 休止（NO_LIVE: LIVE 関連動画なし、RSS/WebSub 次第）")
+                # 判定ロジックを休止する場合は非常に長い間隔を返す
+                # または 0 を返して呼び出し側で判断させる
+                return 0  # 0 = ポーリング不要（RSS/WebSub のみで OK）
+
+        except Exception as e:
+            logger.warning(f"⚠️  ポーリング間隔決定エラー（デフォルト使用）: {e}")
+            # デフォルト: ACTIVE 間隔を使用
+            return self.config.youtube_live_poll_interval_active
+
     def poll_lives(self) -> int:
         """
         登録済みの Live 動画をポーリング
@@ -357,7 +458,45 @@ class LiveModule:
                     # DB を更新するが、自動投稿はしない
                     self.db.update_video_status(video_id, current_type, current_live_status)
 
+            # ★ 新: 追跡情報の更新（completed と archive の状態管理）
+            import time
+            current_time = time.time()
+
+            for video in live_videos:
+                video_id = video.get("video_id")
+                current_type = video.get("content_type")
+
+                if current_type == VIDEO_TYPE_COMPLETED:
+                    # COMPLETED 状態: 確認時刻を記録
+                    if video_id not in self.archive_tracking:
+                        self.archive_tracking[video_id] = {"last_poll_time": current_time, "archive_check_count": 0}
+                    else:
+                        self.archive_tracking[video_id]["last_poll_time"] = current_time
+
+                elif current_type == VIDEO_TYPE_ARCHIVE:
+                    # ARCHIVE 状態: 元 COMPLETED だった動画を最大4回まで追跡
+                    if video_id in self.archive_tracking:
+                        check_count = self.archive_tracking[video_id]["archive_check_count"]
+                        if check_count < self.config.youtube_live_archive_check_count_max:
+                            self.archive_tracking[video_id]["last_poll_time"] = current_time
+                            self.archive_tracking[video_id]["archive_check_count"] = check_count + 1
+                            logger.debug(f"📡 ARCHIVE 追跡: {video_id} ({check_count + 1}/{self.config.youtube_live_archive_check_count_max})")
+                        else:
+                            # 最大回数に達したため追跡終了
+                            del self.archive_tracking[video_id]
+                            logger.debug(f"✅ ARCHIVE 追跡終了: {video_id}（最大{self.config.youtube_live_archive_check_count_max}回に達した）")
+                    else:
+                        # 初回 ARCHIVE 認識時
+                        self.archive_tracking[video_id] = {"last_poll_time": current_time, "archive_check_count": 1}
+                        logger.debug(f"📡 ARCHIVE 追跡開始: {video_id}")
+
+                elif current_type not in [VIDEO_TYPE_SCHEDULE, VIDEO_TYPE_LIVE]:
+                    # LIVE 関連以外の状態：追跡を削除
+                    if video_id in self.archive_tracking:
+                        del self.archive_tracking[video_id]
+
             logger.info(f"✅ Live ポーリング完了: {processed_count} 件のイベントを処理しました")
+            logger.debug(f"📝 現在の追跡中動画数: {len(self.archive_tracking)}")
             return processed_count
 
         except Exception as e:

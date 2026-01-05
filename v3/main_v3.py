@@ -508,7 +508,24 @@ def main():
                     remaining = config.autopost_interval_minutes - elapsed
                     logger.info(f"🤖 AUTOPOST: 投稿間隔制限中。次の投稿まで約 {remaining:.1f} 分待機。")
 
-            logger.info(f"次のポーリングまで {config.poll_interval_minutes} 分待機中...")
+            # ★ 新: YouTube Live 動的ポーリング間隔に対応（v3.4.0+ 改訂版）
+            # live_module が有効な場合は、キャッシュ状態に応じた動的間隔を計算
+            # NO_LIVE 時は 0（ポーリングロジック休止）を返す
+            next_live_poll_interval = config.poll_interval_minutes
+            if live_module:
+                try:
+                    next_live_poll_interval = live_module.get_next_poll_interval_minutes()
+                    if next_live_poll_interval == 0:
+                        # NO_LIVE 時：ポーリングロジック休止（RSS/WebSub のみで OK）
+                        logger.info("🔄 YouTube Live ポーリング: 休止中（LIVE 関連動画なし）")
+                    else:
+                        logger.info(f"🔄 次の Live ポーリングまで {next_live_poll_interval} 分待機中...")
+                except Exception as e:
+                    logger.warning(f"⚠️  動的ポーリング間隔決定エラー（デフォルト使用）: {e}")
+                    next_live_poll_interval = config.poll_interval_minutes
+
+            # 待機時間を計算（次回 RSS/WebSub ポーリングの時刻）
+            logger.info(f"次のポーリング（RSS/WebSub）まで {config.poll_interval_minutes} 分待機中...")
             # 待機中も stop_event をチェック（1秒間隔）
             for _ in range(config.poll_interval_minutes * 60):
                 if stop_event.is_set():
