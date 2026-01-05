@@ -105,6 +105,17 @@ def main():
     print(f"StreamNotify on Bluesky {get_version_info()}")
 
     try:
+        # ★ 新: アプリ起動時に settings.env を自動同期
+        try:
+            from config_sync import sync_settings_env
+            settings_env_path = os.path.join(os.path.dirname(__file__), "settings.env")
+            example_file_path = os.path.join(os.path.dirname(__file__), "settings.env.example")
+            sync_settings_env(settings_env_path, example_file_path)
+        except ImportError:
+            print("警告: config_sync モジュールが見つかりません（スキップ）")
+        except Exception as e:
+            print(f"警告: settings.env の同期に失敗しました（スキップ）: {e}")
+
         from config import get_config
         config = get_config("settings.env")
         logger = setup_logging(debug_mode=config.debug_mode)
