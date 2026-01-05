@@ -219,6 +219,66 @@ class Config:
             logger.warning("NICONICO_POLL_INTERVAL が無効です。10分に設定します。")
             self.niconico_poll_interval_minutes = 10
 
+        # ★ 新: YouTube Live 動的ポーリング間隔（v3.4.0+ 改訂版）
+        # キャッシュの状態に応じてポーリング間隔を自動調整
+        # 新要件: completedのみ時は1～3時間毎、archive化後は最大4回まで3時間毎確認
+
+        # ACTIVE（schedule/live あり）：固定短間隔
+        try:
+            self.youtube_live_poll_interval_active = int(os.getenv("YOUTUBE_LIVE_POLL_INTERVAL_ACTIVE", 15))
+            if self.youtube_live_poll_interval_active < 1 or self.youtube_live_poll_interval_active > 60:
+                logger.warning(f"YouTube Live ACTIVE ポーリング間隔が範囲外です (1〜60): {self.youtube_live_poll_interval_active}。5分に設定します。")
+                self.youtube_live_poll_interval_active = 5
+            logger.debug(f"📡 YouTube Live ACTIVE ポーリング間隔: {self.youtube_live_poll_interval_active} 分（schedule/live 状態時）")
+        except ValueError:
+            logger.warning("YOUTUBE_LIVE_POLL_INTERVAL_ACTIVE が無効です。5分に設定します。")
+            self.youtube_live_poll_interval_active = 5
+
+        # COMPLETED のみ時：最短1時間、最大3時間
+        try:
+            self.youtube_live_poll_interval_completed_min = int(os.getenv("YOUTUBE_LIVE_POLL_INTERVAL_COMPLETED_MIN", 60))
+            if self.youtube_live_poll_interval_completed_min < 30 or self.youtube_live_poll_interval_completed_min > 180:
+                logger.warning(f"YouTube Live COMPLETED 最短間隔が範囲外です (30〜180分): {self.youtube_live_poll_interval_completed_min}。60分に設定します。")
+                self.youtube_live_poll_interval_completed_min = 60
+            logger.debug(f"📡 YouTube Live COMPLETED 最短間隔: {self.youtube_live_poll_interval_completed_min} 分")
+        except ValueError:
+            logger.warning("YOUTUBE_LIVE_POLL_INTERVAL_COMPLETED_MIN が無効です。60分に設定します。")
+            self.youtube_live_poll_interval_completed_min = 60
+
+        try:
+            self.youtube_live_poll_interval_completed_max = int(os.getenv("YOUTUBE_LIVE_POLL_INTERVAL_COMPLETED_MAX", 180))
+            if self.youtube_live_poll_interval_completed_max < 30 or self.youtube_live_poll_interval_completed_max > 180:
+                logger.warning(f"YouTube Live COMPLETED 最大間隔が範囲外です (30〜180分): {self.youtube_live_poll_interval_completed_max}。180分に設定します。")
+                self.youtube_live_poll_interval_completed_max = 180
+            if self.youtube_live_poll_interval_completed_max < self.youtube_live_poll_interval_completed_min:
+                logger.warning(f"YouTube Live COMPLETED 最大間隔が最短間隔より小さいです。調整します。")
+                self.youtube_live_poll_interval_completed_max = self.youtube_live_poll_interval_completed_min
+            logger.debug(f"📡 YouTube Live COMPLETED 最大間隔: {self.youtube_live_poll_interval_completed_max} 分")
+        except ValueError:
+            logger.warning("YOUTUBE_LIVE_POLL_INTERVAL_COMPLETED_MAX が無効です。180分に設定します。")
+            self.youtube_live_poll_interval_completed_max = 180
+
+        # ARCHIVE 化後の追跡回数：最大4回、間隔3時間
+        try:
+            self.youtube_live_archive_check_count_max = int(os.getenv("YOUTUBE_LIVE_ARCHIVE_CHECK_COUNT_MAX", 4))
+            if self.youtube_live_archive_check_count_max < 1 or self.youtube_live_archive_check_count_max > 10:
+                logger.warning(f"YouTube Live ARCHIVE 追跡回数が範囲外です (1〜10): {self.youtube_live_archive_check_count_max}。4に設定します。")
+                self.youtube_live_archive_check_count_max = 4
+            logger.debug(f"📡 YouTube Live ARCHIVE 追跡回数: 最大 {self.youtube_live_archive_check_count_max} 回")
+        except ValueError:
+            logger.warning("YOUTUBE_LIVE_ARCHIVE_CHECK_COUNT_MAX が無効です。4に設定します。")
+            self.youtube_live_archive_check_count_max = 4
+
+        try:
+            self.youtube_live_archive_check_interval = int(os.getenv("YOUTUBE_LIVE_ARCHIVE_CHECK_INTERVAL", 180))
+            if self.youtube_live_archive_check_interval < 30 or self.youtube_live_archive_check_interval > 480:
+                logger.warning(f"YouTube Live ARCHIVE 確認間隔が範囲外です (30〜480分): {self.youtube_live_archive_check_interval}。180分に設定します。")
+                self.youtube_live_archive_check_interval = 180
+            logger.debug(f"📡 YouTube Live ARCHIVE 確認間隔: {self.youtube_live_archive_check_interval} 分")
+        except ValueError:
+            logger.warning("YOUTUBE_LIVE_ARCHIVE_CHECK_INTERVAL が無効です。180分に設定します。")
+            self.youtube_live_archive_check_interval = 180
+
         # ===== AUTOPOST 固有の環境変数（仕様 v1.0） =====
 
         # AUTOPOST 投稿間隔（分）
@@ -333,6 +393,16 @@ class Config:
             logger.info("🤖 自動投稿モード。人間の介入なく自動投稿が実行されます。GUI投稿操作は無効化されます。")
 
 
+# グローバルキャッシュ（シングルトンパターン）
+_config_cache = {}
+
 def get_config(env_path="settings.env") -> Config:
-    """設定オブジェクトを取得"""
-    return Config(env_path)
+    """設定オブジェクトを取得（キャッシング機構付き）
+
+    初回呼び出し時に Config を生成し、以降は同じインスタンスを返す。
+    これにより、複数箇所から get_config() が呼ばれても、
+    ログの重複出力を防ぐことができる。
+    """
+    if env_path not in _config_cache:
+        _config_cache[env_path] = Config(env_path)
+    return _config_cache[env_path]

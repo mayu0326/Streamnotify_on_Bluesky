@@ -536,14 +536,14 @@ class Database:
             return []
 
     def mark_as_posted(self, video_id):
-        """動画を投稿済みにマーク"""
+        """動画を投稿済みにマーク（selected_for_post フラグを外す）"""
         try:
             conn = self._get_connection()
             cursor = conn.cursor()
 
             posted_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             cursor.execute("""
-                UPDATE videos SET posted_to_bluesky = 1, posted_at = ? WHERE video_id = ?
+                UPDATE videos SET posted_to_bluesky = 1, posted_at = ?, selected_for_post = 0 WHERE video_id = ?
             """, (posted_at, video_id))
 
             conn.commit()

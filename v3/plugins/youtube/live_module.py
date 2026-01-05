@@ -24,7 +24,7 @@ from typing import Dict, Any, Optional
 from datetime import datetime
 
 from database import Database
-from config import get_config
+from config import get_config, OperationMode
 
 logger = logging.getLogger("AppLogger")
 
@@ -46,6 +46,11 @@ class LiveModule:
 
     YouTubeVideoClassifier の分類結果を受け取り、
     DB 登録、状態遷移検知、自動投稿を一元処理する。
+
+    ★ v3.4.0 改訂：複雑なポーリング追跡戦略に対応
+    - completed のみ時：1～3時間毎に確認
+    - archive化後：元completed動画について3時間毎に最大4回確認
+    - LIVE なし時：判定ロジック休止（RSS/WebSubから新規動画まで待機）
     """
 
     def __init__(self, db: Optional[Database] = None, plugin_manager=None):
@@ -59,6 +64,12 @@ class LiveModule:
         self.db = db or self._get_db()
         self.plugin_manager = plugin_manager
         self.config = get_config("settings.env")
+
+        # ★ メモリ内追跡情報（アプリケーション実行中のみ保持）
+        # {video_id: {"last_poll_time": float, "archive_check_count": int}}
+        self.archive_tracking = {}
+
+        logger.debug("📝 Live追跡情報マップを初期化しました")
 
     def _get_db(self) -> Database:
         """Database シングルトンを取得"""
@@ -99,15 +110,26 @@ class LiveModule:
             logger.debug(f"⏭️  非Live動画（登録スキップ）: {video_type}")
             return 0
 
-        # ★ 【重要】既存チェック: 同じ video_id が既に DB に存在する場合はスキップ
+        # ★ 【重要】既存チェック: 同じ video_id が既に DB に存在する場合
         try:
             existing = self.db.get_video_by_id(video_id)
             if existing:
-                logger.debug(
-                    f"⏭️  既存のLive動画のため新規登録スキップ: {video_id} "
-                    f"(既存: type={existing.get('content_type')}, status={existing.get('live_status')})"
-                )
-                return 0
+                # ★ 【新】既存動画の場合、コンテンツタイプが異なれば更新
+                existing_type = existing.get('content_type')
+                if existing_type != video_type:
+                    # 分類結果が前回と異なる場合は更新
+                    logger.info(
+                        f"🔄 Live動画の分類更新: {video_id} "
+                        f"(既存: {existing_type} → 新規: {video_type})"
+                    )
+                    # 以下の処理で更新を行う（登録スキップしない）
+                else:
+                    # 分類結果が同じ場合はスキップ
+                    logger.debug(
+                        f"⏭️  既存のLive動画で分類に変更なし: {video_id} "
+                        f"(type={existing_type}, status={existing.get('live_status')})"
+                    )
+                    return 0
         except Exception as e:
             logger.warning(f"⚠️ 既存チェック中にエラー（続行）: {video_id} - {e}")
             # エラー時は続行して登録を試みる（DB エラーなど）
@@ -122,22 +144,7 @@ class LiveModule:
         # ★ 【新】基準時刻（UTC）を取得
         representative_time_utc = result.get("representative_time_utc")
 
-        # ★ 【重要】published_at のタイムゾーン変換
-        # YouTubeAPI は UTC で返すため、環境変数 TIMEZONE で指定されたタイムゾーンに変換する
-        # （デフォルト: system タイムゾーン。TIMEZONE=Asia/Tokyo で JST になる）
-        if published_at:
-            try:
-                from utils_v3 import format_datetime_filter
-                # format_datetime_filter は ISO 8601 形式を環境変数 TIMEZONE で指定されたタイムゾーンに変換
-                # fmt="%Y-%m-%d %H:%M:%S" で日時形式（タイムゾーン情報なし、Tをスペースに置き換え）で返す
-                published_at_converted = format_datetime_filter(published_at, fmt="%Y-%m-%d %H:%M:%S")
-                logger.debug(f"📡 published_at を変換: {published_at} → {published_at_converted}")
-                published_at = published_at_converted
-            except Exception as e:
-                logger.warning(f"⚠️ published_at の変換失敗、元の値を使用: {e}")
-                # 失敗時は元の値を使用
-
-        # ★ 【新】representative_time_utc を JST に変換
+        # ★ 【重要】representative_time_utc を JST に変換（スケジュール時は開始予定時刻）
         representative_time_jst = None
         if representative_time_utc:
             try:
@@ -146,8 +153,38 @@ class LiveModule:
                 logger.debug(f"📡 representative_time_utc を JST に変換: {representative_time_utc} → {representative_time_jst}")
             except Exception as e:
                 logger.warning(f"⚠️ representative_time_utc の変換失敗: {e}")
-                # 失敗時は representative_time_utc をそのまま使用
-                representative_time_jst = representative_time_utc
+                # 失敗時は published_at を使用
+                representative_time_jst = None
+
+        # ★ 【重要】DB 登録時の published_at の決定ロジック
+        # スケジュール（type="schedule"）: 開始予定時刻（JST）
+        # LIVE 配信中（type="live"）: actualStartTime（配信開始時刻）（JST）
+        # アーカイブ（type="archive"）: actualEndTime（配信終了時刻）（JST）
+        # その他（通常動画など）: 公開日時（JST）
+        if video_type == VIDEO_TYPE_SCHEDULE and representative_time_jst:
+            # スケジュール動画: 開始予定時刻（JST変換済み）を使用
+            db_published_at = representative_time_jst
+            logger.info(f"   📅 スケジュール動画: 開始予定時刻（JST）を使用: {db_published_at}")
+        elif video_type == VIDEO_TYPE_LIVE and representative_time_jst:
+            # LIVE 配信中: 配信開始時刻（JST）を使用
+            db_published_at = representative_time_jst
+            logger.info(f"   ⏱️  LIVE 配信中: 配信開始時刻（JST）を使用: {db_published_at}")
+        elif video_type == VIDEO_TYPE_ARCHIVE and representative_time_jst:
+            # アーカイブ: 配信終了時刻（JST）を使用
+            db_published_at = representative_time_jst
+            logger.info(f"   ⏱️  アーカイブ: 配信終了時刻（JST）を使用: {db_published_at}")
+        else:
+            # それ以外（通常動画など）: 公開日時を使用（YouTubeAPI は UTC で返すため、環境変数 TIMEZONE で指定されたタイムゾーンに変換）
+            db_published_at = published_at
+            if db_published_at:
+                try:
+                    from utils_v3 import format_datetime_filter
+                    # fmt="%Y-%m-%d %H:%M:%S" で日時形式（タイムゾーン情報なし、T をスペースに置き換え）で返す
+                    db_published_at = format_datetime_filter(db_published_at, fmt="%Y-%m-%d %H:%M:%S")
+                    logger.debug(f"📡 published_at を変換: {published_at} → {db_published_at}")
+                except Exception as e:
+                    logger.warning(f"⚠️ published_at の変換失敗、元の値を使用: {e}")
+                    # 失敗時は元の値を使用
 
         # video_url を構築
         video_url = f"https://www.youtube.com/watch?v={video_id}"
@@ -162,39 +199,163 @@ class LiveModule:
         }
         live_status = live_status_map.get(video_type)
 
-        # DB に登録
-        logger.info(f"📝 Live動画を登録します: {title} (type={video_type}, status={live_status})")
+        # ★ 【新】既存動画の場合と新規の場合で処理を分ける
+        is_update = existing is not None
 
-        try:
-            success = self.db.insert_video(
-                video_id=video_id,
-                title=title,
-                video_url=video_url,
-                published_at=published_at,
-                channel_name=channel_name,
-                thumbnail_url=thumbnail_url,
-                content_type=video_type,
-                live_status=live_status,
-                is_premiere=is_premiere,
-                source="youtube",
-                skip_dedup=True,  # LIVE は重複排除をスキップ（複数登録可）
-                # ★ 【新】基準時刻を保存
-                representative_time_utc=representative_time_utc,
-                representative_time_jst=representative_time_jst
-            )
+        if is_update:
+            # 【既存動画更新】コンテンツタイプが変わった場合のみ更新
+            logger.info(f"🔄 Live動画を更新します: {title} (type={video_type}, status={live_status})")
+            try:
+                # update_video_status() を使用して type と status を更新
+                self.db.update_video_status(
+                    video_id=video_id,
+                    content_type=video_type,
+                    live_status=live_status
+                )
+                # published_at を更新（スケジュール時は開始予定時刻）
+                self.db.update_published_at(video_id, db_published_at)
 
-            if success:
-                logger.info(f"✅ Live動画を登録しました: {title}")
-                logger.info(f"   representative_time_utc: {representative_time_utc}")
-                logger.info(f"   representative_time_jst: {representative_time_jst}")
-                return 1
-            else:
-                logger.debug(f"⏭️  既に登録済み（スキップ）: {video_id}")
+                logger.info(f"✅ Live動画を更新しました: {title}")
+                logger.info(f"   新content_type: {video_type}")
+                logger.info(f"   新live_status: {live_status}")
+                success = True
+            except Exception as e:
+                logger.error(f"❌ Live動画の更新に失敗しました: {video_id} - {e}")
+                success = False
+        else:
+            # 【新規登録】
+            logger.info(f"📝 Live動画を登録します: {title} (type={video_type}, status={live_status})")
+
+            try:
+                success = self.db.insert_video(
+                    video_id=video_id,
+                    title=title,
+                    video_url=video_url,
+                    published_at=db_published_at,  # ★ スケジュール時は開始予定時刻（JST）、その他は公開日時
+                    channel_name=channel_name,
+                    thumbnail_url=thumbnail_url,
+                    content_type=video_type,
+                    live_status=live_status,
+                    is_premiere=is_premiere,
+                    source="youtube",
+                    skip_dedup=True,  # LIVE は重複排除をスキップ（複数登録可）
+                    # ★ 【新】基準時刻を保存
+                    representative_time_utc=representative_time_utc,
+                    representative_time_jst=representative_time_jst
+                )
+
+                if success:
+                    logger.info(f"✅ Live動画を登録しました: {title}")
+                    logger.info(f"   representative_time_utc: {representative_time_utc}")
+                    logger.info(f"   representative_time_jst: {representative_time_jst}")
+
+                    # ★ 【重要】SELFPOST モード時に Live 関連動画を自動選択
+                    # SELFPOST では、スケジュール、配信開始、配信終了、アーカイブは自動投稿対象
+                    if self.config.operation_mode == OperationMode.SELFPOST:
+                        try:
+                            self.db.update_selection(video_id, selected=True)
+                            logger.info(f"📌 自動選択フラグを設定しました: {video_id}")
+                        except Exception as e:
+                            logger.warning(f"⚠️ 自動選択フラグ設定失敗（続行）: {video_id} - {e}")
+
+                    return 1
+                else:
+                    logger.debug(f"⏭️  既に登録済み（スキップ）: {video_id}")
+                    return 0
+
+            except Exception as e:
+                logger.error(f"❌ Live動画の登録に失敗しました: {video_id} - {e}")
                 return 0
 
+    def get_next_poll_interval_minutes(self) -> int:
+        """
+        次回のポーリング間隔を決定（動的ポーリング間隔戦略 v3.4.0+ 改訂版）
+
+        複雑な3段階戦略：
+        1. ACTIVE（schedule/live あり）: 短い固定間隔
+        2. COMPLETED（completed のみ）: 1～3時間毎（段階的に拡大）
+        3. NO_LIVE（いずれもなし）: ポーリングロジック休止（次回は RSS/WebSub 次第）
+           → RSS/WebSub から新規動画がくるまで判定ロジックは実行しない
+
+        Returns:
+            int: 次回ポーリングまでの待機分数（分単位）、
+                 または 0（ポーリング不要）
+        """
+        import time
+
+        try:
+            # DB から Live 関連動画の状態を確認
+            all_videos = self.db.get_all_videos()
+            live_videos = [
+                v for v in all_videos
+                if v.get("content_type") in [VIDEO_TYPE_SCHEDULE, VIDEO_TYPE_LIVE, VIDEO_TYPE_COMPLETED, VIDEO_TYPE_ARCHIVE]
+            ]
+
+            # ACTIVE か COMPLETED か NO_LIVE かを判定
+            has_schedule_or_live = any(
+                v.get("content_type") in [VIDEO_TYPE_SCHEDULE, VIDEO_TYPE_LIVE]
+                for v in live_videos
+            )
+            has_completed_only = any(
+                v.get("content_type") == VIDEO_TYPE_COMPLETED
+                for v in live_videos
+            ) and not has_schedule_or_live
+
+            # 判定結果に基づいて間隔を決定
+            if has_schedule_or_live:
+                # ACTIVE: schedule または live 状態がある
+                interval = self.config.youtube_live_poll_interval_active
+                logger.debug(f"🔄 次回ポーリング間隔: {interval} 分（ACTIVE: schedule/live あり）")
+                return interval
+
+            elif has_completed_only:
+                # COMPLETED のみ: 1～3時間毎（段階的に拡大）
+                # archive化前の動画を追跡して確認間隔を拡大
+                current_time = time.time()
+                min_interval = self.config.youtube_live_poll_interval_completed_min
+                max_interval = self.config.youtube_live_poll_interval_completed_max
+
+                # 追跡中の completed 動画の最長未確認時間を計算
+                max_age_minutes = 0
+                for video in live_videos:
+                    if video.get("content_type") == VIDEO_TYPE_COMPLETED:
+                        video_id = video.get("video_id")
+                        if video_id in self.archive_tracking:
+                            last_poll = self.archive_tracking[video_id]["last_poll_time"]
+                            age_minutes = (current_time - last_poll) / 60
+                            max_age_minutes = max(max_age_minutes, age_minutes)
+
+                # 未確認時間に基づいて次回間隔を決定（段階的に拡大）
+                if max_age_minutes < min_interval:
+                    # 初回：最短間隔で確認
+                    interval = min_interval
+                else:
+                    # 段階的に最大間隔まで拡大（1時間 → 2時間 → 3時間）
+                    elapsed_hours = max_age_minutes / 60
+                    if elapsed_hours < 2:
+                        interval = min(max_interval, int(min_interval * 1.5))
+                    elif elapsed_hours < 4:
+                        interval = int((min_interval + max_interval) / 2)
+                    else:
+                        interval = max_interval
+
+                logger.debug(f"🔄 次回ポーリング間隔: {interval} 分（COMPLETED: completed のみ、段階拡大）")
+                return interval
+
+            else:
+                # NO_LIVE: LIVE 関連動画がない
+                # ★ 判定ロジック休止：RSS/WebSub から新規動画がくるまで待機
+                # RSS/WebSub からの新規取得は独立して動作しているため、
+                # Live ポーリング自体をスキップしても問題なし
+                logger.debug(f"🔄 次回ポーリング: 休止（NO_LIVE: LIVE 関連動画なし、RSS/WebSub 次第）")
+                # 判定ロジックを休止する場合は非常に長い間隔を返す
+                # または 0 を返して呼び出し側で判断させる
+                return 0  # 0 = ポーリング不要（RSS/WebSub のみで OK）
+
         except Exception as e:
-            logger.error(f"❌ Live動画の登録に失敗しました: {video_id} - {e}")
-            return 0
+            logger.warning(f"⚠️  ポーリング間隔決定エラー（デフォルト使用）: {e}")
+            # デフォルト: ACTIVE 間隔を使用
+            return self.config.youtube_live_poll_interval_active
 
     def poll_lives(self) -> int:
         """
@@ -297,7 +458,45 @@ class LiveModule:
                     # DB を更新するが、自動投稿はしない
                     self.db.update_video_status(video_id, current_type, current_live_status)
 
+            # ★ 新: 追跡情報の更新（completed と archive の状態管理）
+            import time
+            current_time = time.time()
+
+            for video in live_videos:
+                video_id = video.get("video_id")
+                current_type = video.get("content_type")
+
+                if current_type == VIDEO_TYPE_COMPLETED:
+                    # COMPLETED 状態: 確認時刻を記録
+                    if video_id not in self.archive_tracking:
+                        self.archive_tracking[video_id] = {"last_poll_time": current_time, "archive_check_count": 0}
+                    else:
+                        self.archive_tracking[video_id]["last_poll_time"] = current_time
+
+                elif current_type == VIDEO_TYPE_ARCHIVE:
+                    # ARCHIVE 状態: 元 COMPLETED だった動画を最大4回まで追跡
+                    if video_id in self.archive_tracking:
+                        check_count = self.archive_tracking[video_id]["archive_check_count"]
+                        if check_count < self.config.youtube_live_archive_check_count_max:
+                            self.archive_tracking[video_id]["last_poll_time"] = current_time
+                            self.archive_tracking[video_id]["archive_check_count"] = check_count + 1
+                            logger.debug(f"📡 ARCHIVE 追跡: {video_id} ({check_count + 1}/{self.config.youtube_live_archive_check_count_max})")
+                        else:
+                            # 最大回数に達したため追跡終了
+                            del self.archive_tracking[video_id]
+                            logger.debug(f"✅ ARCHIVE 追跡終了: {video_id}（最大{self.config.youtube_live_archive_check_count_max}回に達した）")
+                    else:
+                        # 初回 ARCHIVE 認識時
+                        self.archive_tracking[video_id] = {"last_poll_time": current_time, "archive_check_count": 1}
+                        logger.debug(f"📡 ARCHIVE 追跡開始: {video_id}")
+
+                elif current_type not in [VIDEO_TYPE_SCHEDULE, VIDEO_TYPE_LIVE]:
+                    # LIVE 関連以外の状態：追跡を削除
+                    if video_id in self.archive_tracking:
+                        del self.archive_tracking[video_id]
+
             logger.info(f"✅ Live ポーリング完了: {processed_count} 件のイベントを処理しました")
+            logger.debug(f"📝 現在の追跡中動画数: {len(self.archive_tracking)}")
             return processed_count
 
         except Exception as e:
@@ -321,7 +520,7 @@ class LiveModule:
         """
         try:
             # APP_MODE に基づいて使用するフラグを決定
-            if self.config.operation_mode == "autopost":
+            if self.config.operation_mode == OperationMode.AUTOPOST:
                 # AUTOPOST モード: 統合モード値を使用
                 mode = self.config.youtube_live_autopost_mode
                 logger.debug(f"🔍 AUTOPOST モード: mode={mode}")
