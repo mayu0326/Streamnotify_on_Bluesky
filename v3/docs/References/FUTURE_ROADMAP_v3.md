@@ -1,7 +1,7 @@
 ﻿# Streamnotify on Bluesky - 将来実装機能ロードマップ
 
-> **対象バージョン**: v3.3.0 時点（2026年1月3日）
-> **最終更新**: 2026-01-03
+> **対象バージョン**: v3.3.0 時点（2026年1月6日）
+> **最終更新**: 2026-01-06
 > **重要**: 本ドキュメントは **v3.1.0 以降、「ローカル完結・シンプル設計」を貫く方針** を明確にしたものです
 
 本ドキュメントは、**v3 の現在の実装設計**と**最初の構想ドキュメント**（`YouTube新着動画app（初期構想案）`）の   \
@@ -530,8 +530,8 @@ vs.
 ---
 
 **作成日**: 2025-12-23
-**最後の修正**: 2026-01-03
-**ステータス**: ✅ v3.3.0 完了状況を反映済み
+**最後の修正**: 2026-01-06
+**ステータス**: ✅ v3.3.0 および 2026-01-06 修正を反映済み
 
 ---
 
@@ -549,6 +549,18 @@ vs.
 - ✅ リアルタイムフィルタリング・GUI統計表示
 - ✅ バックアップ・復元機能（ZIP形式）
 - ✅ YouTube動画の優先度ベースの重複排除
+
+### v3.3.0 修正・改善（2026-01-06）
+- ✅ **YouTube Live 既存動画の分類更新ロジック改善**（バグ修正）
+  - **問題**: YouTube API が遅延して `liveStreamingDetails` フィールドを返すため、初回登録時に `video` として登録された Live スケジュール枠が、後の polling で正しい `schedule` type に更新されていなかった
+  - **根本原因**: `register_from_classified()` メソッドが既存動画をすべてスキップしていた
+  - **修正内容**:
+    - 既存動画の場合、content_type が異なれば `update_video_status()` で DB 更新
+    - published_at も開始予定時刻に更新（スケジュール動画向け）
+    - type が同じ場合のみスキップ（不要な DB アクセス削減）
+  - **影響範囲**: YouTube Live スケジュール枠の state transition 検出が機能するようになる
+  - **修正ファイル**: `v3/plugins/youtube/live_module.py` (L96-243)
+  - **詳細**: [IMPLEMENTATION_COMPLETE_live_classification_update.md](../local/IMPLEMENTATION_COMPLETE_live_classification_update.md) 参照
 
 ### v3.2.0 完了（2025-12-19）
 - WebSub/PubSubHubbub 基本実装

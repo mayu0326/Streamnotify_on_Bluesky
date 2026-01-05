@@ -99,15 +99,26 @@ class LiveModule:
             logger.debug(f"⏭️  非Live動画（登録スキップ）: {video_type}")
             return 0
 
-        # ★ 【重要】既存チェック: 同じ video_id が既に DB に存在する場合はスキップ
+        # ★ 【重要】既存チェック: 同じ video_id が既に DB に存在する場合
         try:
             existing = self.db.get_video_by_id(video_id)
             if existing:
-                logger.debug(
-                    f"⏭️  既存のLive動画のため新規登録スキップ: {video_id} "
-                    f"(既存: type={existing.get('content_type')}, status={existing.get('live_status')})"
-                )
-                return 0
+                # ★ 【新】既存動画の場合、コンテンツタイプが異なれば更新
+                existing_type = existing.get('content_type')
+                if existing_type != video_type:
+                    # 分類結果が前回と異なる場合は更新
+                    logger.info(
+                        f"🔄 Live動画の分類更新: {video_id} "
+                        f"(既存: {existing_type} → 新規: {video_type})"
+                    )
+                    # 以下の処理で更新を行う（登録スキップしない）
+                else:
+                    # 分類結果が同じ場合はスキップ
+                    logger.debug(
+                        f"⏭️  既存のLive動画で分類に変更なし: {video_id} "
+                        f"(type={existing_type}, status={existing.get('live_status')})"
+                    )
+                    return 0
         except Exception as e:
             logger.warning(f"⚠️ 既存チェック中にエラー（続行）: {video_id} - {e}")
             # エラー時は続行して登録を試みる（DB エラーなど）
@@ -177,49 +188,73 @@ class LiveModule:
         }
         live_status = live_status_map.get(video_type)
 
-        # DB に登録
-        logger.info(f"📝 Live動画を登録します: {title} (type={video_type}, status={live_status})")
+        # ★ 【新】既存動画の場合と新規の場合で処理を分ける
+        is_update = existing is not None
 
-        try:
-            success = self.db.insert_video(
-                video_id=video_id,
-                title=title,
-                video_url=video_url,
-                published_at=db_published_at,  # ★ スケジュール時は開始予定時刻（JST）、その他は公開日時
-                channel_name=channel_name,
-                thumbnail_url=thumbnail_url,
-                content_type=video_type,
-                live_status=live_status,
-                is_premiere=is_premiere,
-                source="youtube",
-                skip_dedup=True,  # LIVE は重複排除をスキップ（複数登録可）
-                # ★ 【新】基準時刻を保存
-                representative_time_utc=representative_time_utc,
-                representative_time_jst=representative_time_jst
-            )
+        if is_update:
+            # 【既存動画更新】コンテンツタイプが変わった場合のみ更新
+            logger.info(f"🔄 Live動画を更新します: {title} (type={video_type}, status={live_status})")
+            try:
+                # update_video_status() を使用して type と status を更新
+                self.db.update_video_status(
+                    video_id=video_id,
+                    content_type=video_type,
+                    live_status=live_status
+                )
+                # published_at を更新（スケジュール時は開始予定時刻）
+                self.db.update_published_at(video_id, db_published_at)
 
-            if success:
-                logger.info(f"✅ Live動画を登録しました: {title}")
-                logger.info(f"   representative_time_utc: {representative_time_utc}")
-                logger.info(f"   representative_time_jst: {representative_time_jst}")
+                logger.info(f"✅ Live動画を更新しました: {title}")
+                logger.info(f"   新content_type: {video_type}")
+                logger.info(f"   新live_status: {live_status}")
+                success = True
+            except Exception as e:
+                logger.error(f"❌ Live動画の更新に失敗しました: {video_id} - {e}")
+                success = False
+        else:
+            # 【新規登録】
+            logger.info(f"📝 Live動画を登録します: {title} (type={video_type}, status={live_status})")
 
-                # ★ 【重要】SELFPOST モード時に Live 関連動画を自動選択
-                # SELFPOST では、スケジュール、配信開始、配信終了、アーカイブは自動投稿対象
-                if self.config.operation_mode == OperationMode.SELFPOST:
-                    try:
-                        self.db.update_selection(video_id, selected=True)
-                        logger.info(f"📌 自動選択フラグを設定しました: {video_id}")
-                    except Exception as e:
-                        logger.warning(f"⚠️ 自動選択フラグ設定失敗（続行）: {video_id} - {e}")
+            try:
+                success = self.db.insert_video(
+                    video_id=video_id,
+                    title=title,
+                    video_url=video_url,
+                    published_at=db_published_at,  # ★ スケジュール時は開始予定時刻（JST）、その他は公開日時
+                    channel_name=channel_name,
+                    thumbnail_url=thumbnail_url,
+                    content_type=video_type,
+                    live_status=live_status,
+                    is_premiere=is_premiere,
+                    source="youtube",
+                    skip_dedup=True,  # LIVE は重複排除をスキップ（複数登録可）
+                    # ★ 【新】基準時刻を保存
+                    representative_time_utc=representative_time_utc,
+                    representative_time_jst=representative_time_jst
+                )
 
-                return 1
-            else:
-                logger.debug(f"⏭️  既に登録済み（スキップ）: {video_id}")
+                if success:
+                    logger.info(f"✅ Live動画を登録しました: {title}")
+                    logger.info(f"   representative_time_utc: {representative_time_utc}")
+                    logger.info(f"   representative_time_jst: {representative_time_jst}")
+
+                    # ★ 【重要】SELFPOST モード時に Live 関連動画を自動選択
+                    # SELFPOST では、スケジュール、配信開始、配信終了、アーカイブは自動投稿対象
+                    if self.config.operation_mode == OperationMode.SELFPOST:
+                        try:
+                            self.db.update_selection(video_id, selected=True)
+                            logger.info(f"📌 自動選択フラグを設定しました: {video_id}")
+                        except Exception as e:
+                            logger.warning(f"⚠️ 自動選択フラグ設定失敗（続行）: {video_id} - {e}")
+
+                    return 1
+                else:
+                    logger.debug(f"⏭️  既に登録済み（スキップ）: {video_id}")
+                    return 0
+
+            except Exception as e:
+                logger.error(f"❌ Live動画の登録に失敗しました: {video_id} - {e}")
                 return 0
-
-        except Exception as e:
-            logger.error(f"❌ Live動画の登録に失敗しました: {video_id} - {e}")
-            return 0
 
     def poll_lives(self) -> int:
         """
