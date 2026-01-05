@@ -24,7 +24,8 @@ logger = logging.getLogger("AppLogger")
 # キャッシュファイルのパス
 SCRIPT_DIR = Path(__file__).parent.parent  # v3/ ディレクトリ
 VIDEO_DETAIL_CACHE_FILE = str(SCRIPT_DIR / "data" / "youtube_video_detail_cache.json")
-CACHE_EXPIRY_DAYS = 7  # キャッシュの有効期限（日数）
+CACHE_EXPIRY_DAYS = 7  # 通常動画のキャッシュ有効期限（日数）
+CACHE_EXPIRY_LIVE_MINUTES = 60  # ★ 【新】Live関連動画のキャッシュ有効期限（分数）
 
 # YouTube Data API エンドポイント
 YOUTUBE_API_BASE_URL = "https://www.googleapis.com/youtube/v3"
@@ -90,14 +91,21 @@ class YouTubeVideoClassifier:
         """
         # ★ ステップ 1: キャッシュを確認
         if video_id in self.video_detail_cache:
-            logger.debug(f"📦 キャッシュから動画詳細を取得: {video_id}")
-            video_data = self.video_detail_cache[video_id]
-            classified = self._classify_from_response({
-                "success": True,
-                "video_id": video_id,
-                "video_data": video_data
-            })
-            return classified
+            # ★ 【新】キャッシュの有効期限をチェック
+            cache_entry = self._get_cache_entry(video_id)
+            if cache_entry:
+                logger.debug(f"📦 キャッシュから動画詳細を取得: {video_id}")
+                video_data = cache_entry
+                classified = self._classify_from_response({
+                    "success": True,
+                    "video_id": video_id,
+                    "video_data": video_data
+                })
+                return classified
+            else:
+                # キャッシュが期限切れ → メモリキャッシュから削除
+                logger.debug(f"🔄 キャッシュ期限切れ（{video_id}）: 再取得します")
+                del self.video_detail_cache[video_id]
 
         if not self.api_key:
             return {
@@ -362,6 +370,72 @@ class YouTubeVideoClassifier:
             logger.error(f"❌ キャッシュファイルの解析エラー: {e}")
         except Exception as e:
             logger.error(f"❌ キャッシュ読み込みエラー: {e}")
+
+    def _get_cache_entry(self, video_id: str) -> Optional[Dict[str, Any]]:
+        """
+        ★ 【新】キャッシュエントリの有効期限をチェックして取得
+
+        有効期限チェック：
+        - Live関連動画（schedule, live, completed, archive）: 60分以内
+        - その他（通常動画、プレミア）: CACHE_EXPIRY_DAYS 日以内
+
+        Args:
+            video_id: YouTube 動画 ID
+
+        Returns:
+            キャッシュ内のビデオデータ（有効な場合）、または None（期限切れ）
+        """
+        if video_id not in self.video_detail_cache:
+            return None
+
+        video_data = self.video_detail_cache[video_id]
+
+        # キャッシュ保存ファイルから cached_at を読み込み
+        cache_path = Path(VIDEO_DETAIL_CACHE_FILE)
+        if not cache_path.exists():
+            # ファイルが無い場合はメモリ内キャッシュのみ使用（常に有効とみなす）
+            return video_data
+
+        try:
+            with open(cache_path, "r", encoding="utf-8") as f:
+                cache_data = json.load(f)
+
+            cache_entry = cache_data.get(video_id, {})
+            cached_at_timestamp = cache_entry.get("cached_at")
+
+            if not cached_at_timestamp:
+                # cached_at がない古いキャッシュ形式 → 再取得
+                return None
+
+            # キャッシュ時刻からの経過時間を計算
+            current_time = time.time()
+            elapsed_seconds = current_time - cached_at_timestamp
+
+            # まず、キャッシュデータから動画の type を判定して有効期限を決める
+            # ※ここで簡易的に liveStreamingDetails の有無で判定
+            live_details = video_data.get("liveStreamingDetails", {})
+            is_live_related = bool(live_details)
+
+            # Live関連動画は短い有効期限（60分）
+            if is_live_related:
+                expiry_seconds = CACHE_EXPIRY_LIVE_MINUTES * 60
+                if elapsed_seconds > expiry_seconds:
+                    logger.debug(f"🔄 Live関連動画キャッシュ期限切れ（{video_id}）: {elapsed_seconds:.0f}秒経過")
+                    return None
+            else:
+                # 通常動画は長い有効期限（7日）
+                expiry_seconds = CACHE_EXPIRY_DAYS * 86400
+                if elapsed_seconds > expiry_seconds:
+                    logger.debug(f"🔄 通常動画キャッシュ期限切れ（{video_id}）: {elapsed_seconds:.0f}秒経過")
+                    return None
+
+            # 有効期限内
+            return video_data
+
+        except Exception as e:
+            logger.warning(f"⚠️ キャッシュ有効期限チェックエラー（{video_id}）: {e}. メモリキャッシュを使用します。")
+            # エラー時はメモリキャッシュをそのまま返す
+            return video_data
 
     def _save_cache(self) -> None:
         """ビデオ詳細キャッシュをファイルに保存"""

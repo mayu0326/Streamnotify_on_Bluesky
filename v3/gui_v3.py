@@ -346,9 +346,9 @@ class StreamNotifyGUI:
 
         処理フロー：
         1. DB から Live 関連動画を取得
-        2. 各動画のキャッシュを確認
-        3. 30分以上古い場合、API から最新情報を取得してキャッシュ更新
-        4. 分類・検針・DB更新を実行
+        2. ★【修正】ボタン押下時刻から24時間以内の動画のみ対象
+        3. 各動画について API から最新情報を取得してキャッシュ更新
+        4. 分類・DB更新を実行
         5. 動画取得と自動投稿はしない
         """
         try:
@@ -381,6 +381,7 @@ class StreamNotifyGUI:
 
             # 実行処理
             import time
+            from datetime import datetime, timedelta
             from database import get_database
             from youtube_core.youtube_video_classifier import get_video_classifier
 
@@ -399,34 +400,55 @@ class StreamNotifyGUI:
                 logger.info("ℹ️ Live 関連動画なし")
                 return
 
-            logger.info(f"🎬 {len(live_videos)} 件の Live 動画をキャッシュ更新・判定中...")
+            # ★【新】24時間以内の動画のみを対象に絞り込む
+            now = datetime.now()
+            time_threshold = now - timedelta(hours=24)
+            current_timestamp = time.time()
 
-            # キャッシュの有効期限（秒）: 30分
-            CACHE_VALIDITY_SECONDS = 30 * 60
-            current_time = time.time()
-
-            updated_count = 0
-            refreshed_count = 0
-
+            filtered_videos = []
             for video in live_videos:
                 video_id = video.get("video_id")
                 if not video_id:
                     continue
 
-                # キャッシュの確認
-                timestamp = youtube_api_plugin.cache_timestamps.get(video_id, 0)
-                cache_age_seconds = current_time - timestamp
-                is_cache_old = cache_age_seconds > CACHE_VALIDITY_SECONDS
+                # representative_time_jst から時刻を解析
+                # フォーマット例: "2026-01-05 23:45:00"
+                representative_time_str = video.get("representative_time_jst") or video.get("published_at")
+                if not representative_time_str:
+                    continue
 
-                if is_cache_old:
-                    # ★ API から最新情報を取得
-                    logger.debug(f"📡 API から取得（キャッシュ {int(cache_age_seconds/60)} 分前）: {video_id}")
-                    classification_result = classifier.classify_video(video_id)
-                    refreshed_count += 1
-                else:
-                    # ★ キャッシュから取得
-                    logger.debug(f"📦 キャッシュから取得（{int(cache_age_seconds/60)} 分前）: {video_id}")
-                    classification_result = classifier.classify_video(video_id)
+                try:
+                    # datetime オブジェクトに変換
+                    video_time = datetime.strptime(representative_time_str.split('+')[0].strip(), "%Y-%m-%d %H:%M:%S")
+
+                    # 24時間以内かチェック
+                    if video_time >= time_threshold:
+                        filtered_videos.append(video)
+                    else:
+                        logger.debug(f"⏭️ 24時間以上前（スキップ）: {video_id} ({representative_time_str})")
+                except ValueError as e:
+                    logger.debug(f"⏭️ 時刻解析失敗（スキップ）: {video_id} - {e}")
+                    continue
+
+            if not filtered_videos:
+                messagebox.showinfo("YouTube Live 判定", "24時間以内の Live 関連動画がありません。")
+                logger.info("ℹ️ 24時間以内の Live 関連動画なし")
+                return
+
+            logger.info(f"🎬 {len(filtered_videos)} 件の Live 動画を API から更新中...")
+
+            updated_count = 0
+            api_fetched_count = 0
+
+            for video in filtered_videos:
+                video_id = video.get("video_id")
+                if not video_id:
+                    continue
+
+                # ★【新】24時間以内の動画は常に API から最新情報を取得
+                logger.debug(f"📡 API から取得（24時間以内）: {video_id}")
+                classification_result = classifier.classify_video(video_id)
+                api_fetched_count += 1
 
                 if not classification_result.get("success"):
                     logger.debug(f"⏭️ 分類失敗（スキップ）: {video_id}")
@@ -448,8 +470,9 @@ class StreamNotifyGUI:
             # 結果をメッセージボックスで表示
             result_msg = f"""✅ YouTube Live 判定完了
 
-キャッシュ確認: {len(live_videos)} 件
-API 更新: {refreshed_count} 件
+対象期間: 過去24時間以内
+対象動画: {len(filtered_videos)} 件
+API 取得: {api_fetched_count} 件
 DB 更新: {updated_count} 件
 
 ※ 動画取得と自動投稿はしていません。
@@ -458,7 +481,7 @@ DB を再読込みします。"""
 
             # DB を再読込して表示更新
             self.refresh_data()
-            logger.info(f"✅ YouTube Live 判定完了: キャッシュ確認 {len(live_videos)} 件、API 更新 {refreshed_count} 件、DB 更新 {updated_count} 件")
+            logger.info(f"✅ YouTube Live 判定完了: 対象 {len(filtered_videos)} 件、API 取得 {api_fetched_count} 件、DB 更新 {updated_count} 件")
 
         except ImportError as ie:
             logger.error(f"❌ インポートエラー: {ie}")
