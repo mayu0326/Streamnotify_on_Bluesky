@@ -901,22 +901,64 @@ DB を再読込みします。"""
         image_entry.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
 
         def browse_image():
-            """ファイルブラウザで画像を選択"""
-            initialdir = os.path.abspath(f"images/{site_dir}/import")
-            if not os.path.exists(initialdir):
-                os.makedirs(initialdir, exist_ok=True)
+            """ファイルブラウザで画像を選択（任意のフォルダから）"""
+            # ★ 修正: 初期ディレクトリをユーザーのホームディレクトリに（制限なし）
+            try:
+                initialdir = os.path.expanduser("~")  # ユーザーのホームディレクトリ
+            except Exception:
+                initialdir = os.getcwd()  # 失敗時はカレントディレクトリ
+
             filetypes = [("画像ファイル", "*.png;*.jpg;*.jpeg;*.gif;*.webp"), ("すべて", "*")]
             path = filedialog.askopenfilename(title="画像を選択", initialdir=initialdir, filetypes=filetypes)
-            if path and os.path.commonpath([initialdir, os.path.abspath(path)]) == initialdir:
-                filename = os.path.basename(path)
-                image_path_var.set(filename)
-                # ★ ファイル選択直後に自動的に DB に登録
-                self.db.update_image_info(item_id, image_mode="import", image_filename=filename)
-                logger.info(f"✅ DB に画像ファイルを登録しました: {item_id} → {filename}")
-                messagebox.showinfo("成功", f"画像ファイルを登録しました。\n{filename}")
-                image_window.destroy()  # 自動的にダイアログを閉じる
-            elif path:
-                messagebox.showerror("エラー", f"{site}/importディレクトリ内の画像のみ指定できます")
+
+            if path:
+                # ★ 修正: パス検証を撤廃し、任意のフォルダから選択可能に
+                # ファイルが実在するかのみチェック
+                if os.path.isfile(path):
+                    original_filename = os.path.basename(path)
+
+                    # ★ 【新規】ファイル名を video_id.jpg に統一（自動取得と同じ形式）
+                    standardized_filename = f"{item_id}.jpg"
+                    image_path_var.set(standardized_filename)
+
+                    # ★ 選択されたファイルを images/{site}/import にコピー
+                    import shutil
+                    import_dir = os.path.abspath(f"images/{site_dir}/import")
+                    os.makedirs(import_dir, exist_ok=True)
+                    dest_path = os.path.join(import_dir, standardized_filename)
+
+                    try:
+                        shutil.copy2(path, dest_path)
+                        logger.info(f"✅ 画像ファイルをコピーしました: {path} → {dest_path}")
+                        logger.info(f"   ファイル名を統一: {original_filename} → {standardized_filename}")
+
+                        # ★ 【新規】コピーしたファイルに画像処理を実行（リサイズ・JPG変換）
+                        from image_processor import resize_image
+                        try:
+                            logger.info(f"🔄 画像処理を実行中: {standardized_filename}")
+                            processed_data = resize_image(dest_path)
+                            if processed_data:
+                                # 処理済みバイナリを上書き保存
+                                with open(dest_path, 'wb') as f:
+                                    f.write(processed_data)
+                                logger.info(f"✅ 画像処理完了（リサイズ・JPG変換）: {standardized_filename}")
+                            else:
+                                logger.warning(f"⚠️ 画像処理に失敗しました（元ファイルを使用）: {standardized_filename}")
+                        except Exception as e:
+                            logger.warning(f"⚠️ 画像処理エラー（元ファイルを使用、続行）: {e}")
+
+                        # DB に登録（統一されたファイル名で登録）
+                        self.db.update_image_info(item_id, image_mode="import", image_filename=standardized_filename)
+                        logger.info(f"✅ DB に画像ファイルを登録しました: {item_id} → {standardized_filename}")
+                        messagebox.showinfo("成功", f"画像ファイルを登録しました。\n{standardized_filename}")
+                        image_window.destroy()  # 自動的にダイアログを閉じる
+                    except Exception as e:
+                        logger.error(f"❌ ファイルコピーエラー: {e}")
+                        messagebox.showerror("エラー", f"ファイルのコピーに失敗しました。\n{e}")
+                else:
+                    messagebox.showerror("エラー", "選択されたファイルが見つかりません")
+
+
 
         ttk.Button(file_select_frame, text="📂 参照", command=browse_image).pack(side=tk.LEFT, padx=2)
 

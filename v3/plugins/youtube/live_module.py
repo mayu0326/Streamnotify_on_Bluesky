@@ -24,7 +24,7 @@ from typing import Dict, Any, Optional
 from datetime import datetime
 
 from database import Database
-from config import get_config
+from config import get_config, OperationMode
 
 logger = logging.getLogger("AppLogger")
 
@@ -122,22 +122,7 @@ class LiveModule:
         # ★ 【新】基準時刻（UTC）を取得
         representative_time_utc = result.get("representative_time_utc")
 
-        # ★ 【重要】published_at のタイムゾーン変換
-        # YouTubeAPI は UTC で返すため、環境変数 TIMEZONE で指定されたタイムゾーンに変換する
-        # （デフォルト: system タイムゾーン。TIMEZONE=Asia/Tokyo で JST になる）
-        if published_at:
-            try:
-                from utils_v3 import format_datetime_filter
-                # format_datetime_filter は ISO 8601 形式を環境変数 TIMEZONE で指定されたタイムゾーンに変換
-                # fmt="%Y-%m-%d %H:%M:%S" で日時形式（タイムゾーン情報なし、Tをスペースに置き換え）で返す
-                published_at_converted = format_datetime_filter(published_at, fmt="%Y-%m-%d %H:%M:%S")
-                logger.debug(f"📡 published_at を変換: {published_at} → {published_at_converted}")
-                published_at = published_at_converted
-            except Exception as e:
-                logger.warning(f"⚠️ published_at の変換失敗、元の値を使用: {e}")
-                # 失敗時は元の値を使用
-
-        # ★ 【新】representative_time_utc を JST に変換
+        # ★ 【重要】representative_time_utc を JST に変換（スケジュール時は開始予定時刻）
         representative_time_jst = None
         if representative_time_utc:
             try:
@@ -146,8 +131,38 @@ class LiveModule:
                 logger.debug(f"📡 representative_time_utc を JST に変換: {representative_time_utc} → {representative_time_jst}")
             except Exception as e:
                 logger.warning(f"⚠️ representative_time_utc の変換失敗: {e}")
-                # 失敗時は representative_time_utc をそのまま使用
-                representative_time_jst = representative_time_utc
+                # 失敗時は published_at を使用
+                representative_time_jst = None
+
+        # ★ 【重要】DB 登録時の published_at の決定ロジック
+        # スケジュール（type="schedule"）: 開始予定時刻（JST）
+        # LIVE 配信中（type="live"）: actualStartTime（配信開始時刻）（JST）
+        # アーカイブ（type="archive"）: actualEndTime（配信終了時刻）（JST）
+        # その他（通常動画など）: 公開日時（JST）
+        if video_type == VIDEO_TYPE_SCHEDULE and representative_time_jst:
+            # スケジュール動画: 開始予定時刻（JST変換済み）を使用
+            db_published_at = representative_time_jst
+            logger.info(f"   📅 スケジュール動画: 開始予定時刻（JST）を使用: {db_published_at}")
+        elif video_type == VIDEO_TYPE_LIVE and representative_time_jst:
+            # LIVE 配信中: 配信開始時刻（JST）を使用
+            db_published_at = representative_time_jst
+            logger.info(f"   ⏱️  LIVE 配信中: 配信開始時刻（JST）を使用: {db_published_at}")
+        elif video_type == VIDEO_TYPE_ARCHIVE and representative_time_jst:
+            # アーカイブ: 配信終了時刻（JST）を使用
+            db_published_at = representative_time_jst
+            logger.info(f"   ⏱️  アーカイブ: 配信終了時刻（JST）を使用: {db_published_at}")
+        else:
+            # それ以外（通常動画など）: 公開日時を使用（YouTubeAPI は UTC で返すため、環境変数 TIMEZONE で指定されたタイムゾーンに変換）
+            db_published_at = published_at
+            if db_published_at:
+                try:
+                    from utils_v3 import format_datetime_filter
+                    # fmt="%Y-%m-%d %H:%M:%S" で日時形式（タイムゾーン情報なし、T をスペースに置き換え）で返す
+                    db_published_at = format_datetime_filter(db_published_at, fmt="%Y-%m-%d %H:%M:%S")
+                    logger.debug(f"📡 published_at を変換: {published_at} → {db_published_at}")
+                except Exception as e:
+                    logger.warning(f"⚠️ published_at の変換失敗、元の値を使用: {e}")
+                    # 失敗時は元の値を使用
 
         # video_url を構築
         video_url = f"https://www.youtube.com/watch?v={video_id}"
@@ -170,7 +185,7 @@ class LiveModule:
                 video_id=video_id,
                 title=title,
                 video_url=video_url,
-                published_at=published_at,
+                published_at=db_published_at,  # ★ スケジュール時は開始予定時刻（JST）、その他は公開日時
                 channel_name=channel_name,
                 thumbnail_url=thumbnail_url,
                 content_type=video_type,
@@ -187,6 +202,16 @@ class LiveModule:
                 logger.info(f"✅ Live動画を登録しました: {title}")
                 logger.info(f"   representative_time_utc: {representative_time_utc}")
                 logger.info(f"   representative_time_jst: {representative_time_jst}")
+
+                # ★ 【重要】SELFPOST モード時に Live 関連動画を自動選択
+                # SELFPOST では、スケジュール、配信開始、配信終了、アーカイブは自動投稿対象
+                if self.config.operation_mode == OperationMode.SELFPOST:
+                    try:
+                        self.db.update_selection(video_id, selected=True)
+                        logger.info(f"📌 自動選択フラグを設定しました: {video_id}")
+                    except Exception as e:
+                        logger.warning(f"⚠️ 自動選択フラグ設定失敗（続行）: {video_id} - {e}")
+
                 return 1
             else:
                 logger.debug(f"⏭️  既に登録済み（スキップ）: {video_id}")
@@ -321,7 +346,7 @@ class LiveModule:
         """
         try:
             # APP_MODE に基づいて使用するフラグを決定
-            if self.config.operation_mode == "autopost":
+            if self.config.operation_mode == OperationMode.AUTOPOST:
                 # AUTOPOST モード: 統合モード値を使用
                 mode = self.config.youtube_live_autopost_mode
                 logger.debug(f"🔍 AUTOPOST モード: mode={mode}")

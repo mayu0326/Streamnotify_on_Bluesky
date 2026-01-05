@@ -333,6 +333,16 @@ class Config:
             logger.info("🤖 自動投稿モード。人間の介入なく自動投稿が実行されます。GUI投稿操作は無効化されます。")
 
 
+# グローバルキャッシュ（シングルトンパターン）
+_config_cache = {}
+
 def get_config(env_path="settings.env") -> Config:
-    """設定オブジェクトを取得"""
-    return Config(env_path)
+    """設定オブジェクトを取得（キャッシング機構付き）
+
+    初回呼び出し時に Config を生成し、以降は同じインスタンスを返す。
+    これにより、複数箇所から get_config() が呼ばれても、
+    ログの重複出力を防ぐことができる。
+    """
+    if env_path not in _config_cache:
+        _config_cache[env_path] = Config(env_path)
+    return _config_cache[env_path]

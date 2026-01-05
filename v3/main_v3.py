@@ -408,8 +408,36 @@ def main():
                 logger.info("✅ 初回ポーリング完了。collect モードのため、アプリケーションを自動終了します。")
                 raise KeyboardInterrupt()
             elif config.operation_mode == OperationMode.SELFPOST:
-                # === SELFPOST モード（手動投稿のみ）===
+                # === SELFPOST モード（手動投稿がメイン＋LIVE自動投稿）===
                 logger.info("[モード] SELFPOST モード。投稿対象を GUI から設定してください。")
+
+                # ★ 【新規】SELFPOST モード時に LIVE 関連動画を自動投稿
+                # schedule/archive/live/completed で selected_for_post=1 のものを投稿
+                if plugin_manager:
+                    try:
+                        # LIVE 関連動画（自動選択済み）を取得
+                        live_videos = db.get_all_videos()
+                        live_videos = [v for v in live_videos
+                                      if v.get('content_type') in ('schedule', 'archive', 'live', 'completed')
+                                      and v.get('selected_for_post') == 1
+                                      and v.get('posted_to_bluesky') == 0]
+
+                        if live_videos:
+                            logger.info(f"📤 SELFPOST時のLIVE自動投稿: {len(live_videos)}件")
+                            for video in live_videos:
+                                try:
+                                    results = plugin_manager.post_video_with_all_enabled(video)
+                                    if any(results.values()):
+                                        db.mark_as_posted(video['video_id'])
+                                        logger.info(f"✅ LIVE動画を投稿しました: {video['title'][:50]}")
+                                    else:
+                                        logger.warning(f"⚠️ LIVE動画の投稿失敗: {video['video_id']}")
+                                except Exception as e:
+                                    logger.error(f"❌ LIVE動画投稿エラー: {video['video_id']} - {e}")
+                        else:
+                            logger.debug("ℹ️ SELFPOST時のLIVE自動投稿: 対象動画なし")
+                    except Exception as e:
+                        logger.warning(f"⚠️ SELFPOST LIVE自動投稿処理エラー: {e}")
             elif config.operation_mode == OperationMode.AUTOPOST:
                 # === AUTOPOST モード（完全自動投稿）===
                 logger.info("[モード] AUTOPOST モード。自動投稿ロジックを実行します。")
