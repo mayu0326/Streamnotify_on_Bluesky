@@ -346,9 +346,9 @@ class StreamNotifyGUI:
 
         処理フロー：
         1. DB から Live 関連動画を取得
-        2. 各動画のキャッシュを確認
-        3. 30分以上古い場合、API から最新情報を取得してキャッシュ更新
-        4. 分類・検針・DB更新を実行
+        2. ★【修正】ボタン押下時刻から24時間以内の動画のみ対象
+        3. 各動画について API から最新情報を取得してキャッシュ更新
+        4. 分類・DB更新を実行
         5. 動画取得と自動投稿はしない
         """
         try:
@@ -381,6 +381,7 @@ class StreamNotifyGUI:
 
             # 実行処理
             import time
+            from datetime import datetime, timedelta
             from database import get_database
             from youtube_core.youtube_video_classifier import get_video_classifier
 
@@ -399,34 +400,55 @@ class StreamNotifyGUI:
                 logger.info("ℹ️ Live 関連動画なし")
                 return
 
-            logger.info(f"🎬 {len(live_videos)} 件の Live 動画をキャッシュ更新・判定中...")
+            # ★【新】24時間以内の動画のみを対象に絞り込む
+            now = datetime.now()
+            time_threshold = now - timedelta(hours=24)
+            current_timestamp = time.time()
 
-            # キャッシュの有効期限（秒）: 30分
-            CACHE_VALIDITY_SECONDS = 30 * 60
-            current_time = time.time()
-
-            updated_count = 0
-            refreshed_count = 0
-
+            filtered_videos = []
             for video in live_videos:
                 video_id = video.get("video_id")
                 if not video_id:
                     continue
 
-                # キャッシュの確認
-                timestamp = youtube_api_plugin.cache_timestamps.get(video_id, 0)
-                cache_age_seconds = current_time - timestamp
-                is_cache_old = cache_age_seconds > CACHE_VALIDITY_SECONDS
+                # representative_time_jst から時刻を解析
+                # フォーマット例: "2026-01-05 23:45:00"
+                representative_time_str = video.get("representative_time_jst") or video.get("published_at")
+                if not representative_time_str:
+                    continue
 
-                if is_cache_old:
-                    # ★ API から最新情報を取得
-                    logger.debug(f"📡 API から取得（キャッシュ {int(cache_age_seconds/60)} 分前）: {video_id}")
-                    classification_result = classifier.classify_video(video_id)
-                    refreshed_count += 1
-                else:
-                    # ★ キャッシュから取得
-                    logger.debug(f"📦 キャッシュから取得（{int(cache_age_seconds/60)} 分前）: {video_id}")
-                    classification_result = classifier.classify_video(video_id)
+                try:
+                    # datetime オブジェクトに変換
+                    video_time = datetime.strptime(representative_time_str.split('+')[0].strip(), "%Y-%m-%d %H:%M:%S")
+
+                    # 24時間以内かチェック
+                    if video_time >= time_threshold:
+                        filtered_videos.append(video)
+                    else:
+                        logger.debug(f"⏭️ 24時間以上前（スキップ）: {video_id} ({representative_time_str})")
+                except ValueError as e:
+                    logger.debug(f"⏭️ 時刻解析失敗（スキップ）: {video_id} - {e}")
+                    continue
+
+            if not filtered_videos:
+                messagebox.showinfo("YouTube Live 判定", "24時間以内の Live 関連動画がありません。")
+                logger.info("ℹ️ 24時間以内の Live 関連動画なし")
+                return
+
+            logger.info(f"🎬 {len(filtered_videos)} 件の Live 動画を API から更新中...")
+
+            updated_count = 0
+            api_fetched_count = 0
+
+            for video in filtered_videos:
+                video_id = video.get("video_id")
+                if not video_id:
+                    continue
+
+                # ★【新】24時間以内の動画は常に API から最新情報を取得
+                logger.debug(f"📡 API から取得（24時間以内）: {video_id}")
+                classification_result = classifier.classify_video(video_id)
+                api_fetched_count += 1
 
                 if not classification_result.get("success"):
                     logger.debug(f"⏭️ 分類失敗（スキップ）: {video_id}")
@@ -448,8 +470,9 @@ class StreamNotifyGUI:
             # 結果をメッセージボックスで表示
             result_msg = f"""✅ YouTube Live 判定完了
 
-キャッシュ確認: {len(live_videos)} 件
-API 更新: {refreshed_count} 件
+対象期間: 過去24時間以内
+対象動画: {len(filtered_videos)} 件
+API 取得: {api_fetched_count} 件
 DB 更新: {updated_count} 件
 
 ※ 動画取得と自動投稿はしていません。
@@ -458,7 +481,7 @@ DB を再読込みします。"""
 
             # DB を再読込して表示更新
             self.refresh_data()
-            logger.info(f"✅ YouTube Live 判定完了: キャッシュ確認 {len(live_videos)} 件、API 更新 {refreshed_count} 件、DB 更新 {updated_count} 件")
+            logger.info(f"✅ YouTube Live 判定完了: 対象 {len(filtered_videos)} 件、API 取得 {api_fetched_count} 件、DB 更新 {updated_count} 件")
 
         except ImportError as ie:
             logger.error(f"❌ インポートエラー: {ie}")
@@ -901,22 +924,64 @@ DB を再読込みします。"""
         image_entry.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
 
         def browse_image():
-            """ファイルブラウザで画像を選択"""
-            initialdir = os.path.abspath(f"images/{site_dir}/import")
-            if not os.path.exists(initialdir):
-                os.makedirs(initialdir, exist_ok=True)
+            """ファイルブラウザで画像を選択（任意のフォルダから）"""
+            # ★ 修正: 初期ディレクトリをユーザーのホームディレクトリに（制限なし）
+            try:
+                initialdir = os.path.expanduser("~")  # ユーザーのホームディレクトリ
+            except Exception:
+                initialdir = os.getcwd()  # 失敗時はカレントディレクトリ
+
             filetypes = [("画像ファイル", "*.png;*.jpg;*.jpeg;*.gif;*.webp"), ("すべて", "*")]
             path = filedialog.askopenfilename(title="画像を選択", initialdir=initialdir, filetypes=filetypes)
-            if path and os.path.commonpath([initialdir, os.path.abspath(path)]) == initialdir:
-                filename = os.path.basename(path)
-                image_path_var.set(filename)
-                # ★ ファイル選択直後に自動的に DB に登録
-                self.db.update_image_info(item_id, image_mode="import", image_filename=filename)
-                logger.info(f"✅ DB に画像ファイルを登録しました: {item_id} → {filename}")
-                messagebox.showinfo("成功", f"画像ファイルを登録しました。\n{filename}")
-                image_window.destroy()  # 自動的にダイアログを閉じる
-            elif path:
-                messagebox.showerror("エラー", f"{site}/importディレクトリ内の画像のみ指定できます")
+
+            if path:
+                # ★ 修正: パス検証を撤廃し、任意のフォルダから選択可能に
+                # ファイルが実在するかのみチェック
+                if os.path.isfile(path):
+                    original_filename = os.path.basename(path)
+
+                    # ★ 【新規】ファイル名を video_id.jpg に統一（自動取得と同じ形式）
+                    standardized_filename = f"{item_id}.jpg"
+                    image_path_var.set(standardized_filename)
+
+                    # ★ 選択されたファイルを images/{site}/import にコピー
+                    import shutil
+                    import_dir = os.path.abspath(f"images/{site_dir}/import")
+                    os.makedirs(import_dir, exist_ok=True)
+                    dest_path = os.path.join(import_dir, standardized_filename)
+
+                    try:
+                        shutil.copy2(path, dest_path)
+                        logger.info(f"✅ 画像ファイルをコピーしました: {path} → {dest_path}")
+                        logger.info(f"   ファイル名を統一: {original_filename} → {standardized_filename}")
+
+                        # ★ 【新規】コピーしたファイルに画像処理を実行（リサイズ・JPG変換）
+                        from image_processor import resize_image
+                        try:
+                            logger.info(f"🔄 画像処理を実行中: {standardized_filename}")
+                            processed_data = resize_image(dest_path)
+                            if processed_data:
+                                # 処理済みバイナリを上書き保存
+                                with open(dest_path, 'wb') as f:
+                                    f.write(processed_data)
+                                logger.info(f"✅ 画像処理完了（リサイズ・JPG変換）: {standardized_filename}")
+                            else:
+                                logger.warning(f"⚠️ 画像処理に失敗しました（元ファイルを使用）: {standardized_filename}")
+                        except Exception as e:
+                            logger.warning(f"⚠️ 画像処理エラー（元ファイルを使用、続行）: {e}")
+
+                        # DB に登録（統一されたファイル名で登録）
+                        self.db.update_image_info(item_id, image_mode="import", image_filename=standardized_filename)
+                        logger.info(f"✅ DB に画像ファイルを登録しました: {item_id} → {standardized_filename}")
+                        messagebox.showinfo("成功", f"画像ファイルを登録しました。\n{standardized_filename}")
+                        image_window.destroy()  # 自動的にダイアログを閉じる
+                    except Exception as e:
+                        logger.error(f"❌ ファイルコピーエラー: {e}")
+                        messagebox.showerror("エラー", f"ファイルのコピーに失敗しました。\n{e}")
+                else:
+                    messagebox.showerror("エラー", "選択されたファイルが見つかりません")
+
+
 
         ttk.Button(file_select_frame, text="📂 参照", command=browse_image).pack(side=tk.LEFT, padx=2)
 

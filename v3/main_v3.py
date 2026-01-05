@@ -105,6 +105,17 @@ def main():
     print(f"StreamNotify on Bluesky {get_version_info()}")
 
     try:
+        # ★ 新: アプリ起動時に settings.env を自動同期
+        try:
+            from config_sync import sync_settings_env
+            settings_env_path = os.path.join(os.path.dirname(__file__), "settings.env")
+            example_file_path = os.path.join(os.path.dirname(__file__), "settings.env.example")
+            sync_settings_env(settings_env_path, example_file_path)
+        except ImportError:
+            print("警告: config_sync モジュールが見つかりません（スキップ）")
+        except Exception as e:
+            print(f"警告: settings.env の同期に失敗しました（スキップ）: {e}")
+
         from config import get_config
         config = get_config("settings.env")
         logger = setup_logging(debug_mode=config.debug_mode)
@@ -408,8 +419,36 @@ def main():
                 logger.info("✅ 初回ポーリング完了。collect モードのため、アプリケーションを自動終了します。")
                 raise KeyboardInterrupt()
             elif config.operation_mode == OperationMode.SELFPOST:
-                # === SELFPOST モード（手動投稿のみ）===
+                # === SELFPOST モード（手動投稿がメイン＋LIVE自動投稿）===
                 logger.info("[モード] SELFPOST モード。投稿対象を GUI から設定してください。")
+
+                # ★ 【新規】SELFPOST モード時に LIVE 関連動画を自動投稿
+                # schedule/archive/live/completed で selected_for_post=1 のものを投稿
+                if plugin_manager:
+                    try:
+                        # LIVE 関連動画（自動選択済み）を取得
+                        live_videos = db.get_all_videos()
+                        live_videos = [v for v in live_videos
+                                      if v.get('content_type') in ('schedule', 'archive', 'live', 'completed')
+                                      and v.get('selected_for_post') == 1
+                                      and v.get('posted_to_bluesky') == 0]
+
+                        if live_videos:
+                            logger.info(f"📤 SELFPOST時のLIVE自動投稿: {len(live_videos)}件")
+                            for video in live_videos:
+                                try:
+                                    results = plugin_manager.post_video_with_all_enabled(video)
+                                    if any(results.values()):
+                                        db.mark_as_posted(video['video_id'])
+                                        logger.info(f"✅ LIVE動画を投稿しました: {video['title'][:50]}")
+                                    else:
+                                        logger.warning(f"⚠️ LIVE動画の投稿失敗: {video['video_id']}")
+                                except Exception as e:
+                                    logger.error(f"❌ LIVE動画投稿エラー: {video['video_id']} - {e}")
+                        else:
+                            logger.debug("ℹ️ SELFPOST時のLIVE自動投稿: 対象動画なし")
+                    except Exception as e:
+                        logger.warning(f"⚠️ SELFPOST LIVE自動投稿処理エラー: {e}")
             elif config.operation_mode == OperationMode.AUTOPOST:
                 # === AUTOPOST モード（完全自動投稿）===
                 logger.info("[モード] AUTOPOST モード。自動投稿ロジックを実行します。")
@@ -469,7 +508,24 @@ def main():
                     remaining = config.autopost_interval_minutes - elapsed
                     logger.info(f"🤖 AUTOPOST: 投稿間隔制限中。次の投稿まで約 {remaining:.1f} 分待機。")
 
-            logger.info(f"次のポーリングまで {config.poll_interval_minutes} 分待機中...")
+            # ★ 新: YouTube Live 動的ポーリング間隔に対応（v3.4.0+ 改訂版）
+            # live_module が有効な場合は、キャッシュ状態に応じた動的間隔を計算
+            # NO_LIVE 時は 0（ポーリングロジック休止）を返す
+            next_live_poll_interval = config.poll_interval_minutes
+            if live_module:
+                try:
+                    next_live_poll_interval = live_module.get_next_poll_interval_minutes()
+                    if next_live_poll_interval == 0:
+                        # NO_LIVE 時：ポーリングロジック休止（RSS/WebSub のみで OK）
+                        logger.info("🔄 YouTube Live ポーリング: 休止中（LIVE 関連動画なし）")
+                    else:
+                        logger.info(f"🔄 次の Live ポーリングまで {next_live_poll_interval} 分待機中...")
+                except Exception as e:
+                    logger.warning(f"⚠️  動的ポーリング間隔決定エラー（デフォルト使用）: {e}")
+                    next_live_poll_interval = config.poll_interval_minutes
+
+            # 待機時間を計算（次回 RSS/WebSub ポーリングの時刻）
+            logger.info(f"次のポーリング（RSS/WebSub）まで {config.poll_interval_minutes} 分待機中...")
             # 待機中も stop_event をチェック（1秒間隔）
             for _ in range(config.poll_interval_minutes * 60):
                 if stop_event.is_set():

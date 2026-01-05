@@ -61,13 +61,13 @@ def get_youtube_thumbnail_url(video_id: str) -> Optional[str]:
     if not video_id:
         return None
 
-    # ★ 修正: デフォルト URL を直接返す（sddefault は常に存在）
-    # HTTP リクエスト不要のため、WebSub 処理が迅速化
+    # ★ 修正: maxresdefault.jpg（最高品質 1280x720）を使用
+    # 全ての動画で利用可能（存在しない場合は下位品質にフォールバック）
     base = f"https://i.ytimg.com/vi/{video_id}"
-    default_url = f"{base}/sddefault.jpg"
+    maxres_url = f"{base}/maxresdefault.jpg"
 
-    logger.debug(f"✅ YouTube サムネイル URL 構築: {video_id} -> sddefault.jpg")
-    return default_url
+    logger.debug(f"✅ YouTube サムネイル URL 構築: {video_id} -> maxresdefault.jpg (1280x720)")
+    return maxres_url
 
 
 class ImageManager:
