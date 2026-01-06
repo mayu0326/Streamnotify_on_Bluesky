@@ -1,16 +1,29 @@
 # テスト用スクリプト（一時的な検証・デバッグ用）
 test_scripts/
-**/test_settings/*
+
+# 仮想環境ディレクトリ
 **/.venv/*
+
+# IDE/エディタ設定ファイル
 **/.vscode/*
+Streamnotify_on_Bluesky.code-workspace
+.editorconfig
+
+# 環境設定ファイル・ログファイル・キャッシュ・生成物
 .env
 *.env
 *.log
+*.backup
 **/logs/*
 **/v3/logs/*
 **/v2/logs/*
 **/v1/logs/*
+
+# Python キャッシュファイル
 __pycache__
+
+# データベースファイル・データフォルダ
+**/data/*
 **/v1/data/*
 **/v2/data/*
 **/v3/data/*
@@ -18,13 +31,16 @@ __pycache__
 **/v3/images/*
 **/v2/templates/*
 **/v3/templates/*
+
+# ドキュメントのローカルコピー・生成物
 **/v2/docs/Local/*
 **/v3/docs/Local/*
-Streamnotify_on_Bluesky.code-workspace
-.editorconfig
+
+# git 管理外の一時ファイル
 .gitattributes
-**/data/*
 **/.github/**
+
+# その他の無視ファイル
 **/v2/utils/**
 **/v3/test_scripts/**
 **/v3/docs/local/**
