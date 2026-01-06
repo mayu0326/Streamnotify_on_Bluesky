@@ -238,6 +238,13 @@ class YouTubeRSS:
                     blacklist_skip_count += 1
                     continue
 
+                # ★ 【v3.3.2】新規動画のみを ID のみで登録
+                # 既存動画は処理をスキップし、API 呼び出しを削減
+                existing_video = database.get_video_by_id(video["video_id"])
+                if existing_video:
+                    youtube_logger.debug(f"ℹ️ 既存動画のため、スキップします: {video['title']}")
+                    continue  # 既存動画は詳細情報の再取得をしない（クォータ削減）
+
                 # サムネイル URL を取得（多品質フォールバック）
                 thumbnail_url = get_youtube_thumbnail_url(video["video_id"])
 
@@ -289,11 +296,14 @@ class YouTubeRSS:
 
                 # ★ 重要: 先に分類を行い、Live 系か通常動画か判定
                 # これにより、Live系は通常の insert_video をスキップ、LiveModule に任せられる
+                # ★ 【修正 v3.4.3】既に classifier.classify_video() で API を 1 回呼び出し済み
+                # → insert_video() では classifier 結果を再利用し、二重 API 呼び出しを防止
                 video_type = None
                 classification_result = None
 
                 if classifier and live_module:
                     try:
+                        # ★ API 呼び出し #1: 分類用（1 ユニット消費）
                         classification_result = classifier.classify_video(video["video_id"])
                         if classification_result.get("success"):
                             video_type = classification_result.get("type")
@@ -315,11 +325,13 @@ class YouTubeRSS:
                             live_result = live_module.register_from_classified(classification_result)
                             if live_result > 0:
                                 live_registered_count += live_result
-                                youtube_logger.info(f"✅ Live動画をLiveModuleで登録完了: {video_type}（通常動画処理はスキップ）")
+                                youtube_logger.info(f"✅ Live動画をLiveModuleで登録完了: {video_type}（通常動画処理はスキップ、追加 API 呼び出しなし）")
                         except Exception as e:
                             youtube_logger.error(f"❌ Live動画の LiveModule 登録失敗: {e}")
                 else:
                     # 通常動画（video / premiere）のみ、通常の insert_video を実行
+                    # ★ 【修正 v3.4.3】classification_result から分類情報を取得・再利用
+                    # insert_video() 内の post_video() で再度 API を叩くことを防止
                     final_published_at = api_scheduled_start_time if api_scheduled_start_time else video["published_at"]
 
                     # ★ 【重要】YouTubeVideoClassifier から representative_time_utc を取得
@@ -347,6 +359,8 @@ class YouTubeRSS:
                         representative_time_utc = video.get("published_at")  # RSS では already JST
                         youtube_logger.debug(f"📡 フォールバック: RSS の published_at を representative_time として使用")
 
+                    # ★ 注意: insert_video() 内で post_video() が呼ばれ、追加の API 呼び出しが発生する可能性があります
+                    # post_video() が classification_result を参照できるようにするための準備が必要です
                     is_new = database.insert_video(
                         video_id=video["video_id"],
                         title=video["title"],

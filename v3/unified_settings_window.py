@@ -77,7 +77,7 @@ class UnifiedSettingsWindow:
         # ウィンドウ作成
         self.window = tk.Toplevel(parent)
         self.window.title("統合設定ウィンドウ")
-        self.window.geometry("600x450")
+        self.window.geometry("600x550")
         self.window.resizable(True, True)
 
         # 設定ファイルパス
@@ -717,7 +717,7 @@ class UnifiedSettingsWindow:
         frame.pack(fill=tk.BOTH, expand=True)
 
         # YOUTUBE_LIVE_POLL_INTERVAL_ACTIVE
-        ttk.Label(frame, text="YOUTUBE_LIVE_POLL_INTERVAL_ACTIVE", font=("", 10, "bold")).grid(row=0, column=0, sticky=tk.W, pady=5)
+        ttk.Label(frame, text="ACTIVE 時のポーリング間隔", font=("", 10, "bold")).grid(row=0, column=0, sticky=tk.W, pady=5)
         active_interval_var = tk.StringVar(
             value=self.settings_dict.get('YOUTUBE_LIVE_POLL_INTERVAL_ACTIVE', '15')
         )
@@ -731,7 +731,7 @@ class UnifiedSettingsWindow:
         ttk.Label(frame, text="分（15-60）", foreground='gray').grid(row=0, column=2, sticky=tk.W)
 
         # YOUTUBE_LIVE_POLL_INTERVAL_COMPLETED_MIN
-        ttk.Label(frame, text="YOUTUBE_LIVE_POLL_INTERVAL_COMPLETED_MIN", font=("", 10, "bold")).grid(row=1, column=0, sticky=tk.W, pady=5)
+        ttk.Label(frame, text="COMPLETED のみ時：最短確認間隔", font=("", 10, "bold")).grid(row=1, column=0, sticky=tk.W, pady=5)
         completed_min_var = tk.StringVar(
             value=self.settings_dict.get('YOUTUBE_LIVE_POLL_INTERVAL_COMPLETED_MIN', '60')
         )
@@ -745,7 +745,7 @@ class UnifiedSettingsWindow:
         ttk.Label(frame, text="分（30-180）", foreground='gray').grid(row=1, column=2, sticky=tk.W)
 
         # YOUTUBE_LIVE_POLL_INTERVAL_COMPLETED_MAX
-        ttk.Label(frame, text="YOUTUBE_LIVE_POLL_INTERVAL_COMPLETED_MAX", font=("", 10, "bold")).grid(row=2, column=0, sticky=tk.W, pady=5)
+        ttk.Label(frame, text="COMPLETED のみ時：最大確認間隔", font=("", 10, "bold")).grid(row=2, column=0, sticky=tk.W, pady=5)
         completed_max_var = tk.StringVar(
             value=self.settings_dict.get('YOUTUBE_LIVE_POLL_INTERVAL_COMPLETED_MAX', '180')
         )
@@ -759,7 +759,7 @@ class UnifiedSettingsWindow:
         ttk.Label(frame, text="分（30-180）", foreground='gray').grid(row=2, column=2, sticky=tk.W)
 
         # YOUTUBE_LIVE_ARCHIVE_CHECK_COUNT_MAX
-        ttk.Label(frame, text="YOUTUBE_LIVE_ARCHIVE_CHECK_COUNT_MAX", font=("", 10, "bold")).grid(row=3, column=0, sticky=tk.W, pady=5)
+        ttk.Label(frame, text="ARCHIVE 化後の最大追跡回数", font=("", 10, "bold")).grid(row=3, column=0, sticky=tk.W, pady=5)
         archive_check_count_var = tk.StringVar(
             value=self.settings_dict.get('YOUTUBE_LIVE_ARCHIVE_CHECK_COUNT_MAX', '4')
         )
@@ -773,7 +773,7 @@ class UnifiedSettingsWindow:
         ttk.Label(frame, text="回（1-10）", foreground='gray').grid(row=3, column=2, sticky=tk.W)
 
         # YOUTUBE_LIVE_ARCHIVE_CHECK_INTERVAL
-        ttk.Label(frame, text="YOUTUBE_LIVE_ARCHIVE_CHECK_INTERVAL", font=("", 10, "bold")).grid(row=4, column=0, sticky=tk.W, pady=5)
+        ttk.Label(frame, text="ARCHIVE 化後の確認間隔", font=("", 10, "bold")).grid(row=4, column=0, sticky=tk.W, pady=5)
         archive_interval_var = tk.StringVar(
             value=self.settings_dict.get('YOUTUBE_LIVE_ARCHIVE_CHECK_INTERVAL', '180')
         )
@@ -787,26 +787,475 @@ class UnifiedSettingsWindow:
         ttk.Label(frame, text="分（30-480）", foreground='gray').grid(row=4, column=2, sticky=tk.W)
 
     def _build_tab_templates(self):
-        """タブ 5: テンプレート・画像（実装スケルトン）"""
+        """タブ 5: テンプレート・画像（サブタブ 2分割）"""
         tab = ttk.Frame(self.notebook)
         self.notebook.add(tab, text="📝 テンプレート")
 
-        frame = ttk.Frame(tab, padding=10)
+        # サブタブ
+        sub_notebook = ttk.Notebook(tab)
+        sub_notebook.pack(fill=tk.BOTH, expand=True, padx=3, pady=3)
+
+        # サブタブ 5-1: テンプレート
+        self._build_subtab_templates_files(sub_notebook)
+
+        # サブタブ 5-2: 画像設定
+        self._build_subtab_templates_images(sub_notebook)
+
+    def _build_subtab_templates_files(self, parent_notebook):
+        """タブ 5-1: テンプレートファイル"""
+        sub_tab = ttk.Frame(parent_notebook)
+        parent_notebook.add(sub_tab, text="📄 テンプレート")
+
+        # スクロール対応フレーム
+        canvas = tk.Canvas(sub_tab, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(sub_tab, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        row = 0
+
+        # YouTube テンプレート
+        ttk.Label(scrollable_frame, text="📺 YouTube", font=("", 10, "bold")).grid(row=row, column=0, columnspan=2, sticky=tk.W, pady=5, padx=5)
+        row += 1
+
+        # TEMPLATE_YOUTUBE_SCHEDULE_PATH
+        ttk.Label(scrollable_frame, text="スケジュール:", font=("", 9)).grid(row=row, column=0, sticky=tk.W, pady=2, padx=5)
+        youtube_schedule_var = tk.StringVar(
+            value=self.settings_dict.get('TEMPLATE_YOUTUBE_SCHEDULE_PATH', '')
+        )
+        self.ui_vars['TEMPLATE_YOUTUBE_SCHEDULE_PATH'] = youtube_schedule_var
+        entry = ttk.Entry(scrollable_frame, textvariable=youtube_schedule_var, width=40)
+        entry.grid(row=row, column=1, sticky=tk.W, padx=5)
+        ttk.Button(
+            scrollable_frame,
+            text="🗂️",
+            width=2,
+            command=lambda: self._browse_file(youtube_schedule_var)
+        ).grid(row=row, column=2, sticky=tk.W, padx=2)
+        row += 1
+
+        # TEMPLATE_YOUTUBE_ONLINE_PATH
+        ttk.Label(scrollable_frame, text="放送開始:", font=("", 9)).grid(row=row, column=0, sticky=tk.W, pady=2, padx=5)
+        youtube_online_var = tk.StringVar(
+            value=self.settings_dict.get('TEMPLATE_YOUTUBE_ONLINE_PATH', '')
+        )
+        self.ui_vars['TEMPLATE_YOUTUBE_ONLINE_PATH'] = youtube_online_var
+        entry = ttk.Entry(scrollable_frame, textvariable=youtube_online_var, width=40)
+        entry.grid(row=row, column=1, sticky=tk.W, padx=5)
+        ttk.Button(
+            scrollable_frame,
+            text="🗂️",
+            width=2,
+            command=lambda: self._browse_file(youtube_online_var)
+        ).grid(row=row, column=2, sticky=tk.W, padx=2)
+        row += 1
+
+        # TEMPLATE_YOUTUBE_OFFLINE_PATH
+        ttk.Label(scrollable_frame, text="放送終了:", font=("", 9)).grid(row=row, column=0, sticky=tk.W, pady=2, padx=5)
+        youtube_offline_var = tk.StringVar(
+            value=self.settings_dict.get('TEMPLATE_YOUTUBE_OFFLINE_PATH', '')
+        )
+        self.ui_vars['TEMPLATE_YOUTUBE_OFFLINE_PATH'] = youtube_offline_var
+        entry = ttk.Entry(scrollable_frame, textvariable=youtube_offline_var, width=40)
+        entry.grid(row=row, column=1, sticky=tk.W, padx=5)
+        ttk.Button(
+            scrollable_frame,
+            text="🗂️",
+            width=2,
+            command=lambda: self._browse_file(youtube_offline_var)
+        ).grid(row=row, column=2, sticky=tk.W, padx=2)
+        row += 1
+
+        # TEMPLATE_YOUTUBE_ARCHIVE_PATH
+        ttk.Label(scrollable_frame, text="放送アーカイブ:", font=("", 9)).grid(row=row, column=0, sticky=tk.W, pady=2, padx=5)
+        youtube_archive_var = tk.StringVar(
+            value=self.settings_dict.get('TEMPLATE_YOUTUBE_ARCHIVE_PATH', '')
+        )
+        self.ui_vars['TEMPLATE_YOUTUBE_ARCHIVE_PATH'] = youtube_archive_var
+        entry = ttk.Entry(scrollable_frame, textvariable=youtube_archive_var, width=40)
+        entry.grid(row=row, column=1, sticky=tk.W, padx=5)
+        ttk.Button(
+            scrollable_frame,
+            text="🗂️",
+            width=2,
+            command=lambda: self._browse_file(youtube_archive_var)
+        ).grid(row=row, column=2, sticky=tk.W, padx=2)
+        row += 1
+
+        # Niconico テンプレート
+        ttk.Label(scrollable_frame, text="ニコニコ", font=("", 10, "bold")).grid(row=row, column=0, columnspan=2, sticky=tk.W, pady=5, padx=5)
+        row += 1
+
+        # TEMPLATE_TEMPLATE_NICO_NEW_VIDEO_PATH
+        ttk.Label(scrollable_frame, text="新規動画投稿:", font=("", 9)).grid(row=row, column=0, sticky=tk.W, pady=2, padx=5)
+        nico_online_var = tk.StringVar(
+            value=self.settings_dict.get('TEMPLATE_NICO_NEW_VIDEO_PATH', '')
+        )
+        self.ui_vars['TEMPLATE_NICO_NEW_VIDEO_PATH'] = nico_online_var
+        entry = ttk.Entry(scrollable_frame, textvariable=nico_online_var, width=40)
+        entry.grid(row=row, column=1, sticky=tk.W, padx=5)
+        ttk.Button(
+            scrollable_frame,
+            text="🗂️",
+            width=2,
+            command=lambda: self._browse_file(nico_online_var)
+        ).grid(row=row, column=2, sticky=tk.W, padx=2)
+        row += 1
+
+
+        # Twitch テンプレート（グレーアウト）
+        ttk.Label(scrollable_frame, text="Twitch（非対応）", font=("", 10, "bold"), foreground="gray").grid(row=row, column=0, columnspan=2, sticky=tk.W, pady=5, padx=5)
+        row += 1
+
+        ttk.Label(scrollable_frame, text="放送開始:", font=("", 9), foreground="gray").grid(row=row, column=0, sticky=tk.W, pady=2, padx=5)
+        twitch_online_var = tk.StringVar(value=self.settings_dict.get('TEMPLATE_TWITCH_ONLINE_PATH', ''))
+        self.ui_vars['TEMPLATE_TWITCH_ONLINE_PATH'] = twitch_online_var
+        ttk.Entry(scrollable_frame, textvariable=twitch_online_var, width=40, state='disabled').grid(row=row, column=1, sticky=tk.W, padx=5)
+        ttk.Button(scrollable_frame, text="🗂️", width=2, state='disabled').grid(row=row, column=2, sticky=tk.W, padx=2)
+        row += 1
+
+        ttk.Label(scrollable_frame, text="放送終了(通常):", font=("", 9), foreground="gray").grid(row=row, column=0, sticky=tk.W, pady=2, padx=5)
+        twitch_offline_var = tk.StringVar(value=self.settings_dict.get('TEMPLATE_TWITCH_OFFLINE_PATH', ''))
+        self.ui_vars['TEMPLATE_TWITCH_OFFLINE_PATH'] = twitch_offline_var
+        ttk.Entry(scrollable_frame, textvariable=twitch_offline_var, width=40, state='disabled').grid(row=row, column=1, sticky=tk.W, padx=5)
+        ttk.Button(scrollable_frame, text="🗂️", width=2, state='disabled').grid(row=row, column=2, sticky=tk.W, padx=2)
+        row += 1
+
+        ttk.Label(scrollable_frame, text="放送終了(Raid):", font=("", 9), foreground="gray").grid(row=row, column=0, sticky=tk.W, pady=2, padx=5)
+        twitch_raid_var = tk.StringVar(value=self.settings_dict.get('TEMPLATE_TWITCH_RAID_PATH', ''))
+        self.ui_vars['TEMPLATE_TWITCH_RAID_PATH'] = twitch_raid_var
+        ttk.Entry(scrollable_frame, textvariable=twitch_raid_var, width=40, state='disabled').grid(row=row, column=1, sticky=tk.W, padx=5)
+        ttk.Button(scrollable_frame, text="🗂️", width=2, state='disabled').grid(row=row, column=2, sticky=tk.W, padx=2)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+    def _build_subtab_templates_images(self, parent_notebook):
+        """タブ 5-2: 画像設定"""
+        sub_tab = ttk.Frame(parent_notebook)
+        parent_notebook.add(sub_tab, text="🖼️ 画像")
+
+        frame = ttk.Frame(sub_tab, padding=10)
         frame.pack(fill=tk.BOTH, expand=True)
 
-        ttk.Label(frame, text="テンプレート・画像設定", font=("", 12, "bold")).pack(anchor=tk.W, pady=10)
-        ttk.Label(frame, text="このタブは将来実装予定です。", foreground='gray').pack(anchor=tk.W)
+        # BLUESKY_IMAGE_PATH
+        ttk.Label(frame, text="デフォルトnoimage画像のパス", font=("", 9, "bold")).grid(row=0, column=0, sticky=tk.W, pady=3)
+        image_path_var = tk.StringVar(
+            value=self.settings_dict.get('BLUESKY_IMAGE_PATH', '')
+        )
+        self.ui_vars['BLUESKY_IMAGE_PATH'] = image_path_var
+        entry = ttk.Entry(frame, textvariable=image_path_var, width=40)
+        entry.grid(row=0, column=1, sticky=tk.W, padx=3)
+        ttk.Button(
+            frame,
+            text="📁 フォルダ選択",
+            command=lambda: self._browse_directory(image_path_var)
+        ).grid(row=0, column=2, sticky=tk.W, padx=3)
+
+        # IMAGE_RESIZE_TARGET_WIDTH
+        ttk.Label(frame, text="横長画像のターゲット幅", font=("", 9, "bold")).grid(row=1, column=0, sticky=tk.W, pady=3)
+        image_width_var = tk.StringVar(
+            value=self.settings_dict.get('IMAGE_RESIZE_TARGET_WIDTH', '1200')
+        )
+        self.ui_vars['IMAGE_RESIZE_TARGET_WIDTH'] = image_width_var
+        ttk.Spinbox(
+            frame,
+            from_=100, to=3840,
+            textvariable=image_width_var,
+            width=10
+        ).grid(row=1, column=1, sticky=tk.W, padx=3)
+        ttk.Label(frame, text="px（100-3840px,デフォルト: 1200）", foreground='gray').grid(row=1, column=2, sticky=tk.W)
+
+        # IMAGE_RESIZE_TARGET_HEIGHT
+        ttk.Label(frame, text="横長画像のターゲット高さ", font=("", 9, "bold")).grid(row=2, column=0, sticky=tk.W, pady=3)
+        image_height_var = tk.StringVar(
+            value=self.settings_dict.get('IMAGE_RESIZE_TARGET_HEIGHT', '800')
+        )
+        self.ui_vars['IMAGE_RESIZE_TARGET_HEIGHT'] = image_height_var
+        ttk.Spinbox(
+            frame,
+            from_=100, to=2160,
+            textvariable=image_height_var,
+            width=10
+        ).grid(row=2, column=1, sticky=tk.W, padx=3)
+        ttk.Label(frame, text="px（100-2160px,デフォルト: 800）", foreground='gray').grid(row=2, column=2, sticky=tk.W)
+
+        # IMAGE_OUTPUT_QUALITY_INITIAL
+        ttk.Label(frame, text="JPEG初期出力品質", font=("", 9, "bold")).grid(row=5, column=0, sticky=tk.W, pady=3)
+        quality_var = tk.StringVar(
+            value=self.settings_dict.get('IMAGE_OUTPUT_QUALITY_INITIAL', '90')
+        )
+        self.ui_vars['IMAGE_OUTPUT_QUALITY_INITIAL'] = quality_var
+        ttk.Spinbox(
+            frame,
+            from_=1, to=100,
+            textvariable=quality_var,
+            width=10
+        ).grid(row=5, column=1, sticky=tk.W, padx=3)
+        ttk.Label(frame, text="（1-100,デフォルト: 90）", foreground='gray').grid(row=5, column=2, sticky=tk.W)
+
+        # IMAGE_SIZE_TARGET
+        ttk.Label(frame, text="ファイルサイズ目標値", font=("", 9, "bold")).grid(row=6, column=0, sticky=tk.W, pady=3)
+        size_target_var = tk.StringVar(
+            value=self.settings_dict.get('IMAGE_SIZE_TARGET', '800000')
+        )
+        self.ui_vars['IMAGE_SIZE_TARGET'] = size_target_var
+        ttk.Spinbox(
+            frame,
+            from_=100000, to=2000000,
+            textvariable=size_target_var,
+            width=10
+        ).grid(row=6, column=1, sticky=tk.W, padx=3)
+        ttk.Label(frame, text="Bytes（800KB推奨）", foreground='gray').grid(row=6, column=2, sticky=tk.W)
+
+        # IMAGE_SIZE_THRESHOLD
+        ttk.Label(frame, text="IMAGE_SIZE_THRESHOLD", font=("", 9, "bold")).grid(row=7, column=0, sticky=tk.W, pady=3)
+        size_threshold_var = tk.StringVar(
+            value=self.settings_dict.get('IMAGE_SIZE_THRESHOLD', '900000')
+        )
+        self.ui_vars['IMAGE_SIZE_THRESHOLD'] = size_threshold_var
+        ttk.Spinbox(
+            frame,
+            from_=100000, to=2000000,
+            textvariable=size_threshold_var,
+            width=10
+        ).grid(row=7, column=1, sticky=tk.W, padx=3)
+        ttk.Label(frame, text="Bytes（900KB推奨）", foreground='gray').grid(row=7, column=2, sticky=tk.W)
+
+        # IMAGE_SIZE_LIMIT
+        ttk.Label(frame, text="IMAGE_SIZE_LIMIT", font=("", 9, "bold")).grid(row=8, column=0, sticky=tk.W, pady=3)
+        size_limit_var = tk.StringVar(
+            value=self.settings_dict.get('IMAGE_SIZE_LIMIT', '1000000')
+        )
+        self.ui_vars['IMAGE_SIZE_LIMIT'] = size_limit_var
+        ttk.Spinbox(
+            frame,
+            from_=500000, to=2000000,
+            textvariable=size_limit_var,
+            width=10
+        ).grid(row=8, column=1, sticky=tk.W, padx=3)
+        ttk.Label(frame, text="Bytes（1MB推奨）", foreground='gray').grid(row=8, column=2, sticky=tk.W)
 
     def _build_tab_logging(self):
-        """タブ 6: ログ（実装スケルトン）"""
+        """タブ 6: ログ設定"""
         tab = ttk.Frame(self.notebook)
         self.notebook.add(tab, text="📋 ログ")
 
-        frame = ttk.Frame(tab, padding=10)
-        frame.pack(fill=tk.BOTH, expand=True)
+        # スクロール対応フレーム
+        canvas = tk.Canvas(tab, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(tab, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
 
-        ttk.Label(frame, text="ログ設定", font=("", 12, "bold")).pack(anchor=tk.W, pady=10)
-        ttk.Label(frame, text="このタブは将来実装予定です。", foreground='gray').pack(anchor=tk.W)
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        row = 0
+        ttk.Label(scrollable_frame, text="ロガー設定(全般設定)", font=("", 10, "bold")).grid(row=row, column=0, columnspan=3, sticky=tk.W, pady=3, padx=5)
+        row += 1
+
+        # LOG_LEVEL_CONSOLE
+        ttk.Label(scrollable_frame, text="LOG_LEVEL_CONSOLE", font=("", 9, "bold")).grid(row=row, column=0, sticky=tk.W, pady=3, padx=5)
+        console_level_var = tk.StringVar(
+            value=self.settings_dict.get('LOG_LEVEL_CONSOLE', 'INFO')
+        )
+        self.ui_vars['LOG_LEVEL_CONSOLE'] = console_level_var
+        ttk.Combobox(
+            scrollable_frame,
+            textvariable=console_level_var,
+            values=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
+            state='readonly',
+            width=15
+        ).grid(row=row, column=1, sticky=tk.W, padx=5)
+        ttk.Label(scrollable_frame, text="コンソール出力レベル", foreground='gray').grid(row=row, column=2, sticky=tk.W)
+        row += 1
+
+        # LOG_LEVEL_FILE
+        ttk.Label(scrollable_frame, text="LOG_LEVEL_FILE", font=("", 9, "bold")).grid(row=row, column=0, sticky=tk.W, pady=3, padx=5)
+        file_level_var = tk.StringVar(
+            value=self.settings_dict.get('LOG_LEVEL_FILE', 'DEBUG')
+        )
+        self.ui_vars['LOG_LEVEL_FILE'] = file_level_var
+        ttk.Combobox(
+            scrollable_frame,
+            textvariable=file_level_var,
+            values=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
+            state='readonly',
+            width=15
+        ).grid(row=row, column=1, sticky=tk.W, padx=5)
+        ttk.Label(scrollable_frame, text="ファイル出力レベル", foreground='gray').grid(row=row, column=2, sticky=tk.W)
+        row += 1
+
+        # LOG_RETENTION_DAYS
+        ttk.Label(scrollable_frame, text="LOG_RETENTION_DAYS", font=("", 9, "bold")).grid(row=row, column=0, sticky=tk.W, pady=3, padx=5)
+        retention_days_var = tk.StringVar(
+            value=self.settings_dict.get('LOG_RETENTION_DAYS', '30')
+        )
+        self.ui_vars['LOG_RETENTION_DAYS'] = retention_days_var
+        ttk.Spinbox(
+            scrollable_frame,
+            from_=1, to=365,
+            textvariable=retention_days_var,
+            width=10
+        ).grid(row=row, column=1, sticky=tk.W, padx=5)
+        ttk.Label(scrollable_frame, text="日（1-365）", foreground='gray').grid(row=row, column=2, sticky=tk.W)
+        row += 1
+
+        # セパレータ
+        ttk.Separator(scrollable_frame, orient=tk.HORIZONTAL).grid(row=row, column=0, columnspan=3, sticky=tk.EW, pady=10, padx=5)
+        row += 1
+
+        ttk.Label(scrollable_frame, text="個別ロガー設定", font=("", 10, "bold")).grid(row=row, column=0, columnspan=3, sticky=tk.W, pady=3, padx=5)
+        row += 1
+        # LOG_LEVEL_APP
+        ttk.Label(scrollable_frame, text="LOG_LEVEL_APP", font=("", 9, "bold")).grid(row=row, column=0, sticky=tk.W, pady=3, padx=5)
+        app_level_var = tk.StringVar(
+            value=self.settings_dict.get('LOG_LEVEL_APP', 'INFO')
+        )
+        self.ui_vars['LOG_LEVEL_APP'] = app_level_var
+        ttk.Combobox(
+            scrollable_frame,
+            textvariable=app_level_var,
+            values=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
+            state='readonly',
+            width=15
+        ).grid(row=row, column=1, sticky=tk.W, padx=5)
+        ttk.Label(scrollable_frame, text="アプリログレベル", foreground='gray').grid(row=row, column=2, sticky=tk.W)
+        row += 1
+
+        # LOG_LEVEL_AUDIT
+        ttk.Label(scrollable_frame, text="LOG_LEVEL_AUDIT", font=("", 9, "bold")).grid(row=row, column=0, sticky=tk.W, pady=3, padx=5)
+        audit_level_var = tk.StringVar(
+            value=self.settings_dict.get('LOG_LEVEL_AUDIT', '')
+        )
+        self.ui_vars['LOG_LEVEL_AUDIT'] = audit_level_var
+        ttk.Combobox(
+            scrollable_frame,
+            textvariable=audit_level_var,
+            values=['', 'DEBUG', 'INFO', 'WARNING', 'ERROR'],
+            width=15
+        ).grid(row=row, column=1, sticky=tk.W, padx=5)
+        ttk.Label(scrollable_frame, text="監査ログレベル", foreground='gray').grid(row=row, column=2, sticky=tk.W)
+        row += 1
+
+        # LOG_LEVEL_THUMBNAILS
+        ttk.Label(scrollable_frame, text="LOG_LEVEL_THUMBNAILS", font=("", 9, "bold")).grid(row=row, column=0, sticky=tk.W, pady=3, padx=5)
+        thumb_level_var = tk.StringVar(
+            value=self.settings_dict.get('LOG_LEVEL_THUMBNAILS', '')
+        )
+        self.ui_vars['LOG_LEVEL_THUMBNAILS'] = thumb_level_var
+        ttk.Combobox(
+            scrollable_frame,
+            textvariable=thumb_level_var,
+            values=['', 'DEBUG', 'INFO', 'WARNING', 'ERROR'],
+            width=15
+        ).grid(row=row, column=1, sticky=tk.W, padx=5)
+        ttk.Label(scrollable_frame, text="サムネイル再取得ログ", foreground='gray').grid(row=row, column=2, sticky=tk.W)
+        row += 1
+
+        # LOG_LEVEL_TUNNEL
+        ttk.Label(scrollable_frame, text="LOG_LEVEL_TUNNEL", font=("", 9, "bold")).grid(row=row, column=0, sticky=tk.W, pady=3, padx=5)
+        tunnel_level_var = tk.StringVar(
+            value=self.settings_dict.get('LOG_LEVEL_TUNNEL', '')
+        )
+        self.ui_vars['LOG_LEVEL_TUNNEL'] = tunnel_level_var
+        ttk.Combobox(
+            scrollable_frame,
+            textvariable=tunnel_level_var,
+            values=['', 'DEBUG', 'INFO', 'WARNING', 'ERROR'],
+            width=15
+        ).grid(row=row, column=1, sticky=tk.W, padx=5)
+        ttk.Label(scrollable_frame, text="トンネル接続ログ", foreground='gray').grid(row=row, column=2, sticky=tk.W)
+        row += 1
+
+        # LOG_LEVEL_YOUTUBE
+        ttk.Label(scrollable_frame, text="LOG_LEVEL_YOUTUBE", font=("", 9, "bold")).grid(row=row, column=0, sticky=tk.W, pady=3, padx=5)
+        youtube_level_var = tk.StringVar(
+            value=self.settings_dict.get('LOG_LEVEL_YOUTUBE', '')
+        )
+        self.ui_vars['LOG_LEVEL_YOUTUBE'] = youtube_level_var
+        ttk.Combobox(
+            scrollable_frame,
+            textvariable=youtube_level_var,
+            values=['', 'DEBUG', 'INFO', 'WARNING', 'ERROR'],
+            width=15
+        ).grid(row=row, column=1, sticky=tk.W, padx=5)
+        ttk.Label(scrollable_frame, text="YouTube監視ログ", foreground='gray').grid(row=row, column=2, sticky=tk.W)
+        row += 1
+
+        # LOG_LEVEL_NICONICO
+        ttk.Label(scrollable_frame, text="LOG_LEVEL_NICONICO", font=("", 9, "bold")).grid(row=row, column=0, sticky=tk.W, pady=3, padx=5)
+        nico_level_var = tk.StringVar(
+            value=self.settings_dict.get('LOG_LEVEL_NICONICO', '')
+        )
+        self.ui_vars['LOG_LEVEL_NICONICO'] = nico_level_var
+        ttk.Combobox(
+            scrollable_frame,
+            textvariable=nico_level_var,
+            values=['', 'DEBUG', 'INFO', 'WARNING', 'ERROR'],
+            width=15
+        ).grid(row=row, column=1, sticky=tk.W, padx=5)
+        ttk.Label(scrollable_frame, text="Niconico監視ログ", foreground='gray').grid(row=row, column=2, sticky=tk.W)
+        row += 1
+
+        # LOG_LEVEL_GUI
+        ttk.Label(scrollable_frame, text="LOG_LEVEL_GUI", font=("", 9, "bold")).grid(row=row, column=0, sticky=tk.W, pady=3, padx=5)
+        gui_level_var = tk.StringVar(
+            value=self.settings_dict.get('LOG_LEVEL_GUI', '')
+        )
+        self.ui_vars['LOG_LEVEL_GUI'] = gui_level_var
+        ttk.Combobox(
+            scrollable_frame,
+            textvariable=gui_level_var,
+            values=['', 'DEBUG', 'INFO', 'WARNING', 'ERROR'],
+            width=15
+        ).grid(row=row, column=1, sticky=tk.W, padx=5)
+        ttk.Label(scrollable_frame, text="GUI操作ログ", foreground='gray').grid(row=row, column=2, sticky=tk.W)
+        row += 1
+
+        # LOG_LEVEL_POST
+        ttk.Label(scrollable_frame, text="LOG_LEVEL_POST", font=("", 9, "bold")).grid(row=row, column=0, sticky=tk.W, pady=3, padx=5)
+        post_level_var = tk.StringVar(
+            value=self.settings_dict.get('LOG_LEVEL_POST', 'INFO')
+        )
+        self.ui_vars['LOG_LEVEL_POST'] = post_level_var
+        ttk.Combobox(
+            scrollable_frame,
+            textvariable=post_level_var,
+            values=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
+            state='readonly',
+            width=15
+        ).grid(row=row, column=1, sticky=tk.W, padx=5)
+        ttk.Label(scrollable_frame, text="投稿ログレベル", foreground='gray').grid(row=row, column=2, sticky=tk.W)
+        row += 1
+
+        # LOG_LEVEL_POST_ERROR
+        ttk.Label(scrollable_frame, text="LOG_LEVEL_POST_ERROR", font=("", 9, "bold")).grid(row=row, column=0, sticky=tk.W, pady=3, padx=5)
+        post_error_level_var = tk.StringVar(
+            value=self.settings_dict.get('LOG_LEVEL_POST_ERROR', '')
+        )
+        self.ui_vars['LOG_LEVEL_POST_ERROR'] = post_error_level_var
+        ttk.Combobox(
+            scrollable_frame,
+            textvariable=post_error_level_var,
+            values=['', 'DEBUG', 'INFO', 'WARNING', 'ERROR'],
+            width=15
+        ).grid(row=row, column=1, sticky=tk.W, padx=5)
+        ttk.Label(scrollable_frame, text="投稿エラーログ", foreground='gray').grid(row=row, column=2, sticky=tk.W)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
 
     def _build_tab_future(self):
         """タブ 7: 将来プラグイン（プレビュー）"""
@@ -933,3 +1382,24 @@ class UnifiedSettingsWindow:
             self.window.destroy()
             # 再度ウィンドウを開く
             UnifiedSettingsWindow(self.parent, initial_tab=self.initial_tab, db=self.db)
+
+    def _browse_file(self, var):
+        """ファイルブラウザを開く"""
+        file_path = filedialog.askopenfilename(
+            title="テンプレートファイルを選択",
+            parent=self.window,
+            filetypes=[("テンプレートファイル", "*.jinja2 *.txt *.html"), ("すべてのファイル", "*.*")]
+        )
+        if file_path:
+            var.set(file_path)
+            logger.info(f"ℹ️ ファイルを選択: {file_path}")
+
+    def _browse_directory(self, var):
+        """ディレクトリブラウザを開く"""
+        dir_path = filedialog.askdirectory(
+            title="画像フォルダを選択",
+            parent=self.window
+        )
+        if dir_path:
+            var.set(dir_path)
+            logger.info(f"ℹ️ フォルダを選択: {dir_path}")
