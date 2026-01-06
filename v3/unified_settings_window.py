@@ -77,7 +77,7 @@ class UnifiedSettingsWindow:
         # ウィンドウ作成
         self.window = tk.Toplevel(parent)
         self.window.title("統合設定ウィンドウ")
-        self.window.geometry("600x550")
+        self.window.geometry("600x625")
         self.window.resizable(True, True)
 
         # 設定ファイルパス
@@ -120,22 +120,9 @@ class UnifiedSettingsWindow:
 
     def _build_ui(self):
         """UI を構築"""
-        # === Notebook (タブ) を作成 ===
-        self.notebook = ttk.Notebook(self.window)
-        self.notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-
-        # 各タブを作成
-        self._build_tab_basic()
-        self._build_tab_accounts()
-        self._build_tab_posting()
-        self._build_tab_live()
-        self._build_tab_templates()
-        self._build_tab_logging()
-        self._build_tab_future()
-
-        # === ボタンパネル ===
+        # === ボタンパネル（上部に配置） ===
         button_frame = ttk.Frame(self.window)
-        button_frame.pack(fill=tk.X, padx=10, pady=10)
+        button_frame.pack(fill=tk.X, padx=5, pady=3)
 
         ttk.Button(
             button_frame,
@@ -154,6 +141,19 @@ class UnifiedSettingsWindow:
             text="ℹ️ リセット",
             command=self._reset_to_defaults
         ).pack(side=tk.LEFT, padx=5)
+
+        # === Notebook (タブ) を作成 ===
+        self.notebook = ttk.Notebook(self.window)
+        self.notebook.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        # 各タブを作成
+        self._build_tab_basic()
+        self._build_tab_accounts()
+        self._build_tab_posting()
+        self._build_tab_live()
+        self._build_tab_templates()
+        self._build_tab_logging()
+        self._build_tab_future()
 
     def _build_tab_basic(self):
         """タブ 1: 基本設定"""
@@ -247,25 +247,35 @@ class UnifiedSettingsWindow:
         frame.pack(fill=tk.BOTH, expand=True)
 
         # YOUTUBE_CHANNEL_ID
-        ttk.Label(frame, text="YOUTUBE_CHANNEL_ID", font=("", 10, "bold")).grid(row=0, column=0, sticky=tk.W, pady=5)
+        ttk.Label(frame, text="YOUTUBEチャンネルID", font=("", 10, "bold")).grid(row=0, column=0, sticky=tk.W, pady=3)
         channel_id_var = tk.StringVar(
             value=self.settings_dict.get('YOUTUBE_CHANNEL_ID', '')
         )
         self.ui_vars['YOUTUBE_CHANNEL_ID'] = channel_id_var
         ttk.Entry(frame, textvariable=channel_id_var, width=50).grid(row=0, column=1, sticky=tk.W, padx=5)
-        ttk.Label(frame, text="UC で始まるチャンネル ID", foreground='gray').grid(row=0, column=2, sticky=tk.W)
+
+        # YOUTUBE_CHANNEL_ID説明
+        explanation_text = "UCで始まるチャンネルIDを入力してください。\nYouTubeの設定＞詳細設定から取得できます。"
+        ttk.Label(frame, text=explanation_text, foreground='gray', wraplength=400, justify=tk.LEFT, font=("", 8)).grid(
+            row=1, column=0, columnspan=3, sticky=tk.W, padx=(10, 0), pady=(0, 5)
+        )
 
         # YOUTUBE_API_KEY
-        ttk.Label(frame, text="YOUTUBE_API_KEY", font=("", 10, "bold")).grid(row=1, column=0, sticky=tk.W, pady=5)
+        ttk.Label(frame, text="YouTubeDataAPIキー", font=("", 10, "bold")).grid(row=2, column=0, sticky=tk.W, pady=3)
         api_key_var = tk.StringVar(
             value=self.settings_dict.get('YOUTUBE_API_KEY', '')
         )
         self.ui_vars['YOUTUBE_API_KEY'] = api_key_var
-        ttk.Entry(frame, textvariable=api_key_var, width=50, show="*").grid(row=1, column=1, sticky=tk.W, padx=5)
-        ttk.Label(frame, text="マスク表示", foreground='gray').grid(row=1, column=2, sticky=tk.W)
+        ttk.Entry(frame, textvariable=api_key_var, width=50, show="*").grid(row=2, column=1, sticky=tk.W, padx=5)
+
+        # YOUTUBE_API_KEY説明
+        explanation_text = "YouTubeDataAPI(v3)キーを入力してください\nAPIキーはGoogle Cloud Console から取得できます。"
+        ttk.Label(frame, text=explanation_text, foreground='gray', wraplength=400, justify=tk.LEFT, font=("", 8)).grid(
+            row=3, column=0, columnspan=3, sticky=tk.W, padx=(10, 0), pady=(0, 5)
+        )
 
         # YOUTUBE_RSS_POLL_INTERVAL_MINUTES
-        ttk.Label(frame, text="YOUTUBE_RSS_POLL_INTERVAL_MINUTES", font=("", 10, "bold")).grid(row=2, column=0, sticky=tk.W, pady=5)
+        ttk.Label(frame, text="YouTube RSS ポーリング間隔", font=("", 10, "bold")).grid(row=4, column=0, sticky=tk.W, pady=3)
         poll_interval_var = tk.StringVar(
             value=self.settings_dict.get('YOUTUBE_RSS_POLL_INTERVAL_MINUTES', '10')
         )
@@ -275,8 +285,13 @@ class UnifiedSettingsWindow:
             from_=1, to=120,
             textvariable=poll_interval_var,
             width=10
-        ).grid(row=2, column=1, sticky=tk.W, padx=5)
-        ttk.Label(frame, text="分（1-120）", foreground='gray').grid(row=2, column=2, sticky=tk.W)
+        ).grid(row=4, column=1, sticky=tk.W, padx=5)
+
+        # YOUTUBE_RSS_POLL_INTERVAL説明
+        explanation_text = "最小10分、最大60分。デフォルト: 10分。\nRSSはYouTubeのPubSubHubbubを利用しています。\n短期間で頻繁なポーリングはYouTube側からアクセスを拒否される可能性があります。"
+        ttk.Label(frame, text=explanation_text, foreground='gray', wraplength=400, justify=tk.LEFT, font=("", 8)).grid(
+            row=5, column=0, columnspan=3, sticky=tk.W, padx=(10, 0), pady=(0, 5)
+        )
 
     def _build_subtab_accounts_niconico(self, parent_notebook):
         """タブ 2-2: Niconico"""
@@ -287,24 +302,36 @@ class UnifiedSettingsWindow:
         frame.pack(fill=tk.BOTH, expand=True)
 
         # NICONICO_USER_ID
-        ttk.Label(frame, text="NICONICO_USER_ID", font=("", 10, "bold")).grid(row=0, column=0, sticky=tk.W, pady=5)
+        ttk.Label(frame, text="ニコニコユーザーID", font=("", 10, "bold")).grid(row=0, column=0, sticky=tk.W, pady=5)
         nico_user_id_var = tk.StringVar(
             value=self.settings_dict.get('NICONICO_USER_ID', '')
         )
         self.ui_vars['NICONICO_USER_ID'] = nico_user_id_var
-        ttk.Entry(frame, textvariable=nico_user_id_var, width=50).grid(row=0, column=1, sticky=tk.W, padx=5)
-        ttk.Label(frame, text="数字のみ", foreground='gray').grid(row=0, column=2, sticky=tk.W)
+        ttk.Entry(frame, textvariable=nico_user_id_var, width=30).grid(row=0, column=1, sticky=tk.W, padx=5)
+
+        # NICONICO_USER_ID説明
+        explanation_text = "ニコニコのユーザーIDを指定してください。（数字のみ）"
+        ttk.Label(frame, text=explanation_text, foreground='gray', wraplength=400, justify=tk.LEFT, font=("", 8)).grid(
+            row=1, column=0, columnspan=3, sticky=tk.W, padx=(10, 0), pady=(0, 5)
+        )
 
         # NICONICO_USER_NAME
-        ttk.Label(frame, text="NICONICO_USER_NAME", font=("", 10, "bold")).grid(row=1, column=0, sticky=tk.W, pady=5)
+        ttk.Label(frame, text="ニコニコユーザー名", font=("", 10, "bold")).grid(row=2, column=0, sticky=tk.W, pady=3)
         nico_user_name_var = tk.StringVar(
             value=self.settings_dict.get('NICONICO_USER_NAME', '')
         )
         self.ui_vars['NICONICO_USER_NAME'] = nico_user_name_var
-        ttk.Entry(frame, textvariable=nico_user_name_var, width=50).grid(row=1, column=1, sticky=tk.W, padx=5)
+        ttk.Entry(frame, textvariable=nico_user_name_var, width=30).grid(row=2, column=1, sticky=tk.W, padx=5)
+
+        # NICONICO_USER_NAME説明
+        explanation_text = ("未設定時は自動取得を試みます。\n"
+                            "確実に名前を指定したい場合は入力してください。")
+        ttk.Label(frame, text=explanation_text, foreground='gray', wraplength=400, justify=tk.LEFT, font=("", 8)).grid(
+            row=3, column=0, columnspan=3, sticky=tk.W, padx=(10, 0), pady=(0, 5)
+        )
 
         # NICONICO_POLL_INTERVAL
-        ttk.Label(frame, text="NICONICO_POLL_INTERVAL", font=("", 10, "bold")).grid(row=2, column=0, sticky=tk.W, pady=5)
+        ttk.Label(frame, text="ニコニコのポーリング間隔（分）", font=("", 10, "bold")).grid(row=4, column=0, sticky=tk.W, pady=3)
         nico_poll_interval_var = tk.StringVar(
             value=self.settings_dict.get('NICONICO_POLL_INTERVAL', '10')
         )
@@ -314,8 +341,13 @@ class UnifiedSettingsWindow:
             from_=1, to=120,
             textvariable=nico_poll_interval_var,
             width=10
-        ).grid(row=2, column=1, sticky=tk.W, padx=5)
-        ttk.Label(frame, text="分（1-120）", foreground='gray').grid(row=2, column=2, sticky=tk.W)
+        ).grid(row=4, column=1, sticky=tk.W, padx=5)
+
+        # NICONICO_POLL_INTERVAL説明
+        explanation_text = "最小5分。デフォルト: 10分、推奨: 10分"
+        ttk.Label(frame, text=explanation_text, foreground='gray', wraplength=400, justify=tk.LEFT, font=("", 8)).grid(
+            row=5, column=0, columnspan=3, sticky=tk.W, padx=(10, 0), pady=(0, 5)
+        )
 
     def _build_subtab_accounts_websub(self, parent_notebook):
         """タブ 2-3: WebSub"""
@@ -326,31 +358,49 @@ class UnifiedSettingsWindow:
         frame.pack(fill=tk.BOTH, expand=True)
 
         # WEBSUB_CLIENT_ID
-        ttk.Label(frame, text="WEBSUB_CLIENT_ID", font=("", 10, "bold")).grid(row=0, column=0, sticky=tk.W, pady=5)
+        ttk.Label(frame, text="クライアントID", font=("", 10, "bold")).grid(row=0, column=0, sticky=tk.W, pady=5)
         websub_client_id_var = tk.StringVar(
             value=self.settings_dict.get('WEBSUB_CLIENT_ID', '')
         )
         self.ui_vars['WEBSUB_CLIENT_ID'] = websub_client_id_var
-        ttk.Entry(frame, textvariable=websub_client_id_var, width=50).grid(row=0, column=1, sticky=tk.W, padx=5)
+        ttk.Entry(frame, textvariable=websub_client_id_var, width=40).grid(row=0, column=1, sticky=tk.W, padx=5)
+
+        # WebSub クライアントID説明
+        explanation_text = "WebSub機能は支援者限定機能です"
+        ttk.Label(frame, text=explanation_text, foreground='gray', wraplength=400, justify=tk.LEFT, font=("", 8)).grid(
+            row=1, column=0, columnspan=3, sticky=tk.W, padx=(10, 0), pady=(0, 5)
+        )
 
         # WEBSUB_CALLBACK_URL
-        ttk.Label(frame, text="WEBSUB_CALLBACK_URL", font=("", 10, "bold")).grid(row=1, column=0, sticky=tk.W, pady=5)
+        ttk.Label(frame, text="サーバーURL", font=("", 10, "bold")).grid(row=2, column=0, sticky=tk.W, pady=3)
         websub_callback_url_var = tk.StringVar(
             value=self.settings_dict.get('WEBSUB_CALLBACK_URL', '')
         )
         self.ui_vars['WEBSUB_CALLBACK_URL'] = websub_callback_url_var
-        ttk.Entry(frame, textvariable=websub_callback_url_var, width=50).grid(row=1, column=1, sticky=tk.W, padx=5)
+        ttk.Entry(frame, textvariable=websub_callback_url_var, width=40).grid(row=2, column=1, sticky=tk.W, padx=5)
+
+        # WebSub サーバーURL説明
+        explanation_text = "WebSub機能は支援者限定機能です"
+        ttk.Label(frame, text=explanation_text, foreground='gray', wraplength=400, justify=tk.LEFT, font=("", 8)).grid(
+            row=3, column=0, columnspan=3, sticky=tk.W, padx=(10, 0), pady=(0, 5)
+        )
 
         # WEBSUB_CLIENT_API_KEY
-        ttk.Label(frame, text="WEBSUB_CLIENT_API_KEY", font=("", 10, "bold")).grid(row=2, column=0, sticky=tk.W, pady=5)
+        ttk.Label(frame, text="クライアントAPIキー", font=("", 10, "bold")).grid(row=4, column=0, sticky=tk.W, pady=3)
         websub_api_key_var = tk.StringVar(
             value=self.settings_dict.get('WEBSUB_CLIENT_API_KEY', '')
         )
         self.ui_vars['WEBSUB_CLIENT_API_KEY'] = websub_api_key_var
-        ttk.Entry(frame, textvariable=websub_api_key_var, width=50, show="*").grid(row=2, column=1, sticky=tk.W, padx=5)
+        ttk.Entry(frame, textvariable=websub_api_key_var, width=40, show="*").grid(row=4, column=1, sticky=tk.W, padx=5)
+
+        # WebSub APIキー説明
+        explanation_text = "WebSub機能は支援者限定機能です"
+        ttk.Label(frame, text=explanation_text, foreground='gray', wraplength=400, justify=tk.LEFT, font=("", 8)).grid(
+            row=5, column=0, columnspan=3, sticky=tk.W, padx=(10, 0), pady=(0, 5)
+        )
 
         # WEBSUB_LEASE_SECONDS
-        ttk.Label(frame, text="WEBSUB_LEASE_SECONDS", font=("", 10, "bold")).grid(row=3, column=0, sticky=tk.W, pady=5)
+        ttk.Label(frame, text="WebSub 購読期間（秒）", font=("", 10, "bold")).grid(row=6, column=0, sticky=tk.W, pady=3)
         websub_lease_var = tk.StringVar(
             value=self.settings_dict.get('WEBSUB_LEASE_SECONDS', '432000')
         )
@@ -360,11 +410,16 @@ class UnifiedSettingsWindow:
             from_=86400, to=2592000,
             textvariable=websub_lease_var,
             width=15
-        ).grid(row=3, column=1, sticky=tk.W, padx=5)
-        ttk.Label(frame, text="秒（86400-2592000）", foreground='gray').grid(row=3, column=2, sticky=tk.W)
+        ).grid(row=6, column=1, sticky=tk.W, padx=5)
+
+        # YouTube WebSub 購読期間説明
+        explanation_text = "範囲: 86400(1日)～2592000(30日)、推奨: 432000(5日)"
+        ttk.Label(frame, text=explanation_text, foreground='gray', wraplength=400, justify=tk.LEFT, font=("", 8)).grid(
+            row=7, column=0, columnspan=3, sticky=tk.W, padx=(10, 0), pady=(0, 5)
+        )
 
         # YOUTUBE_WEBSUB_POLL_INTERVAL_MINUTES
-        ttk.Label(frame, text="YOUTUBE_WEBSUB_POLL_INTERVAL_MINUTES", font=("", 10, "bold")).grid(row=4, column=0, sticky=tk.W, pady=5)
+        ttk.Label(frame, text="YouTube WebSub ポーリング間隔", font=("", 10, "bold")).grid(row=8, column=0, sticky=tk.W, pady=3)
         youtube_websub_poll_var = tk.StringVar(
             value=self.settings_dict.get('YOUTUBE_WEBSUB_POLL_INTERVAL_MINUTES', '5')
         )
@@ -374,8 +429,13 @@ class UnifiedSettingsWindow:
             from_=1, to=120,
             textvariable=youtube_websub_poll_var,
             width=10
-        ).grid(row=4, column=1, sticky=tk.W, padx=5)
-        ttk.Label(frame, text="分（1-120）", foreground='gray').grid(row=4, column=2, sticky=tk.W)
+        ).grid(row=8, column=1, sticky=tk.W, padx=5)
+
+        # YouTube WebSub ポーリング間隔説明
+        explanation_text = "RSSポーリングより更新が早いため、短い間隔での取得が可能ですが、\n 過度に短い設定はCDN(Cloudflare)側から接続拒否や制御の対象となる\n 可能性があります。"
+        ttk.Label(frame, text=explanation_text, foreground='gray', wraplength=400, justify=tk.LEFT, font=("", 8)).grid(
+            row=9, column=0, columnspan=3, sticky=tk.W, padx=(10, 0), pady=(0, 5)
+        )
 
     def _build_subtab_accounts_bluesky(self, parent_notebook):
         """タブ 2-4: Bluesky"""
@@ -386,33 +446,24 @@ class UnifiedSettingsWindow:
         frame.pack(fill=tk.BOTH, expand=True)
 
         # BLUESKY_USERNAME
-        ttk.Label(frame, text="BLUESKY_USERNAME", font=("", 10, "bold")).grid(row=0, column=0, sticky=tk.W, pady=5)
+        ttk.Label(frame, text="BLUESKYユーザー名", font=("", 10, "bold")).grid(row=0, column=0, sticky=tk.W, pady=5)
         bluesky_username_var = tk.StringVar(
             value=self.settings_dict.get('BLUESKY_USERNAME', '')
         )
         self.ui_vars['BLUESKY_USERNAME'] = bluesky_username_var
         ttk.Entry(frame, textvariable=bluesky_username_var, width=50).grid(row=0, column=1, sticky=tk.W, padx=5)
-        ttk.Label(frame, text="ハンドル or メールアドレス", foreground='gray').grid(row=0, column=2, sticky=tk.W)
+        ttk.Label(frame, text="ハンドル(.bsky.social) or 独自ドメイン", foreground='gray').grid(row=1, column=0, columnspan=2, sticky=tk.W, padx=(10, 0))
 
         # BLUESKY_PASSWORD
-        ttk.Label(frame, text="BLUESKY_PASSWORD", font=("", 10, "bold")).grid(row=1, column=0, sticky=tk.W, pady=5)
+        ttk.Label(frame, text="BLUESKYAPPパスワード", font=("", 10, "bold")).grid(row=2, column=0, sticky=tk.W, pady=5)
         bluesky_password_var = tk.StringVar(
             value=self.settings_dict.get('BLUESKY_PASSWORD', '')
         )
         self.ui_vars['BLUESKY_PASSWORD'] = bluesky_password_var
-        ttk.Entry(frame, textvariable=bluesky_password_var, width=50, show="*").grid(row=1, column=1, sticky=tk.W, padx=5)
-        ttk.Label(frame, text="アプリパスワード（マスク表示）", foreground='gray').grid(row=1, column=2, sticky=tk.W)
+        ttk.Entry(frame, textvariable=bluesky_password_var, width=50, show="*").grid(row=2, column=1, sticky=tk.W, padx=5)
+        ttk.Label(frame, text="アプリパスワード（マスク表示）", foreground='gray').grid(row=3, column=0, columnspan=2, sticky=tk.W, padx=(10, 0))
+        ttk.Label(frame, text="アプリパスワードは将来的バーションでOAuthに変更予定です。", foreground='gray').grid(row=4, column=0, columnspan=2, sticky=tk.W, padx=(10, 0))
 
-        # BLUESKY_POST_ENABLED
-        bluesky_post_enabled_var = tk.BooleanVar(
-            value=self.settings_dict.get('BLUESKY_POST_ENABLED', 'True').lower() == 'true'
-        )
-        self.ui_vars['BLUESKY_POST_ENABLED'] = bluesky_post_enabled_var
-        ttk.Checkbutton(
-            frame,
-            text="BLUESKY_POST_ENABLED (Bluesky への投稿を有効化)",
-            variable=bluesky_post_enabled_var
-        ).grid(row=2, column=0, columnspan=3, sticky=tk.W, pady=5)
 
     def _build_tab_posting(self):
         """タブ 3: 投稿設定（サブタブ 3分割）"""
@@ -449,7 +500,13 @@ class UnifiedSettingsWindow:
             frame,
             text="PREVENT_DUPLICATE_POSTS (重複投稿を防止)",
             variable=prevent_dup_var
-        ).pack(anchor=tk.W, pady=5)
+        ).pack(anchor=tk.W, pady=3)
+
+        # PREVENT_DUPLICATE_POSTS説明
+        explanation_text = "同じ動画の再投稿を防止します"
+        ttk.Label(frame, text=explanation_text, foreground='gray', wraplength=400, justify=tk.LEFT, font=("", 8)).pack(
+            anchor=tk.W, padx=20, pady=(0, 5)
+        )
 
         # YOUTUBE_DEDUP_ENABLED
         youtube_dedup_var = tk.BooleanVar(
@@ -460,7 +517,13 @@ class UnifiedSettingsWindow:
             frame,
             text="YOUTUBE_DEDUP_ENABLED (YouTube 重複排除)",
             variable=youtube_dedup_var
-        ).pack(anchor=tk.W, pady=5)
+        ).pack(anchor=tk.W, pady=3)
+
+        # YOUTUBE_DEDUP_ENABLED説明
+        explanation_text = "優先度ベースの動画管理。LIVE/アーカイブのみ登録（デフォルト: 有効）"
+        ttk.Label(frame, text=explanation_text, foreground='gray', wraplength=400, justify=tk.LEFT, font=("", 8)).pack(
+            anchor=tk.W, padx=20, pady=(0, 5)
+        )
 
         # BLUESKY_POST_ENABLED
         # （アカウントタブでも設定しているが、投稿保護タブでも表示）
@@ -472,7 +535,13 @@ class UnifiedSettingsWindow:
             frame,
             text="BLUESKY_POST_ENABLED (Bluesky への投稿を有効化)",
             variable=bluesky_post_enabled_var
-        ).pack(anchor=tk.W, pady=5)
+        ).pack(anchor=tk.W, pady=3)
+
+        # BLUESKY_POST_ENABLED説明
+        explanation_text = "Bluesky への投稿機能の有効/無効切り替え"
+        ttk.Label(frame, text=explanation_text, foreground='gray', wraplength=400, justify=tk.LEFT, font=("", 8)).pack(
+            anchor=tk.W, padx=20, pady=(0, 5)
+        )
 
     def _build_subtab_posting_autopost(self, parent_notebook):
         """タブ 3-2: 自動投稿設定"""
@@ -483,7 +552,7 @@ class UnifiedSettingsWindow:
         frame.pack(fill=tk.BOTH, expand=True)
 
         # AUTOPOST_INTERVAL_MINUTES
-        ttk.Label(frame, text="AUTOPOST_INTERVAL_MINUTES", font=("", 10, "bold")).grid(row=0, column=0, sticky=tk.W, pady=5)
+        ttk.Label(frame, text="投稿間隔", font=("", 10, "bold")).grid(row=0, column=0, sticky=tk.W, pady=3)
         autopost_interval_var = tk.StringVar(
             value=self.settings_dict.get('AUTOPOST_INTERVAL_MINUTES', '5')
         )
@@ -494,10 +563,15 @@ class UnifiedSettingsWindow:
             textvariable=autopost_interval_var,
             width=10
         ).grid(row=0, column=1, sticky=tk.W, padx=5)
-        ttk.Label(frame, text="分（1-60）", foreground='gray').grid(row=0, column=2, sticky=tk.W)
+
+        # 投稿間隔説明
+        explanation_text = "連続投稿によるスパム化を防止（デフォルト: 5分）"
+        ttk.Label(frame, text=explanation_text, foreground='gray', wraplength=400, justify=tk.LEFT, font=("", 8)).grid(
+            row=1, column=0, columnspan=3, sticky=tk.W, padx=(10, 0), pady=(0, 5)
+        )
 
         # AUTOPOST_LOOKBACK_MINUTES
-        ttk.Label(frame, text="AUTOPOST_LOOKBACK_MINUTES", font=("", 10, "bold")).grid(row=1, column=0, sticky=tk.W, pady=5)
+        ttk.Label(frame, text="時間窓", font=("", 10, "bold")).grid(row=2, column=0, sticky=tk.W, pady=3)
         autopost_lookback_var = tk.StringVar(
             value=self.settings_dict.get('AUTOPOST_LOOKBACK_MINUTES', '30')
         )
@@ -507,11 +581,16 @@ class UnifiedSettingsWindow:
             from_=5, to=1440,
             textvariable=autopost_lookback_var,
             width=10
-        ).grid(row=1, column=1, sticky=tk.W, padx=5)
-        ttk.Label(frame, text="分（5-1440）", foreground='gray').grid(row=1, column=2, sticky=tk.W)
+        ).grid(row=2, column=1, sticky=tk.W, padx=5)
+
+        # 時間窓説明
+        explanation_text = "再起動時の取りこぼし防止を目的（デフォルト: 30分）"
+        ttk.Label(frame, text=explanation_text, foreground='gray', wraplength=400, justify=tk.LEFT, font=("", 8)).grid(
+            row=3, column=0, columnspan=3, sticky=tk.W, padx=(10, 0), pady=(0, 5)
+        )
 
         # AUTOPOST_UNPOSTED_THRESHOLD
-        ttk.Label(frame, text="AUTOPOST_UNPOSTED_THRESHOLD", font=("", 10, "bold")).grid(row=2, column=0, sticky=tk.W, pady=5)
+        ttk.Label(frame, text="大量検知閾値", font=("", 10, "bold")).grid(row=4, column=0, sticky=tk.W, pady=3)
         autopost_threshold_var = tk.StringVar(
             value=self.settings_dict.get('AUTOPOST_UNPOSTED_THRESHOLD', '20')
         )
@@ -521,8 +600,13 @@ class UnifiedSettingsWindow:
             from_=1, to=1000,
             textvariable=autopost_threshold_var,
             width=10
-        ).grid(row=2, column=1, sticky=tk.W, padx=5)
-        ttk.Label(frame, text="件（1-1000）", foreground='gray').grid(row=2, column=2, sticky=tk.W)
+        ).grid(row=4, column=1, sticky=tk.W, padx=5)
+
+        # 大量検知閾値説明
+        explanation_text = "未投稿動画がこの件数以上あると安全弁が働く（デフォルト: 20件）"
+        ttk.Label(frame, text=explanation_text, foreground='gray', wraplength=400, justify=tk.LEFT, font=("", 8)).grid(
+            row=5, column=0, columnspan=3, sticky=tk.W, padx=(10, 0), pady=(0, 5)
+        )
 
         # AUTOPOST_INCLUDE_NORMAL
         autopost_normal_var = tk.BooleanVar(
@@ -531,9 +615,15 @@ class UnifiedSettingsWindow:
         self.ui_vars['AUTOPOST_INCLUDE_NORMAL'] = autopost_normal_var
         ttk.Checkbutton(
             frame,
-            text="AUTOPOST_INCLUDE_NORMAL (通常動画を含める)",
+            text="通常動画を含める",
             variable=autopost_normal_var
-        ).grid(row=3, column=0, columnspan=3, sticky=tk.W, pady=5)
+        ).grid(row=6, column=0, columnspan=3, sticky=tk.W, pady=3)
+
+        # 通常動画説明
+        explanation_text = "通常の動画投稿も投稿対象に含める（デフォルト: 有効）"
+        ttk.Label(frame, text=explanation_text, foreground='gray', wraplength=400, justify=tk.LEFT, font=("", 8)).grid(
+            row=7, column=0, columnspan=3, sticky=tk.W, padx=(10, 0), pady=(0, 5)
+        )
 
         # AUTOPOST_INCLUDE_PREMIERE
         autopost_premiere_var = tk.BooleanVar(
@@ -542,9 +632,15 @@ class UnifiedSettingsWindow:
         self.ui_vars['AUTOPOST_INCLUDE_PREMIERE'] = autopost_premiere_var
         ttk.Checkbutton(
             frame,
-            text="AUTOPOST_INCLUDE_PREMIERE (プレミア配信を含める)",
+            text="プレミア配信を含める",
             variable=autopost_premiere_var
-        ).grid(row=4, column=0, columnspan=3, sticky=tk.W, pady=5)
+        ).grid(row=8, column=0, columnspan=3, sticky=tk.W, pady=3)
+
+        # プレミア配信説明
+        explanation_text = "プレミア配信も投稿対象に含める（デフォルト: 有効）"
+        ttk.Label(frame, text=explanation_text, foreground='gray', wraplength=400, justify=tk.LEFT, font=("", 8)).grid(
+            row=9, column=0, columnspan=3, sticky=tk.W, padx=(10, 0), pady=(0, 5)
+        )
 
     def _build_subtab_posting_manual(self, parent_notebook):
         """タブ 3-3: 手動投稿設定"""
@@ -561,9 +657,15 @@ class UnifiedSettingsWindow:
         self.ui_vars['YOUTUBE_LIVE_AUTO_POST_SCHEDULE'] = youtube_live_schedule_var
         ttk.Checkbutton(
             frame,
-            text="YOUTUBE_LIVE_AUTO_POST_SCHEDULE (予約枠を投稿)",
+            text="予約枠を投稿",
             variable=youtube_live_schedule_var
-        ).pack(anchor=tk.W, pady=5)
+        ).pack(anchor=tk.W, pady=3)
+
+        # 予約枠説明
+        explanation_text = "放送枠が立った時（upcoming/schedule状態）の予約通知投稿"
+        ttk.Label(frame, text=explanation_text, foreground='gray', wraplength=400, justify=tk.LEFT, font=("", 8)).pack(
+            anchor=tk.W, padx=20, pady=(0, 5)
+        )
 
         # YOUTUBE_LIVE_AUTO_POST_LIVE
         youtube_live_live_var = tk.BooleanVar(
@@ -572,9 +674,15 @@ class UnifiedSettingsWindow:
         self.ui_vars['YOUTUBE_LIVE_AUTO_POST_LIVE'] = youtube_live_live_var
         ttk.Checkbutton(
             frame,
-            text="YOUTUBE_LIVE_AUTO_POST_LIVE (配信中・終了を投稿)",
+            text="配信中・終了を投稿",
             variable=youtube_live_live_var
-        ).pack(anchor=tk.W, pady=5)
+        ).pack(anchor=tk.W, pady=3)
+
+        # 配信中・終了説明
+        explanation_text = "配信開始・終了時の通知投稿"
+        ttk.Label(frame, text=explanation_text, foreground='gray', wraplength=400, justify=tk.LEFT, font=("", 8)).pack(
+            anchor=tk.W, padx=20, pady=(0, 5)
+        )
 
         # YOUTUBE_LIVE_AUTO_POST_ARCHIVE
         youtube_live_archive_var = tk.BooleanVar(
@@ -583,9 +691,15 @@ class UnifiedSettingsWindow:
         self.ui_vars['YOUTUBE_LIVE_AUTO_POST_ARCHIVE'] = youtube_live_archive_var
         ttk.Checkbutton(
             frame,
-            text="YOUTUBE_LIVE_AUTO_POST_ARCHIVE (アーカイブを投稿)",
+            text="アーカイブを投稿",
             variable=youtube_live_archive_var
-        ).pack(anchor=tk.W, pady=5)
+        ).pack(anchor=tk.W, pady=3)
+
+        # アーカイブ説明
+        explanation_text = "YouTube Live のアーカイブ（録画）が公開された時の通知投稿"
+        ttk.Label(frame, text=explanation_text, foreground='gray', wraplength=400, justify=tk.LEFT, font=("", 8)).pack(
+            anchor=tk.W, padx=20, pady=(0, 5)
+        )
 
     def _build_tab_live(self):
         """タブ 4: YouTube Live（核心タブ、サブタブ 5分割）"""
