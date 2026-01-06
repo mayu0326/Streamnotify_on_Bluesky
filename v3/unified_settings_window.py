@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 """
-統合設定ウィンドウ (v3.4.0+)
+統合設定ウィンドウ (v3.3.0+)
 
 全設定項目を GUI で一元管理し、settings.env のファイル破損を防止
 - タブ式UI (ttk.Notebook)
@@ -588,7 +588,7 @@ class UnifiedSettingsWindow:
         ).pack(anchor=tk.W, pady=5)
 
     def _build_tab_live(self):
-        """タブ 4: YouTube Live（核心タブ、サブタブ 4分割）"""
+        """タブ 4: YouTube Live（核心タブ、サブタブ 5分割）"""
         tab = ttk.Frame(self.notebook)
         self.notebook.add(tab, text="🎬 Live設定")
 
@@ -607,6 +607,9 @@ class UnifiedSettingsWindow:
 
         # サブタブ 4-4: ポーリング設定
         self._build_subtab_live_polling(sub_notebook)
+
+        # ★ 【v3.3.3】サブタブ 4-5: キャッシュ管理
+        self._build_subtab_live_cache(sub_notebook)
 
     def _build_subtab_live_timing(self, parent_notebook):
         """タブ 4-1: 投稿タイミング"""
@@ -703,7 +706,7 @@ class UnifiedSettingsWindow:
 
         # 非対応項目
         ttk.Separator(frame, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=10)
-        ttk.Label(frame, text="以下の項目は現在非対応です（将来実装予定）", font=("", 9, "bold"), foreground="gray").pack(anchor=tk.W, pady=5)
+        ttk.Label(frame, text="以下の項目は非対応です(将来的な対応予定もありません)", font=("", 9, "bold"), foreground="gray").pack(anchor=tk.W, pady=5)
 
         ttk.Checkbutton(frame, text="🎥 YouTube Shorts", state='disabled').pack(anchor=tk.W, pady=3)
         ttk.Checkbutton(frame, text="👥 メンバー限定動画", state='disabled').pack(anchor=tk.W, pady=3)
@@ -785,6 +788,345 @@ class UnifiedSettingsWindow:
             width=10
         ).grid(row=4, column=1, sticky=tk.W, padx=5)
         ttk.Label(frame, text="分（30-480）", foreground='gray').grid(row=4, column=2, sticky=tk.W)
+
+    def _build_subtab_live_cache(self, parent_notebook):
+        """★ 【v3.3.3】タブ 4-5: キャッシュ管理"""
+        sub_tab = ttk.Frame(parent_notebook)
+        parent_notebook.add(sub_tab, text="💾 キャッシュ管理")
+
+        frame = ttk.Frame(sub_tab, padding=10)
+        frame.pack(fill=tk.BOTH, expand=True)
+
+        # タイトル
+        ttk.Label(frame, text="YouTube キャッシュ管理", font=("", 10, "bold")).pack(anchor=tk.W, pady=10)
+        ttk.Label(frame, text="注意：実行中は複数回実行できません（1起動1回）", foreground='red').pack(anchor=tk.W, pady=5)
+
+        # ボタン用フレーム
+        button_frame = ttk.LabelFrame(frame, text="キャッシュ操作", padding=10)
+        button_frame.pack(fill=tk.BOTH, expand=True, pady=10)
+
+        # ボタン状態フラグ（クラス変数として保持）
+        if not hasattr(self, '_cache_operation_running'):
+            self._cache_operation_running = False
+
+        # 1. LIVEキャッシュをクリア
+        ttk.Button(
+            button_frame,
+            text="🗑️ LIVEキャッシュをクリア",
+            command=self._on_clear_live_cache
+        ).pack(fill=tk.X, padx=5, pady=5)
+        ttk.Label(button_frame, text="Live（schedule/live/completed/archive）のキャッシュをすべてクリア",
+                  foreground='gray', font=("", 8)).pack(anchor=tk.W, padx=10, pady=2)
+
+        # 2. Schedule キャッシュを更新
+        ttk.Button(
+            button_frame,
+            text="📅 Schedule キャッシュを更新",
+            command=self._on_update_schedule_cache
+        ).pack(fill=tk.X, padx=5, pady=5)
+        ttk.Label(button_frame, text="Schedule 状態の Live がなければスキップ（1時間未満なら更新しない）",
+                  foreground='gray', font=("", 8)).pack(anchor=tk.W, padx=10, pady=2)
+
+        # 3. LIVE（upcoming/live/end）キャッシュを更新
+        ttk.Button(
+            button_frame,
+            text="🔴 LIVE キャッシュを更新",
+            command=self._on_update_live_cache
+        ).pack(fill=tk.X, padx=5, pady=5)
+        ttk.Label(button_frame, text="Upcoming/Live/End 状態の Live がなければスキップ（1時間未満なら更新しない）",
+                  foreground='gray', font=("", 8)).pack(anchor=tk.W, padx=10, pady=2)
+
+        # 4. Archive キャッシュを更新
+        ttk.Button(
+            button_frame,
+            text="🎬 Archive キャッシュを更新",
+            command=self._on_update_archive_cache
+        ).pack(fill=tk.X, padx=5, pady=5)
+        ttk.Label(button_frame, text="Archive 状態の Live がなければスキップ（1時間未満なら更新しない）",
+                  foreground='gray', font=("", 8)).pack(anchor=tk.W, padx=10, pady=2)
+
+        # 5. 動画（video）キャッシュを更新
+        ttk.Button(
+            button_frame,
+            text="🎥 動画キャッシュを更新",
+            command=self._on_update_video_cache
+        ).pack(fill=tk.X, padx=5, pady=5)
+        ttk.Label(button_frame, text="通常動画がなければスキップ（7日以上前のキャッシュのみ更新）",
+                  foreground='gray', font=("", 8)).pack(anchor=tk.W, padx=10, pady=2)
+
+        # 6. キャッシュ強制更新
+        ttk.Button(
+            button_frame,
+            text="⚡ キャッシュ強制更新（全件）",
+            command=self._on_force_update_all_cache
+        ).pack(fill=tk.X, padx=5, pady=5)
+        ttk.Label(button_frame, text="YouTube 全件キャッシュを更新（50件ごとバッチ処理、時間がかかります）",
+                  foreground='red', font=("", 8)).pack(anchor=tk.W, padx=10, pady=2)
+
+    def _on_clear_live_cache(self):
+        """★ 【v3.3.3】LIVEキャッシュをクリア"""
+        if self._cache_operation_running:
+            messagebox.showwarning("警告", "キャッシュ操作が実行中です。終了を待ってください。")
+            return
+
+        if not messagebox.askyesno("確認", "Live（schedule/live/completed/archive）のキャッシュをクリアしますか？"):
+            return
+
+        self._cache_operation_running = True
+        try:
+            # DB から Live 関連をクリア
+            if self.db:
+                # youtube_live_cache テーブルをクリア
+                try:
+                    from deleted_video_cache import get_deleted_video_cache
+                    deleted_cache = get_deleted_video_cache()
+
+                    # Live 関連動画をクリア（簡略版：DB から取得して削除）
+                    videos = self.db.get_all_videos()
+                    live_count = 0
+                    for video in videos:
+                        content_type = video.get('content_type', '')
+                        if content_type in ['schedule', 'live', 'completed', 'archive']:
+                            # キャッシュをクリア（DB の該当レコードを削除）
+                            self.db.delete_video(video['video_id'])
+                            live_count += 1
+
+                    messagebox.showinfo("完了", f"✅ {live_count} 件の Live キャッシュをクリアしました")
+                    logger.info(f"[キャッシュ管理] Live キャッシュをクリア: {live_count} 件")
+                except Exception as e:
+                    messagebox.showerror("エラー", f"❌ キャッシュクリア中にエラー:\n{e}")
+                    logger.error(f"[キャッシュ管理] エラー: {e}")
+            else:
+                messagebox.showwarning("警告", "DB インスタンスが利用不可です")
+        finally:
+            self._cache_operation_running = False
+
+    def _on_update_schedule_cache(self):
+        """★ 【v3.3.3】Schedule キャッシュを更新"""
+        if self._cache_operation_running:
+            messagebox.showwarning("警告", "キャッシュ操作が実行中です。終了を待ってください。")
+            return
+
+        if not messagebox.askyesno("確認", "Schedule 状態の Live キャッシュを更新しますか？\n（1時間以内の更新済みはスキップします）"):
+            return
+
+        self._cache_operation_running = True
+        try:
+            self._update_cache_by_type('schedule')
+        finally:
+            self._cache_operation_running = False
+
+    def _on_update_live_cache(self):
+        """★ 【v3.3.3】LIVE（upcoming/live/end）キャッシュを更新"""
+        if self._cache_operation_running:
+            messagebox.showwarning("警告", "キャッシュ操作が実行中です。終了を待ってください。")
+            return
+
+        if not messagebox.askyesno("確認", "Upcoming/Live/End 状態の Live キャッシュを更新しますか？\n（1時間以内の更新済みはスキップします）"):
+            return
+
+        self._cache_operation_running = True
+        try:
+            self._update_cache_by_type('live')
+        finally:
+            self._cache_operation_running = False
+
+    def _on_update_archive_cache(self):
+        """★ 【v3.3.3】Archive キャッシュを更新"""
+        if self._cache_operation_running:
+            messagebox.showwarning("警告", "キャッシュ操作が実行中です。終了を待ってください。")
+            return
+
+        if not messagebox.askyesno("確認", "Archive 状態の Live キャッシュを更新しますか？\n（1時間以内の更新済みはスキップします）"):
+            return
+
+        self._cache_operation_running = True
+        try:
+            self._update_cache_by_type('archive')
+        finally:
+            self._cache_operation_running = False
+
+    def _on_update_video_cache(self):
+        """★ 【v3.3.3】動画（video）キャッシュを更新"""
+        if self._cache_operation_running:
+            messagebox.showwarning("警告", "キャッシュ操作が実行中です。終了を待ってください。")
+            return
+
+        if not messagebox.askyesno("確認", "動画キャッシュを更新しますか？\n（7日以上前のキャッシュのみ更新）"):
+            return
+
+        self._cache_operation_running = True
+        try:
+            self._update_cache_by_type('video')
+        finally:
+            self._cache_operation_running = False
+
+    def _on_force_update_all_cache(self):
+        """★ 【v3.3.3】キャッシュ強制更新（全件）"""
+        if self._cache_operation_running:
+            messagebox.showwarning("警告", "キャッシュ操作が実行中です。終了を待ってください。")
+            return
+
+        if not messagebox.askyesno("確認", "YouTube 全件キャッシュを強制更新しますか？\n（時間がかかる場合があります）"):
+            return
+
+        self._cache_operation_running = True
+        try:
+            self._update_cache_by_type('all')
+        finally:
+            self._cache_operation_running = False
+
+    def _update_cache_by_type(self, cache_type):
+        """★ 【v3.3.3】キャッシュを種別ごとに更新（共通メソッド）"""
+        from datetime import datetime, timedelta
+
+        try:
+            if not self.db:
+                messagebox.showwarning("警告", "DB インスタンスが利用不可です")
+                return
+
+            # API プラグイン取得
+            try:
+                from plugin_manager import get_plugin_manager
+                plugin_mgr = get_plugin_manager()
+                youtube_api_plugin = plugin_mgr.get_plugin("youtube_api_plugin")
+                if not youtube_api_plugin or not youtube_api_plugin.is_available():
+                    messagebox.showerror("エラー", "❌ YouTube API プラグインが利用不可です")
+                    return
+            except Exception as e:
+                messagebox.showerror("エラー", f"❌ プラグイン取得エラー:\n{e}")
+                return
+
+            # Classifier 取得
+            try:
+                from youtube_core.youtube_video_classifier import get_video_classifier
+                from config import get_config
+                config = get_config("settings.env")
+                classifier = get_video_classifier(api_key=config.youtube_api_key)
+            except Exception as e:
+                messagebox.showerror("エラー", f"❌ Classifier 取得エラー:\n{e}")
+                return
+
+            updated_count = 0
+            skipped_count = 0
+            error_count = 0
+
+            if cache_type == 'schedule':
+                # Schedule Live のみ更新
+                videos = self.db.get_all_videos()
+                for video in videos:
+                    content_type = video.get('content_type', '')
+                    if content_type == 'schedule':
+                        if self._should_update_cache(video, cache_type='live'):
+                            try:
+                                classifier.classify_video(video['video_id'], force_refresh=True)
+                                updated_count += 1
+                            except Exception as e:
+                                error_count += 1
+                                logger.warning(f"[キャッシュ更新] エラー ({video['video_id']}): {e}")
+                        else:
+                            skipped_count += 1
+
+            elif cache_type == 'live':
+                # Upcoming/Live/End Live のみ更新
+                videos = self.db.get_all_videos()
+                for video in videos:
+                    content_type = video.get('content_type', '')
+                    if content_type in ['upcoming', 'live', 'end']:
+                        if self._should_update_cache(video, cache_type='live'):
+                            try:
+                                classifier.classify_video(video['video_id'], force_refresh=True)
+                                updated_count += 1
+                            except Exception as e:
+                                error_count += 1
+                                logger.warning(f"[キャッシュ更新] エラー ({video['video_id']}): {e}")
+                        else:
+                            skipped_count += 1
+
+            elif cache_type == 'archive':
+                # Archive Live のみ更新
+                videos = self.db.get_all_videos()
+                for video in videos:
+                    content_type = video.get('content_type', '')
+                    if content_type == 'archive':
+                        if self._should_update_cache(video, cache_type='live'):
+                            try:
+                                classifier.classify_video(video['video_id'], force_refresh=True)
+                                updated_count += 1
+                            except Exception as e:
+                                error_count += 1
+                                logger.warning(f"[キャッシュ更新] エラー ({video['video_id']}): {e}")
+                        else:
+                            skipped_count += 1
+
+            elif cache_type == 'video':
+                # 動画のみ更新（7日以上前）
+                videos = self.db.get_all_videos()
+                for video in videos:
+                    content_type = video.get('content_type', '')
+                    if content_type == 'video':
+                        if self._should_update_cache(video, cache_type='video'):
+                            try:
+                                classifier.classify_video(video['video_id'], force_refresh=True)
+                                updated_count += 1
+                            except Exception as e:
+                                error_count += 1
+                                logger.warning(f"[キャッシュ更新] エラー ({video['video_id']}): {e}")
+                        else:
+                            skipped_count += 1
+
+            elif cache_type == 'all':
+                # 全件更新（50件ごとバッチ）
+                videos = self.db.get_all_videos()
+                batch_size = 50
+                for i in range(0, len(videos), batch_size):
+                    batch = videos[i:i+batch_size]
+                    for video in batch:
+                        try:
+                            classifier.classify_video(video['video_id'], force_refresh=True)
+                            updated_count += 1
+                        except Exception as e:
+                            error_count += 1
+                            logger.warning(f"[キャッシュ更新] エラー ({video['video_id']}): {e}")
+
+            # 結果を表示
+            message = f"✅ キャッシュ更新完了\n\n更新: {updated_count} 件"
+            if skipped_count > 0:
+                message += f"\nスキップ: {skipped_count} 件"
+            if error_count > 0:
+                message += f"\nエラー: {error_count} 件"
+
+            messagebox.showinfo("完了", message)
+            logger.info(f"[キャッシュ管理] {cache_type} キャッシュ更新完了: 更新 {updated_count}, スキップ {skipped_count}, エラー {error_count}")
+
+        except Exception as e:
+            messagebox.showerror("エラー", f"❌ キャッシュ更新中にエラー:\n{e}")
+            logger.error(f"[キャッシュ管理] エラー: {e}")
+
+    def _should_update_cache(self, video, cache_type='live'):
+        """★ 【v3.3.3】キャッシュを更新すべきかチェック"""
+        from datetime import datetime, timedelta
+
+        updated_at = video.get('updated_at')
+        if not updated_at:
+            return True  # 更新日時がなければ更新対象
+
+        try:
+            # 更新日時を解析
+            last_update = datetime.fromisoformat(updated_at)
+            now = datetime.now()
+            diff = now - last_update
+
+            if cache_type == 'live':
+                # Live 関連：1時間未満なら更新しない
+                return diff > timedelta(hours=1)
+            else:  # video
+                # 動画：7日以上前なら更新
+                return diff > timedelta(days=7)
+
+        except Exception as e:
+            logger.warning(f"[キャッシュ更新] 日時解析エラー: {e}")
+            return True  # エラー時は更新対象
 
     def _build_tab_templates(self):
         """タブ 5: テンプレート・画像（サブタブ 2分割）"""
@@ -911,7 +1253,7 @@ class UnifiedSettingsWindow:
 
 
         # Twitch テンプレート（グレーアウト）
-        ttk.Label(scrollable_frame, text="Twitch（非対応）", font=("", 10, "bold"), foreground="gray").grid(row=row, column=0, columnspan=2, sticky=tk.W, pady=5, padx=5)
+        ttk.Label(scrollable_frame, text="Twitch（対応予定）", font=("", 10, "bold"), foreground="gray").grid(row=row, column=0, columnspan=2, sticky=tk.W, pady=5, padx=5)
         row += 1
 
         ttk.Label(scrollable_frame, text="放送開始:", font=("", 9), foreground="gray").grid(row=row, column=0, sticky=tk.W, pady=2, padx=5)
@@ -960,7 +1302,7 @@ class UnifiedSettingsWindow:
         ).grid(row=0, column=2, sticky=tk.W, padx=3)
 
         # IMAGE_RESIZE_TARGET_WIDTH
-        ttk.Label(frame, text="横長画像のターゲット幅", font=("", 9, "bold")).grid(row=1, column=0, sticky=tk.W, pady=3)
+        ttk.Label(frame, text="横長画像の幅", font=("", 9, "bold")).grid(row=1, column=0, sticky=tk.W, pady=3)
         image_width_var = tk.StringVar(
             value=self.settings_dict.get('IMAGE_RESIZE_TARGET_WIDTH', '1200')
         )
@@ -974,7 +1316,7 @@ class UnifiedSettingsWindow:
         ttk.Label(frame, text="px（100-3840px,デフォルト: 1200）", foreground='gray').grid(row=1, column=2, sticky=tk.W)
 
         # IMAGE_RESIZE_TARGET_HEIGHT
-        ttk.Label(frame, text="横長画像のターゲット高さ", font=("", 9, "bold")).grid(row=2, column=0, sticky=tk.W, pady=3)
+        ttk.Label(frame, text="横長画像の高さ", font=("", 9, "bold")).grid(row=2, column=0, sticky=tk.W, pady=3)
         image_height_var = tk.StringVar(
             value=self.settings_dict.get('IMAGE_RESIZE_TARGET_HEIGHT', '800')
         )
@@ -1016,7 +1358,7 @@ class UnifiedSettingsWindow:
         ttk.Label(frame, text="Bytes（800KB推奨）", foreground='gray').grid(row=6, column=2, sticky=tk.W)
 
         # IMAGE_SIZE_THRESHOLD
-        ttk.Label(frame, text="IMAGE_SIZE_THRESHOLD", font=("", 9, "bold")).grid(row=7, column=0, sticky=tk.W, pady=3)
+        ttk.Label(frame, text="ファイルサイズ変換閾値", font=("", 9, "bold")).grid(row=7, column=0, sticky=tk.W, pady=3)
         size_threshold_var = tk.StringVar(
             value=self.settings_dict.get('IMAGE_SIZE_THRESHOLD', '900000')
         )
@@ -1030,7 +1372,7 @@ class UnifiedSettingsWindow:
         ttk.Label(frame, text="Bytes（900KB推奨）", foreground='gray').grid(row=7, column=2, sticky=tk.W)
 
         # IMAGE_SIZE_LIMIT
-        ttk.Label(frame, text="IMAGE_SIZE_LIMIT", font=("", 9, "bold")).grid(row=8, column=0, sticky=tk.W, pady=3)
+        ttk.Label(frame, text="ファイルサイズ上限", font=("", 9, "bold")).grid(row=8, column=0, sticky=tk.W, pady=3)
         size_limit_var = tk.StringVar(
             value=self.settings_dict.get('IMAGE_SIZE_LIMIT', '1000000')
         )
@@ -1098,7 +1440,7 @@ class UnifiedSettingsWindow:
         row += 1
 
         # LOG_RETENTION_DAYS
-        ttk.Label(scrollable_frame, text="LOG_RETENTION_DAYS", font=("", 9, "bold")).grid(row=row, column=0, sticky=tk.W, pady=3, padx=5)
+        ttk.Label(scrollable_frame, text="ログファイル保持日数", font=("", 9, "bold")).grid(row=row, column=0, sticky=tk.W, pady=3, padx=5)
         retention_days_var = tk.StringVar(
             value=self.settings_dict.get('LOG_RETENTION_DAYS', '30')
         )
@@ -1109,7 +1451,7 @@ class UnifiedSettingsWindow:
             textvariable=retention_days_var,
             width=10
         ).grid(row=row, column=1, sticky=tk.W, padx=5)
-        ttk.Label(scrollable_frame, text="日（1-365）", foreground='gray').grid(row=row, column=2, sticky=tk.W)
+        ttk.Label(scrollable_frame, text="日(範囲：1-365日）", foreground='gray').grid(row=row, column=2, sticky=tk.W)
         row += 1
 
         # セパレータ
