@@ -144,11 +144,9 @@ class StreamNotifyGUI:
             self.execute_post_button.config(state=tk.DISABLED)
         ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=2)
         ttk.Button(toolbar, text="ℹ️ 統計", command=self.show_stats).pack(side=tk.LEFT, padx=2)
-        ttk.Button(toolbar, text="🎬 Live設定", command=self.youtube_live_settings).pack(side=tk.LEFT, padx=2)
+        ttk.Button(toolbar, text="⚙️ アプリ設定", command=self.show_app_settings).pack(side=tk.LEFT, padx=2)
         ttk.Button(toolbar, text="🔧 プラグイン", command=self.show_plugins).pack(side=tk.LEFT, padx=2)
         ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=2)
-        ttk.Button(toolbar, text="💾 バックアップ", command=self.backup_data).pack(side=tk.LEFT, padx=2)
-        ttk.Button(toolbar, text="📂 復元", command=self.restore_data).pack(side=tk.LEFT, padx=2)
 
         # === フィルタパネル ===
         filter_frame = ttk.LabelFrame(self.root, text="🔍 フィルタ設定")
@@ -1460,6 +1458,10 @@ YouTube:      {youtube_count} 件 (投稿済み: {youtube_posted})
 重複投稿にご注意ください。
         """
         messagebox.showinfo("統計情報", stats)
+
+    def show_app_settings(self):
+        """統合設定ウィンドウを基本設定タブをアクティブにして開く（アプリ設定）"""
+        UnifiedSettingsWindow(self.root, initial_tab="basic", db=self.db)
 
     def youtube_live_settings(self):
         """統合設定ウィンドウを Live タブをアクティブにして開く（v3.4.0+）"""
