@@ -1,7 +1,7 @@
 ﻿# v3 プラグインシステム - 完全実装ガイド
 
-**対象バージョン**: v3.1.0+
-**最終更新**: 2025-12-18
+**対象バージョン**: v3.3.0+（YouTube Live プラグイン統合対応）
+**最終更新**: 2026-01-07
 **ステータス**: ✅ 実装完了・検証済み
 
 ---
@@ -9,13 +9,14 @@
 ## 📖 目次
 
 1. [概要](#概要)
-2. [Rich Text Facet（リンク化）](#rich-text-facetリンク化)
-3. [画像付き投稿](#画像付き投稿)
-4. [リンクカード埋め込み](#リンクカード埋め込み)
-5. [DRY RUN 機能](#dry-run機能)
-6. [GUI投稿設定](#gui投稿設定)
-7. [Bluesky プラグイン非導入時](#bluesky-プラグイン非導入時)
-8. [トラブルシューティング](#トラブルシューティング)
+2. [プラグインディレクトリ構成](#プラグインディレクトリ構成-v330)
+3. [Rich Text Facet（リンク化）](#rich-text-facetリンク化)
+4. [画像付き投稿](#画像付き投稿)
+5. [リンクカード埋め込み](#リンクカード埋め込み)
+6. [DRY RUN 機能](#dry-run機能)
+7. [GUI投稿設定](#gui投稿設定)
+8. [Bluesky プラグイン非導入時](#bluesky-プラグイン非導入時)
+9. [トラブルシューティング](#トラブルシューティング)
 
 ---
 
@@ -29,6 +30,56 @@
 - Windows / Linux 環境
 - Python 3.13+
 - Bluesky API v1
+
+---
+
+## プラグインディレクトリ構成（v3.3.0+）
+
+### ディレクトリ構造
+
+```
+v3/
+├── plugins/
+│   ├── __init__.py
+│   ├── bluesky_plugin.py              # Bluesky 投稿プラグイン
+│   ├── logging_plugin.py              # ロギング拡張プラグイン
+│   ├── niconico_plugin.py             # ニコニコ動画監視プラグイン
+│   │
+│   └── youtube/                       # YouTube 関連プラグイン（v3.3.0+）
+│       ├── __init__.py
+│       ├── youtube_api_plugin.py      # YouTube Data API 連携
+│       ├── live_module.py             # YouTube Live 分類・DB登録
+│       ├── live_scheduler.py          # YouTube Live 自動投稿スケジューラー
+│       └── __pycache__/
+│
+└── youtube_core/                      # YouTube コアモジュール（非プラグイン）
+    ├── __init__.py
+    ├── youtube_rss.py                 # RSS フィード取得・パース
+    ├── youtube_video_classifier.py    # 動画分類（通常/ショート/プレミア等）
+    ├── youtube_dedup_priority.py      # 優先度ロジック
+    └── youtube_websub.py              # WebSub（Pub-Sub）実装
+```
+
+### v3.3.0 での主要変更
+
+#### YouTube Live プラグインの構成化（v3.3.0）
+
+**v3.1.0～v3.2.x まで**:
+- YouTube Live ロジックが単一ファイルまたは散在
+
+**v3.3.0 以降**:
+- `plugins/youtube/` ディレクトリを新設
+- **3層構造に分離**:
+  1. **youtube_api_plugin.py** - プラグインインターフェース実装
+  2. **live_module.py** - Live 動画の分類・DB登録ロジック
+  3. **live_scheduler.py** - Live 自動投稿スケジューラー
+
+#### メリット
+
+✅ **責務の分離**: API 連携・分類・スケジューリングが明確に分離
+✅ **テスト容易性**: 各層を独立してユニットテスト可能
+✅ **保守性向上**: YouTube Live ロジックがディレクトリで一元化
+✅ **拡張性**: 他の配信プラットフォーム（Twitch など）も同様構造で追加可能
 
 ---
 

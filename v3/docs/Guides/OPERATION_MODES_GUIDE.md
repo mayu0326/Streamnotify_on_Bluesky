@@ -1,7 +1,7 @@
 # 動作モード完全ガイド
 
-**対象バージョン**: v3.1.0+
-**最終更新**: 2025-12-21
+**対象バージョン**: v3.3.0+（統合設定ウィンドウ対応）
+**最終更新**: 2026-01-07
 **ステータス**: ✅ 実装完了
 
 ---
@@ -133,13 +133,34 @@ RSS取得 → DB保存 → 【自動判定】 → 自動投稿 → Bluesky投稿
 
 ⚠️ **注意**: 投稿内容の確認なしに自動投稿されます。慎重に設定してください。
 
-### 設定方法
+### 設定方法（v3.3.0+ 統合設定ウィンドウ対応）
+
+#### 方法 1: GUI 統合設定ウィンドウ（推奨・v3.3.0+）
+
+**最も簡単で安全な方法です。GUI で視覚的に設定できます。**
+
+1. **GUI を起動**: `python main_v3.py`
+2. **⚙️ アプリ設定をクリック** → 統合設定ウィンドウが開く
+3. **「Posting」タブを選択**
+4. **「Operation Mode」で「AUTOPOST」を選択**
+5. **以下の項目を設定**:
+   - ✅ AUTOPOST_INTERVAL_MINUTES （最小投稿間隔: デフォルト 5分）
+   - ✅ AUTOPOST_LOOKBACK_MINUTES （安全チェック時間窓: デフォルト 30分）
+   - ✅ AUTOPOST_UNPOSTED_THRESHOLD （未投稿動画の安全上限: デフォルト 20件）
+   - ✅ AUTOPOST_INCLUDE_NORMAL （通常動画を投稿）
+   - ✅ AUTOPOST_INCLUDE_PREMIERE （プレミア配信を投稿）
+6. **💾 「保存」をクリック**
+7. **アプリを再起動**
+
+#### 方法 2: settings.env ファイル直接編集（従来方法）
+
+テキストエディタで `settings.env` を編集：
 
 ```env
 # settings.env に以下を設定
 APP_MODE=autopost
 
-# AUTOPOST 制御パラメータ（デフォルトのままでOK）
+# AUTOPOST 制御パラメータ
 AUTOPOST_INTERVAL_MINUTES=5           # 最小投稿間隔
 AUTOPOST_LOOKBACK_MINUTES=30          # 安全チェック時間窓
 AUTOPOST_UNPOSTED_THRESHOLD=20        # 未投稿動画の安全上限
@@ -519,8 +540,63 @@ COLLECT → その他のモード
 
 ---
 
+## 🎬 YouTube Live 自動投稿設定（v3.3.0+）
+
+### 概要
+
+**YouTube Live を自動投稿する場合は、別途 Live 関連設定が必要です。**
+
+v3.3.0+ で追加された `plugins/youtube/live_scheduler.py` により、以下が自動化されます：
+- ✅ YouTube Live の段階（放送予約 → 配信中 → アーカイブ）を自動検知
+- ✅ 各段階で自動投稿可能（設定次第）
+- ✅ ポーリング間隔を動的制御（配信中は頻繁、完了後はスロー）
+
+### GUI 設定（推奨・v3.3.0+）
+
+1. **⚙️ アプリ設定**クリック → 統合設定ウィンドウ
+2. **「Live」タブを選択**
+3. 以下の項目をチェック＆設定：
+
+   | 項目 | 説明 | デフォルト |
+   |:--|:--|:--:|
+   | `YOUTUBE_LIVE_AUTO_POST_SCHEDULE` | 放送予約時点で投稿 | ❌ (コメント行) |
+   | `YOUTUBE_LIVE_AUTO_POST_LIVE` | 配信開始時点で投稿 | ❌ (コメント行) |
+   | `YOUTUBE_LIVE_AUTO_POST_ARCHIVE` | アーカイブ時点で投稿 | ❌ (コメント行) |
+   | `YOUTUBE_LIVE_POLL_INTERVAL_ACTIVE` | 配信中のポーリング間隔（秒） | 60 |
+   | `YOUTUBE_LIVE_POLL_INTERVAL_COMPLETED_MIN` | アーカイブ後の最小間隔（秒） | 300 |
+
+4. **💾 保存をクリック**
+
+### 使用例
+
+#### 例 1: 放送開始時だけ投稿
+
+```env
+YOUTUBE_LIVE_AUTO_POST_SCHEDULE=false     # 予約時は投稿なし
+YOUTUBE_LIVE_AUTO_POST_LIVE=true          # 配信開始で投稿 ✅
+YOUTUBE_LIVE_AUTO_POST_ARCHIVE=false      # アーカイブ時は投稿なし
+```
+
+#### 例 2: すべての段階で投稿
+
+```env
+YOUTUBE_LIVE_AUTO_POST_SCHEDULE=true      # 予約時に投稿 ✅
+YOUTUBE_LIVE_AUTO_POST_LIVE=true          # 配信開始で投稿 ✅
+YOUTUBE_LIVE_AUTO_POST_ARCHIVE=true       # アーカイブ時に投稿 ✅
+```
+
+### ログで状態を監視
+
+```
+✅ YouTube Live 状態を更新: schedule (2026-01-07 10:00:00)
+✅ Live 自動投稿条件を満たしました → 投稿実行
+ℹ️ 次の Live ポーリング: 10秒後
+```
+
+---
+
 **関連ドキュメント**:
 - [GETTING_STARTED.md](./GETTING_STARTED.md) - クイックスタート
 - [FAQ_TROUBLESHOOTING_BASIC.md](./FAQ_TROUBLESHOOTING_BASIC.md) - よくある質問
 
-**最終更新**: 2025-12-21
+**最終更新**: 2026-01-07

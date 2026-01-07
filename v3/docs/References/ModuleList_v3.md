@@ -1,7 +1,7 @@
 ﻿# Stream notify on Bluesky - v3 モジュール一覧
 
-**最終更新**: 2026-01-03
-**対象バージョン**: v3.3.0+
+**最終更新**: 2026-01-07
+**対象バージョン**: v3.3.3
 
 ---
 
@@ -20,6 +20,8 @@
 | `image_manager.py` | ユーティリティ | 画像ダウンロード・保存・フォーマット変換・リトライ対応 | bluesky_core.py、niconico_plugin.py |
 | `logging_config.py` | ユーティリティ | ロギング統合設定（ロギングプラグイン対応） | main_v3.py |
 | `utils_v3.py` | ユーティリティ | 共通関数（日時フォーマット・リトライ・URLバリデーション） | bluesky_core.py、config.py ほか |
+| `config_sync.py` | ユーティリティ | 設定ファイル同期・自動挿入（新規キー検出・settings.env更新） | main_v3.py |
+| `unified_settings_window.py` | GUI | 統合設定ウィンドウ（v3.3.0+、settings.env UI編集・バリデーション） | gui_v3.py |
 
 ---
 
@@ -166,9 +168,9 @@
 ---
 
 ## 主要サードパーティライブラリ一覧
-| `logs/tuバージョン | 用途 |
-|-----------|-----------|------|・WebSub 実装 |
-| v3.3.0 | 2026-01-03 | YouTube Live プラグインリファクタリング（plugins/youtube/ へ移行）・ステータス分類統合・API ポーリング動的間隔制御
+
+| ライブラリ | バージョン | 用途 |
+|-----------|-----------|------|
 | `python-dotenv` | 1.0+ | settings.env ファイル読み込み |
 | `feedparser` | 6.0+ | YouTube・ニコニコ RSS パース |
 | `atproto` | 0.0.50+ | Bluesky AT Protocol API |
@@ -188,6 +190,8 @@
 | v3.0.0 | 2025-12-18 | AssetManager・GUI フィルタ・重複投稿防止・ドキュメント統一 |
 | v3.1.0 | 2025-12-18 | フィルタプロファイル保存・DB/設定バックアップ復元 |
 | v3.2.0 | 2025-12-18 | YouTube アーカイブテンプレート・放送枠予約テンプレート |
+| v3.3.0 | 2026-01-03 | YouTube Live プラグインリファクタリング（plugins/youtube/ へ移行）・ステータス分類統合・API ポーリング動的間隔制御 |
+| v3.3.3 | 2026-01-07 | バグ修正・ドキュメント更新 |
 
 ---
 
@@ -208,9 +212,3 @@
 - [プラグインシステムガイド](../Technical/PLUGIN_SYSTEM.md) - プラグイン開発・Rich Text Facet 実装
 - [AssetManager 統合ガイド](../Technical/ASSET_MANAGER_INTEGRATION_v3.md) - テンプレート・画像自動配置
 - [設定項目一覧](../Guides/SETTINGS_OVERVIEW.md) - settings.env 全設定項目
-| `asset_manager.py` | Asset ディレクトリからテンプレート・画像を自動配置（プラグイン導入時） |
-
-- `Asset/` ディレクトリに全サービス・全プラグイン用テンプレート/画像を保管
-- プラグイン導入時に必要なファイルを Asset から本番ディレクトリに自動コピー（実装完了: 2025-12）
-- main_v3.py で自動コピー処理を実行
-- 追加済みファイルはプラグイン削除後も残る（手動削除推奨）
