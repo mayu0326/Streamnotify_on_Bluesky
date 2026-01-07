@@ -40,6 +40,9 @@ __pycache__
 .gitattributes
 **/.github/**
 
+# 生成されたバックアップファイル
+**/v3/backup/**
+
 # その他の無視ファイル
 **/v2/utils/**
 **/v3/test_scripts/**
