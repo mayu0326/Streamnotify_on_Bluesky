@@ -18,6 +18,7 @@ from database import get_database
 from image_manager import get_image_manager
 from pathlib import Path
 from unified_settings_window import UnifiedSettingsWindow
+from template_editor_dialog import TemplateEditorDialog
 
 try:
     from PIL import Image
@@ -146,6 +147,7 @@ class StreamNotifyGUI:
         ttk.Button(toolbar, text="ℹ️ 統計", command=self.show_stats).pack(side=tk.LEFT, padx=2)
         ttk.Button(toolbar, text="⚙️ アプリ設定", command=self.show_app_settings).pack(side=tk.LEFT, padx=2)
         ttk.Button(toolbar, text="🔧 プラグイン", command=self.show_plugins).pack(side=tk.LEFT, padx=2)
+        ttk.Button(toolbar, text="📝 テンプレート編集", command=self.show_template_editor).pack(side=tk.LEFT, padx=2)
         ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=2)
 
         # === フィルタパネル ===
@@ -1540,6 +1542,189 @@ YouTube:      {youtube_count} 件 (投稿済み: {youtube_posted})
         button_frame = ttk.Frame(info_window)
         button_frame.pack(fill=tk.X, padx=10, pady=5)
         ttk.Button(button_frame, text="閉じる", command=info_window.destroy).pack(side=tk.RIGHT)
+
+    def show_template_editor(self):
+        """テンプレート編集ダイアログを表示（2階層構造）"""
+        try:
+            from template_utils import get_template_path
+
+            # ========== メインダイアログ（配信元選択） ==========
+            main_dialog = tk.Toplevel(self.root)
+            main_dialog.title("テンプレート編集")
+            main_dialog.geometry("400x300")
+            main_dialog.resizable(False, False)
+            main_dialog.transient(self.root)
+            main_dialog.grab_set()
+
+            ttk.Label(main_dialog, text="編集するテンプレートを選択してください", font=("Arial", 12, "bold")).pack(pady=15)
+
+            # フレーム
+            frame = ttk.Frame(main_dialog)
+            frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
+
+            def _open_template_editor(template_type):
+                """テンプレートエディタを開く共通処理"""
+                try:
+                    # テンプレートパスを自動的に取得
+                    template_path = get_template_path(template_type)
+
+                    initial_text = ""
+                    if template_path:
+                        try:
+                            from pathlib import Path
+                            path_obj = Path(template_path)
+                            if path_obj.exists():
+                                with open(path_obj, "r", encoding="utf-8") as f:
+                                    initial_text = f.read()
+                                logger.info(f"✅ テンプレートを読み込みました: {template_path}")
+                        except Exception as e:
+                            logger.warning(f"⚠️ テンプレート読み込みエラー: {e}")
+
+                    def on_save(text, ttype):
+                        """テンプレート保存コールバック"""
+                        try:
+                            from pathlib import Path
+                            # テンプレートパスを取得
+                            save_path = get_template_path(ttype)
+                            if save_path:
+                                path_obj = Path(save_path)
+                            else:
+                                # デフォルト保存先を決定
+                                path_obj = Path("templates") / f"{ttype}.txt"
+
+                            path_obj.parent.mkdir(parents=True, exist_ok=True)
+                            with open(path_obj, "w", encoding="utf-8") as f:
+                                f.write(text)
+                            logger.info(f"✅ テンプレート保存完了: {path_obj}")
+                            messagebox.showinfo("成功", f"テンプレートを保存しました。\n{path_obj}")
+                        except Exception as e:
+                            logger.error(f"❌ テンプレート保存エラー: {e}")
+                            messagebox.showerror("エラー", f"保存中にエラーが発生しました:\n{str(e)}")
+
+                    # テンプレート編集ダイアログを開く（main_dialog ではなく root を parent とする）
+                    editor = TemplateEditorDialog(
+                        master=self.root,
+                        template_type=template_type,
+                        initial_text=initial_text,
+                        on_save=on_save
+                    )
+                    # ダイアログを閉じたら詳細ダイアログとメインダイアログも閉じる
+                    main_dialog.wait_window(editor)
+                    main_dialog.destroy()
+
+                except Exception as e:
+                    logger.error(f"❌ テンプレートエディタエラー: {e}")
+                    messagebox.showerror("エラー", f"テンプレートエディタの起動に失敗しました:\n{str(e)}")
+
+            def _show_youtube_selector():
+                """YouTube テンプレート選択画面を表示"""
+                main_dialog.withdraw()
+
+                youtube_dialog = tk.Toplevel(self.root)
+                youtube_dialog.title("YouTube テンプレート選択")
+                youtube_dialog.geometry("400x350")
+                youtube_dialog.resizable(False, False)
+                youtube_dialog.transient(self.root)
+                youtube_dialog.grab_set()
+
+                ttk.Label(youtube_dialog, text="YouTube テンプレート種別を選択", font=("Arial", 11, "bold")).pack(pady=10)
+
+                # YouTube テンプレートタイプ
+                youtube_types = [
+                    ("🎬 新着動画", "youtube_new_video"),
+                    ("🔴 配信開始", "youtube_online"),
+                    ("📅 スケジュール枠", "youtube_schedule"),
+                    ("⏹️ 配信終了", "youtube_offline"),
+                    ("📹 アーカイブ", "youtube_archive"),
+                ]
+
+                youtube_frame = ttk.Frame(youtube_dialog)
+                youtube_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=10)
+
+                for display_name, template_type in youtube_types:
+                    def on_youtube_select(tt=template_type):
+                        """YouTube テンプレート選択後の処理"""
+                        youtube_dialog.destroy()
+                        _open_template_editor(tt)
+
+                    btn = ttk.Button(
+                        youtube_frame,
+                        text=display_name,
+                        command=on_youtube_select
+                    )
+                    btn.pack(fill=tk.X, pady=8)
+
+                # 戻るボタン
+                def go_back():
+                    youtube_dialog.destroy()
+                    main_dialog.deiconify()
+
+                ttk.Button(youtube_dialog, text="← 戻る", command=go_back).pack(pady=10)
+
+            def _show_twitch_selector():
+                """Twitch テンプレート選択画面を表示（まだ無効）"""
+                main_dialog.withdraw()
+
+                twitch_dialog = tk.Toplevel(self.root)
+                twitch_dialog.title("Twitch テンプレート選択")
+                twitch_dialog.geometry("400x250")
+                twitch_dialog.resizable(False, False)
+                twitch_dialog.transient(self.root)
+                twitch_dialog.grab_set()
+
+                ttk.Label(twitch_dialog, text="Twitch テンプレート種別を選択", font=("Arial", 11, "bold")).pack(pady=10)
+
+                # Twitch テンプレートタイプ
+                twitch_types = [
+                    ("🔴 配信開始", "twitch_online"),
+                    ("⏹️ 配信終了", "twitch_offline"),
+                ]
+
+                twitch_frame = ttk.Frame(twitch_dialog)
+                twitch_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=10)
+
+                for display_name, template_type in twitch_types:
+                    def on_twitch_select(tt=template_type):
+                        """Twitch テンプレート選択後の処理"""
+                        twitch_dialog.destroy()
+                        _open_template_editor(tt)
+
+                    btn = ttk.Button(
+                        twitch_frame,
+                        text=display_name,
+                        command=on_twitch_select
+                    )
+                    btn.pack(fill=tk.X, pady=8)
+
+                # 戻るボタン
+                def go_back():
+                    twitch_dialog.destroy()
+                    main_dialog.deiconify()
+
+                ttk.Button(twitch_dialog, text="← 戻る", command=go_back).pack(pady=10)
+
+            # メインボタン（配信元選択）
+            button_configs = [
+                ("▶️ YouTube", _show_youtube_selector, False),
+                ("🎵 ニコニコ", lambda: _open_template_editor("nico_new_video"), False),
+                ("🎮 Twitch", _show_twitch_selector, True),  # 無効状態
+            ]
+
+            for btn_text, btn_cmd, is_disabled in button_configs:
+                btn = ttk.Button(
+                    frame,
+                    text=btn_text,
+                    command=btn_cmd,
+                    state=tk.DISABLED if is_disabled else tk.NORMAL
+                )
+                btn.pack(fill=tk.X, pady=12)
+
+            # キャンセルボタン
+            ttk.Button(main_dialog, text="キャンセル", command=main_dialog.destroy).pack(pady=10)
+
+        except Exception as e:
+            logger.error(f"❌ テンプレート選択ダイアログエラー: {e}")
+            messagebox.showerror("エラー", f"テンプレート選択ダイアログの起動に失敗しました:\n{str(e)}")
 
     def backup_data(self):
         """データベース・テンプレート・設定をバックアップ"""
