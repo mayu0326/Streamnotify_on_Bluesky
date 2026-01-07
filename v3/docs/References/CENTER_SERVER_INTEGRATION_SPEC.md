@@ -155,10 +155,50 @@ YouTube RSS Hub
 | POST | `/register` | クライアント登録（Client → Server） | API Key |
 | GET | `/videos` | 動画情報取得（Client → Server） | - |
 | GET | `/health` | ヘルスチェック | - |
+| GET | `/client/health` | クライアント登録状況確認 | API Key |
 
 ---
 
 ## エンドポイント詳細
+
+### データベーススキーマ
+
+#### clients テーブル（サーバー側）
+
+| カラム | 型 | 説明 |
+|:--|:--|:--|
+| id | INTEGER PRIMARY KEY | 自動採番 ID |
+| client_id | TEXT UNIQUE NOT NULL | クライアント識別子 |
+| apikey | TEXT NOT NULL | API 認証キー |
+| created_at | TEXT | 登録日時（自動） |
+
+#### subscriptions テーブル（サーバー側）
+
+| カラム | 型 | 説明 |
+|:--|:--|:--|
+| id | INTEGER PRIMARY KEY | 自動採番 ID |
+| client_id | TEXT NOT NULL | クライアント識別子 |
+| channel_id | TEXT NOT NULL | YouTube チャンネル ID |
+| callback_url | TEXT NOT NULL | Webhook コールバック URL |
+| created_at | TEXT | 登録日時（自動） |
+| 複合キー | UNIQUE | (client_id, channel_id) の組み合わせで一意 |
+
+#### videos テーブル（channel_id ごとの SQLite DB）
+
+各 channel_id に対して専用の SQLite DB が作成されます。
+DB ファイルパス: `/root/data/subscribers/<channel_id>.db`
+
+| カラム | 型 | 説明 |
+|:--|:--|:--|
+| id | INTEGER PRIMARY KEY | 自動採番 ID |
+| video_id | TEXT UNIQUE NOT NULL | YouTube 動画 ID |
+| channel_id | TEXT NOT NULL | YouTube チャンネル ID |
+| title | TEXT | 動画タイトル |
+| video_url | TEXT | 動画 URL（予約フィールド） |
+| published_at | TEXT | 公開日時（ISO 8601 形式） |
+| created_at | TEXT | データベース登録日時（自動） |
+
+---
 
 ### 1. `/pubsub` - WebSub エンドポイント
 
@@ -197,7 +237,8 @@ async def pubsub_verify(request: Request):
     challenge = params.get("hub.challenge")
     verify_token = params.get("hub.verify_token")
 
-    if verify_token != VERIFY_TOKEN:  # VERIFY_TOKEN = "neco-verify-token"
+    # verify_token が提供されている場合、VERIFY_TOKEN と一致することを確認
+    if verify_token and verify_token != VERIFY_TOKEN:  # VERIFY_TOKEN = "neco-verify-token"
         raise HTTPException(status_code=403, detail="verify_token mismatch")
 
     if challenge:
@@ -247,54 +288,62 @@ async def pubsub_notify(request: Request):
     body_bytes = await request.body()
     body_text = body_bytes.decode("utf-8", errors="ignore")
 
-    ns = {
-        "atom": "http://www.w3.org/2005/Atom",
-        "yt": "http://www.youtube.com/xml/schemas/2015",
-    }
-    root = ET.fromstring(body_text)
+    try:
+        ns = {
+            "atom": "http://www.w3.org/2005/Atom",
+            "yt": "http://www.youtube.com/xml/schemas/2015",
+        }
+        root = ET.fromstring(body_text)
 
-    for entry in root.findall("{http://www.w3.org/2005/Atom}entry"):
-        # channel_id パース
-        channel_id_elem = entry.find("yt:channelId", ns)
-        if channel_id_elem is not None:
-            channel_id = channel_id_elem.text
-        else:
-            # フォールバック: author URI から抽出
-            author = entry.find("{http://www.w3.org/2005/Atom}author")
-            uri_elem = author.find("{http://www.w3.org/2005/Atom}uri") if author else None
-            author_uri = uri_elem.text if uri_elem is not None else ""
-            channel_id = author_uri.rsplit("/", 1)[-1] if author_uri else None
-
-        # video_id パース
-        video_id_elem = entry.find("yt:videoId", ns)
-        if video_id_elem is not None:
-            video_id = video_id_elem.text
-        else:
-            # フォールバック: id から抽出
-            entry_id_elem = entry.find("{http://www.w3.org/2005/Atom}id")
-            entry_id = entry_id_elem.text if entry_id_elem is not None else ""
-            if entry_id.startswith("yt:video:"):
-                video_id = entry_id.split("yt:video:")[-1]
+        for entry in root.findall("{http://www.w3.org/2005/Atom}entry"):
+            # channel_id パース
+            channel_id_elem = entry.find("yt:channelId", ns)
+            if channel_id_elem is not None:
+                channel_id = channel_id_elem.text
             else:
-                video_id = None
+                # フォールバック: author URI から抽出
+                author = entry.find("{http://www.w3.org/2005/Atom}author")
+                uri_elem = (
+                    author.find("{http://www.w3.org/2005/Atom}uri")
+                    if author is not None
+                    else None
+                )
+                author_uri = uri_elem.text if uri_elem is not None else ""
+                channel_id = author_uri.rsplit("/", 1)[-1] if author_uri else None
 
-        # title パース
-        title_elem = entry.find("{http://www.w3.org/2005/Atom}title")
-        title = title_elem.text if title_elem is not None else ""
+            # video_id パース
+            video_id_elem = entry.find("yt:videoId", ns)
+            if video_id_elem is not None:
+                video_id = video_id_elem.text
+            else:
+                # フォールバック: id から抽出
+                entry_id_elem = entry.find("{http://www.w3.org/2005/Atom}id")
+                entry_id = entry_id_elem.text if entry_id_elem is not None else ""
+                if entry_id.startswith("yt:video:"):
+                    video_id = entry_id.split("yt:video:")[-1]
+                else:
+                    video_id = None
 
-        # DB に保存
-        insert_video(
-            channel_id=channel_id,
-            video_id=video_id,
-            title=title,
-            video_url=None,
-            published_at=None,
-        )
+            # title パース
+            title_elem = entry.find("{http://www.w3.org/2005/Atom}title")
+            title = title_elem.text if title_elem is not None else ""
 
-        # ★ 今後実装: 登録済みクライアントへの転送
-        # subscribers = get_subscribers_for_channel(channel_id)
-        # for client_id, callback_url in subscribers:
-        #     forward_to_client(callback_url, channel_id, video_id, title)
+            # SQLite に保存
+            insert_video(
+                channel_id=channel_id,
+                video_id=video_id,
+                title=title,
+                video_url=None,
+                published_at=None,
+            )
+
+            # ★ 将来実装: 登録済みクライアントへの転送
+            # subscribers = get_subscribers_for_channel(channel_id)
+            # for client_id, callback_url in subscribers:
+            #     forward_to_client(callback_url, channel_id, video_id, title)
+
+    except Exception as e:
+        print("XML parse error:", e)
 
     return {"status": "ok"}
 ```
@@ -343,7 +392,11 @@ X-Client-API-Key: secret_api_key_a
 **認証フロー**:
 
 ```python
-def register_subscriber(body: RegisterRequest, x_client_api_key: str = Header(...)):
+@app.post("/register")
+async def register_subscriber(
+    body: RegisterRequest,
+    x_client_api_key: str = Header(..., alias="X-Client-API-Key"),
+):
     # Step 1: client_id に対応する API キーを DB から取得
     expected_key = get_client_apikey(body.client_id)
     if expected_key is None:
@@ -354,6 +407,7 @@ def register_subscriber(body: RegisterRequest, x_client_api_key: str = Header(..
         raise HTTPException(status_code=401, detail="Invalid API key")
 
     # Step 3: 認証 OK → subscriptions テーブルに登録
+    # 同じ client_id/channel_id の組み合わせは callback_url で上書き
     add_subscription(
         client_id=body.client_id,
         channel_id=body.channel_id,
@@ -383,6 +437,39 @@ Content-Type: application/json
 ### 3. `/videos` - 動画情報取得エンドポイント
 
 クライアントが、センターサーバーにキャッシュされている動画情報を取得します。
+
+**実装例** (Python):
+```python
+@app.get("/videos")
+async def list_videos(
+    channel_id: str = Query(..., description="YouTube channel ID"),
+    limit: int = Query(50, ge=1, le=200),
+):
+    db_path = get_channel_db_path(channel_id)
+    if not os.path.exists(db_path):
+        raise HTTPException(status_code=404, detail="channel not found")
+
+    conn = sqlite3.connect(db_path, timeout=5)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT id, video_id, channel_id, title, video_url, published_at, created_at
+        FROM videos
+        ORDER BY id DESC
+        LIMIT ?
+        """,
+        (limit,),
+    )
+    rows = cur.fetchall()
+    conn.close()
+
+    return {
+        "channel_id": channel_id,
+        "count": len(rows),
+        "items": [dict(r) for r in rows],
+    }
+```
 
 **リクエスト**:
 ```
@@ -438,7 +525,7 @@ Content-Type: application/json
 
 ### 4. `/health` - ヘルスチェック
 
-サーバーの稼働状況を確認します。
+サーバーの稼働状況を確認します（認証不要）。
 
 **リクエスト**:
 ```
@@ -452,6 +539,93 @@ Content-Type: application/json
 
 {"status": "ok"}
 ```
+
+---
+
+### 5. `/client/health` - クライアント登録状況確認
+
+クライアントの登録状況と特定のチャンネル購読の有無を確認します。
+
+**リクエスト**:
+```
+GET /client/health?client_id=your_client_id&channel_id=UCxxxxxx
+X-Client-API-Key: your_secret_api_key
+```
+
+**クエリ パラメータ**:
+
+| パラメータ | 型 | 必須 | 説明 |
+|:--|:--|:--|:--|
+| `client_id` | str | ✅ | クライアント識別子 |
+| `channel_id` | str | ❌ | YouTube チャンネル ID（省略時は全体確認） |
+
+**ヘッダ**:
+
+| ヘッダ | 説明 |
+|:--|:--|
+| `X-Client-API-Key` | API 認証キー（必須） |
+
+**実装例** (Python):
+```python
+@app.get("/client/health")
+async def client_health(
+    client_id: str = Query(...),
+    channel_id: str | None = Query(None),
+    x_client_api_key: str = Header(..., alias="X-Client-API-Key"),
+):
+    # client_id の APIキーチェック
+    expected_key = get_client_apikey(client_id)
+    if expected_key is None:
+        raise HTTPException(status_code=403, detail="Unknown client_id")
+
+    if x_client_api_key != expected_key:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+
+    # 登録状況確認
+    ensure_subscribers_db_initialized()
+    conn = sqlite3.connect(SUBSCRIBERS_DB, timeout=5)
+    cur = conn.cursor()
+
+    if channel_id:
+        cur.execute(
+            "SELECT 1 FROM subscriptions WHERE client_id = ? AND channel_id = ?",
+            (client_id, channel_id),
+        )
+    else:
+        cur.execute(
+            "SELECT 1 FROM subscriptions WHERE client_id = ?",
+            (client_id,),
+        )
+
+    row = cur.fetchone()
+    conn.close()
+
+    return {
+        "status": "ok",
+        "client_registered": expected_key is not None,
+        "subscription_exists": row is not None,
+    }
+```
+
+**レスポンス**:
+```json
+HTTP 200 OK
+Content-Type: application/json
+
+{
+  "status": "ok",
+  "client_registered": true,
+  "subscription_exists": true
+}
+```
+
+**パラメータ説明**:
+
+| フィールド | 説明 |
+|:--|:--|
+| `status` | リクエスト結果（常に "ok"） |
+| `client_registered` | クライアント ID がサーバーに登録されているか |
+| `subscription_exists` | channel_id が指定された場合、その購読が存在するか |
 
 ---
 
