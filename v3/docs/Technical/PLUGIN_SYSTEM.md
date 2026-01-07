@@ -27,7 +27,7 @@
 ### 対象デバイス
 
 - Windows / Linux 環境
-- Python 3.9+
+- Python 3.13+
 - Bluesky API v1
 
 ---

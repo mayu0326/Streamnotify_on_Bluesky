@@ -34,11 +34,11 @@ python main_v3.py を実行しても何も起動しない
 python --version
 ```
 
-**必須**: Python 3.10 以上
+**必須**: Python 3.13 以上
 
 ```
-Python 3.10.0 以上  ← OK
-Python 3.9.0 以下   ← NG（アップグレード必要）
+Python 3.13 以上  ← OK
+Python 3.12 以下   ← NG（アップグレード必要）
 ```
 
 **ステップ 2: 依存パッケージを再インストール**
