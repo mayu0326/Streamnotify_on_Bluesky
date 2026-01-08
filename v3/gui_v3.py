@@ -17,6 +17,8 @@ import calendar
 from database import get_database
 from image_manager import get_image_manager
 from pathlib import Path
+from unified_settings_window import UnifiedSettingsWindow
+from template_editor_dialog import TemplateEditorDialog
 
 try:
     from PIL import Image
@@ -143,11 +145,10 @@ class StreamNotifyGUI:
             self.execute_post_button.config(state=tk.DISABLED)
         ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=2)
         ttk.Button(toolbar, text="ℹ️ 統計", command=self.show_stats).pack(side=tk.LEFT, padx=2)
-        ttk.Button(toolbar, text="🎬 Live設定", command=self.youtube_live_settings).pack(side=tk.LEFT, padx=2)
+        ttk.Button(toolbar, text="⚙️ アプリ設定", command=self.show_app_settings).pack(side=tk.LEFT, padx=2)
         ttk.Button(toolbar, text="🔧 プラグイン", command=self.show_plugins).pack(side=tk.LEFT, padx=2)
+        ttk.Button(toolbar, text="📝 テンプレート編集", command=self.show_template_editor).pack(side=tk.LEFT, padx=2)
         ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=2)
-        ttk.Button(toolbar, text="💾 バックアップ", command=self.backup_data).pack(side=tk.LEFT, padx=2)
-        ttk.Button(toolbar, text="📂 復元", command=self.restore_data).pack(side=tk.LEFT, padx=2)
 
         # === フィルタパネル ===
         filter_frame = ttk.LabelFrame(self.root, text="🔍 フィルタ設定")
@@ -1460,197 +1461,13 @@ YouTube:      {youtube_count} 件 (投稿済み: {youtube_posted})
         """
         messagebox.showinfo("統計情報", stats)
 
+    def show_app_settings(self):
+        """統合設定ウィンドウを基本設定タブをアクティブにして開く（アプリ設定）"""
+        UnifiedSettingsWindow(self.root, initial_tab="basic", db=self.db)
+
     def youtube_live_settings(self):
-        """YouTube Live 投稿設定パネル（v3 API プラグイン対応）"""
-        # YouTube API プラグインの存在をチェック（v3では Live はAPI プラグインに統合）
-        youtube_api_plugin = self.plugin_manager.get_plugin("youtube_api_plugin")
-
-        if not youtube_api_plugin:
-            messagebox.showinfo(
-                "情報",
-                "YouTube API プラグインが導入されていません。\n"
-                "YOUTUBE_API_KEY を settings.env に設定してください。"
-            )
-            logger.info("ℹ️ YouTube API プラグインは導入されていません")
-            return
-
-        if not youtube_api_plugin.is_available():
-            messagebox.showwarning(
-                "警告",
-                "YouTube API プラグインが利用不可です。\n"
-                "YOUTUBE_API_KEY が正しく設定されていることを確認してください。"
-            )
-            return
-
-        settings_window = tk.Toplevel(self.root)
-        settings_window.title("YouTube Live 投稿設定")
-        settings_window.geometry("500x600")
-        settings_window.resizable(False, False)
-
-        # === 1. 投稿タイミング設定 ===
-        timing_frame = ttk.LabelFrame(settings_window, text="📅 投稿タイミング")
-        timing_frame.pack(fill=tk.X, padx=10, pady=10)
-
-        self.post_schedule_var = tk.BooleanVar(value=self.config.youtube_live_auto_post_schedule)
-        self.post_live_var = tk.BooleanVar(value=self.config.youtube_live_auto_post_live)
-        self.post_archive_var = tk.BooleanVar(value=self.config.youtube_live_auto_post_archive)
-
-        ttk.Checkbutton(
-            timing_frame,
-            text="📌 予約枠（upcoming）を投稿する",
-            variable=self.post_schedule_var
-        ).pack(anchor=tk.W, padx=10, pady=5)
-
-        ttk.Checkbutton(
-            timing_frame,
-            text="🔴 配信中・終了（live/completed）を投稿する",
-            variable=self.post_live_var
-        ).pack(anchor=tk.W, padx=10, pady=5)
-
-        ttk.Checkbutton(
-            timing_frame,
-            text="🎬 アーカイブ公開を投稿する",
-            variable=self.post_archive_var
-        ).pack(anchor=tk.W, padx=10, pady=5)
-
-        # === 2. 投稿遅延設定 ===
-        delay_frame = ttk.LabelFrame(settings_window, text="⏱️ 投稿遅延設定")
-        delay_frame.pack(fill=tk.X, padx=10, pady=10)
-
-        ttk.Label(delay_frame, text="配信開始後、いつ投稿するか：").pack(anchor=tk.W, padx=10, pady=5)
-
-        self.post_delay_var = tk.StringVar(
-            value=os.getenv("YOUTUBE_LIVE_POST_DELAY", "immediate")
-        )
-
-        delay_options = {
-            "immediate": "⚡ 即座に投稿",
-            "delay_5min": "⏰ 5分後に投稿",
-            "delay_30min": "🕐 30分後に投稿"
-        }
-
-        for value, label in delay_options.items():
-            ttk.Radiobutton(
-                delay_frame,
-                text=label,
-                variable=self.post_delay_var,
-                value=value
-            ).pack(anchor=tk.W, padx=20, pady=3)
-
-        # === 3. 動画種別フィルタ ===
-        filter_frame = ttk.LabelFrame(settings_window, text="🎬 動画種別フィルタ")
-        filter_frame.pack(fill=tk.X, padx=10, pady=10)
-
-        ttk.Label(filter_frame, text="以下の種別を AUTOPOST に含める：").pack(anchor=tk.W, padx=10, pady=5)
-
-        self.include_premiere_var = tk.BooleanVar(
-            value=self.config.autopost_include_premiere
-        )
-
-        ttk.Checkbutton(
-            filter_frame,
-            text="⭐ プレミア配信を投稿する",
-            variable=self.include_premiere_var
-        ).pack(anchor=tk.W, padx=10, pady=5)
-
-        # === 情報パネル ===
-        info_frame = ttk.LabelFrame(settings_window, text="ℹ️ 情報")
-        info_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-
-        info_text = tk.Text(info_frame, wrap=tk.WORD, font=("Courier New", 8), height=8)
-        info_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-
-        info_content = """📝 設定の説明
-
-【投稿タイミング】
-• 予約枠: 配信枠が立った直後
-• 配信中/終了: ライブ配信が開始/終了した時
-• アーカイブ: ライブ配信の動画が保存された時
-
-【投稿遅延】
-• 即座: 検知直後に投稿（スパム判定の可能性）
-• 5分後: 配信開始確認後に投稿
-• 30分後: 配信が安定した後に投稿
-
-【動画種別】
-• プレミア配信: プレミア（ライブ試聴会）
-
-⚠️ YouTube Shorts とメンバー限定動画は、現在のところ
-区別が難しいため非対応扱いです。今後の実装時に対応予定。"""
-
-        info_text.insert(tk.END, info_content)
-        info_text.config(state=tk.DISABLED)
-
-        # === ボタンパネル ===
-        button_frame = ttk.Frame(settings_window)
-        button_frame.pack(fill=tk.X, padx=10, pady=10)
-
-        ttk.Button(
-            button_frame,
-            text="💾 保存して閉じる",
-            command=lambda: self._save_youtube_live_settings(settings_window)
-        ).pack(side=tk.LEFT, padx=5)
-
-        ttk.Button(
-            button_frame,
-            text="キャンセル",
-            command=settings_window.destroy
-        ).pack(side=tk.LEFT, padx=5)
-
-    def _save_youtube_live_settings(self, window):
-        """YouTube Live 設定を config に保存"""
-        try:
-            # 環境変数に一時保存（アプリ再起動時に反映）
-            os.environ["YOUTUBE_LIVE_AUTO_POST_SCHEDULE"] = str(self.post_schedule_var.get()).lower()
-            os.environ["YOUTUBE_LIVE_AUTO_POST_LIVE"] = str(self.post_live_var.get()).lower()
-            os.environ["YOUTUBE_LIVE_AUTO_POST_ARCHIVE"] = str(self.post_archive_var.get()).lower()
-            os.environ["YOUTUBE_LIVE_POST_DELAY"] = self.post_delay_var.get()
-            os.environ["AUTOPOST_INCLUDE_PREMIERE"] = str(self.include_premiere_var.get()).lower()
-
-            # settings.env に書き込み
-            settings_file = Path("settings.env")
-            if settings_file.exists():
-                with open(settings_file, "r", encoding="utf-8") as f:
-                    content = f.read()
-
-                # 既存の行を置換
-                import re
-                content = re.sub(
-                    r'YOUTUBE_LIVE_AUTO_POST_SCHEDULE\s*=.*',
-                    f'YOUTUBE_LIVE_AUTO_POST_SCHEDULE={str(self.post_schedule_var.get()).lower()}',
-                    content
-                )
-                content = re.sub(
-                    r'YOUTUBE_LIVE_AUTO_POST_LIVE\s*=.*',
-                    f'YOUTUBE_LIVE_AUTO_POST_LIVE={str(self.post_live_var.get()).lower()}',
-                    content
-                )
-                content = re.sub(
-                    r'YOUTUBE_LIVE_AUTO_POST_ARCHIVE\s*=.*',
-                    f'YOUTUBE_LIVE_AUTO_POST_ARCHIVE={str(self.post_archive_var.get()).lower()}',
-                    content
-                )
-                content = re.sub(
-                    r'YOUTUBE_LIVE_POST_DELAY\s*=.*',
-                    f'YOUTUBE_LIVE_POST_DELAY={self.post_delay_var.get()}',
-                    content
-                )
-                content = re.sub(
-                    r'AUTOPOST_INCLUDE_PREMIERE\s*=.*',
-                    f'AUTOPOST_INCLUDE_PREMIERE={str(self.include_premiere_var.get()).lower()}',
-                    content
-                )
-
-                with open(settings_file, "w", encoding="utf-8") as f:
-                    f.write(content)
-
-            messagebox.showinfo("成功", "YouTube Live 設定を保存しました。\n\n※ アプリ再起動時に反映されます。")
-            logger.info("✅ YouTube Live 設定を保存しました（API プラグイン経由）")
-            window.destroy()
-
-        except Exception as e:
-            logger.error(f"❌ 設定保存エラー: {e}")
-            messagebox.showerror("エラー", f"設定の保存に失敗しました:\n{e}")
+        """統合設定ウィンドウを Live タブをアクティブにして開く（v3.4.0+）"""
+        UnifiedSettingsWindow(self.root, initial_tab="live", db=self.db)
 
     def show_plugins(self):
         """導入プラグイン情報を表示"""
@@ -1725,6 +1542,189 @@ YouTube:      {youtube_count} 件 (投稿済み: {youtube_posted})
         button_frame = ttk.Frame(info_window)
         button_frame.pack(fill=tk.X, padx=10, pady=5)
         ttk.Button(button_frame, text="閉じる", command=info_window.destroy).pack(side=tk.RIGHT)
+
+    def show_template_editor(self):
+        """テンプレート編集ダイアログを表示（2階層構造）"""
+        try:
+            from template_utils import get_template_path
+
+            # ========== メインダイアログ（配信元選択） ==========
+            main_dialog = tk.Toplevel(self.root)
+            main_dialog.title("テンプレート編集")
+            main_dialog.geometry("400x300")
+            main_dialog.resizable(False, False)
+            main_dialog.transient(self.root)
+            main_dialog.grab_set()
+
+            ttk.Label(main_dialog, text="編集するテンプレートを選択してください", font=("Arial", 12, "bold")).pack(pady=15)
+
+            # フレーム
+            frame = ttk.Frame(main_dialog)
+            frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
+
+            def _open_template_editor(template_type):
+                """テンプレートエディタを開く共通処理"""
+                try:
+                    # テンプレートパスを自動的に取得
+                    template_path = get_template_path(template_type)
+
+                    initial_text = ""
+                    if template_path:
+                        try:
+                            from pathlib import Path
+                            path_obj = Path(template_path)
+                            if path_obj.exists():
+                                with open(path_obj, "r", encoding="utf-8") as f:
+                                    initial_text = f.read()
+                                logger.info(f"✅ テンプレートを読み込みました: {template_path}")
+                        except Exception as e:
+                            logger.warning(f"⚠️ テンプレート読み込みエラー: {e}")
+
+                    def on_save(text, ttype):
+                        """テンプレート保存コールバック"""
+                        try:
+                            from pathlib import Path
+                            # テンプレートパスを取得
+                            save_path = get_template_path(ttype)
+                            if save_path:
+                                path_obj = Path(save_path)
+                            else:
+                                # デフォルト保存先を決定
+                                path_obj = Path("templates") / f"{ttype}.txt"
+
+                            path_obj.parent.mkdir(parents=True, exist_ok=True)
+                            with open(path_obj, "w", encoding="utf-8") as f:
+                                f.write(text)
+                            logger.info(f"✅ テンプレート保存完了: {path_obj}")
+                            messagebox.showinfo("成功", f"テンプレートを保存しました。\n{path_obj}")
+                        except Exception as e:
+                            logger.error(f"❌ テンプレート保存エラー: {e}")
+                            messagebox.showerror("エラー", f"保存中にエラーが発生しました:\n{str(e)}")
+
+                    # テンプレート編集ダイアログを開く（main_dialog ではなく root を parent とする）
+                    editor = TemplateEditorDialog(
+                        master=self.root,
+                        template_type=template_type,
+                        initial_text=initial_text,
+                        on_save=on_save
+                    )
+                    # ダイアログを閉じたら詳細ダイアログとメインダイアログも閉じる
+                    main_dialog.wait_window(editor)
+                    main_dialog.destroy()
+
+                except Exception as e:
+                    logger.error(f"❌ テンプレートエディタエラー: {e}")
+                    messagebox.showerror("エラー", f"テンプレートエディタの起動に失敗しました:\n{str(e)}")
+
+            def _show_youtube_selector():
+                """YouTube テンプレート選択画面を表示"""
+                main_dialog.withdraw()
+
+                youtube_dialog = tk.Toplevel(self.root)
+                youtube_dialog.title("YouTube テンプレート選択")
+                youtube_dialog.geometry("400x350")
+                youtube_dialog.resizable(False, False)
+                youtube_dialog.transient(self.root)
+                youtube_dialog.grab_set()
+
+                ttk.Label(youtube_dialog, text="YouTube テンプレート種別を選択", font=("Arial", 11, "bold")).pack(pady=10)
+
+                # YouTube テンプレートタイプ
+                youtube_types = [
+                    ("🎬 新着動画", "youtube_new_video"),
+                    ("🔴 配信開始", "youtube_online"),
+                    ("📅 スケジュール枠", "youtube_schedule"),
+                    ("⏹️ 配信終了", "youtube_offline"),
+                    ("📹 アーカイブ", "youtube_archive"),
+                ]
+
+                youtube_frame = ttk.Frame(youtube_dialog)
+                youtube_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=10)
+
+                for display_name, template_type in youtube_types:
+                    def on_youtube_select(tt=template_type):
+                        """YouTube テンプレート選択後の処理"""
+                        youtube_dialog.destroy()
+                        _open_template_editor(tt)
+
+                    btn = ttk.Button(
+                        youtube_frame,
+                        text=display_name,
+                        command=on_youtube_select
+                    )
+                    btn.pack(fill=tk.X, pady=8)
+
+                # 戻るボタン
+                def go_back():
+                    youtube_dialog.destroy()
+                    main_dialog.deiconify()
+
+                ttk.Button(youtube_dialog, text="← 戻る", command=go_back).pack(pady=10)
+
+            def _show_twitch_selector():
+                """Twitch テンプレート選択画面を表示（まだ無効）"""
+                main_dialog.withdraw()
+
+                twitch_dialog = tk.Toplevel(self.root)
+                twitch_dialog.title("Twitch テンプレート選択")
+                twitch_dialog.geometry("400x250")
+                twitch_dialog.resizable(False, False)
+                twitch_dialog.transient(self.root)
+                twitch_dialog.grab_set()
+
+                ttk.Label(twitch_dialog, text="Twitch テンプレート種別を選択", font=("Arial", 11, "bold")).pack(pady=10)
+
+                # Twitch テンプレートタイプ
+                twitch_types = [
+                    ("🔴 配信開始", "twitch_online"),
+                    ("⏹️ 配信終了", "twitch_offline"),
+                ]
+
+                twitch_frame = ttk.Frame(twitch_dialog)
+                twitch_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=10)
+
+                for display_name, template_type in twitch_types:
+                    def on_twitch_select(tt=template_type):
+                        """Twitch テンプレート選択後の処理"""
+                        twitch_dialog.destroy()
+                        _open_template_editor(tt)
+
+                    btn = ttk.Button(
+                        twitch_frame,
+                        text=display_name,
+                        command=on_twitch_select
+                    )
+                    btn.pack(fill=tk.X, pady=8)
+
+                # 戻るボタン
+                def go_back():
+                    twitch_dialog.destroy()
+                    main_dialog.deiconify()
+
+                ttk.Button(twitch_dialog, text="← 戻る", command=go_back).pack(pady=10)
+
+            # メインボタン（配信元選択）
+            button_configs = [
+                ("▶️ YouTube", _show_youtube_selector, False),
+                ("🎵 ニコニコ", lambda: _open_template_editor("nico_new_video"), False),
+                ("🎮 Twitch", _show_twitch_selector, True),  # 無効状態
+            ]
+
+            for btn_text, btn_cmd, is_disabled in button_configs:
+                btn = ttk.Button(
+                    frame,
+                    text=btn_text,
+                    command=btn_cmd,
+                    state=tk.DISABLED if is_disabled else tk.NORMAL
+                )
+                btn.pack(fill=tk.X, pady=12)
+
+            # キャンセルボタン
+            ttk.Button(main_dialog, text="キャンセル", command=main_dialog.destroy).pack(pady=10)
+
+        except Exception as e:
+            logger.error(f"❌ テンプレート選択ダイアログエラー: {e}")
+            messagebox.showerror("エラー", f"テンプレート選択ダイアログの起動に失敗しました:\n{str(e)}")
 
     def backup_data(self):
         """データベース・テンプレート・設定をバックアップ"""

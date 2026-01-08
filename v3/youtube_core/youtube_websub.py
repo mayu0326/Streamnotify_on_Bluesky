@@ -50,6 +50,34 @@ class YouTubeWebSub:
                 return None
         return self._api_client
 
+    def health_check(self) -> bool:
+        """
+        ★ 【v3.3.3】WebSub サーバー接続確認
+
+        ProductionServerAPIClient が利用可能かチェック
+
+        Returns:
+            bool: WebSub サーバーに接続可能な場合 True、不可の場合 False
+        """
+        try:
+            api_client = self._get_api_client()
+            if api_client is None:
+                logger.warning("⚠️ WebSub health check 失敗: ProductionServerAPIClient が利用不可")
+                return False
+
+            # API クライアントが正常に初期化されているか確認
+            # （簡易版：オブジェクトが存在するかだけを確認）
+            if hasattr(api_client, 'get_websub_videos'):
+                logger.debug("✅ WebSub health check 成功: ProductionServerAPIClient は正常に動作しています")
+                return True
+            else:
+                logger.warning("⚠️ WebSub health check 失敗: ProductionServerAPIClient に get_websub_videos メソッドがありません")
+                return False
+
+        except Exception as e:
+            logger.warning(f"⚠️ WebSub health check エラー: {e}")
+            return False
+
     def _ensure_websub_registered(self):
         """
         必要なら WebSub サーバーの /register に購読登録を 1 回だけ投げる。
@@ -341,6 +369,14 @@ class YouTubeWebSub:
 
         try:
             for video in filtered_videos:
+                # ★ 【v3.3.2】新規動画のみを処理
+                # 既存動画は処理をスキップし、API 呼び出しを削減
+                existing_video = database.get_video_by_id(video["video_id"])
+                if existing_video:
+                    youtube_logger.debug(f"ℹ️ 既存動画のため、スキップします: {video['title']}")
+                    existing_count += 1
+                    continue  # 既存動画は詳細情報の再取得をしない（クォータ削減）
+
                 # 除外動画リスト確認
                 if deleted_cache and deleted_cache.is_deleted(video["video_id"], source="youtube"):
                     youtube_logger.info(
