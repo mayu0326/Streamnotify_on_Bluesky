@@ -671,41 +671,92 @@ with sqlite3.connect(str(db_path), timeout=5) as conn:
     ...
 ```
 
-#### 4. WebSubサーバー側の将来拡張（シナリオB）
+#### 4. WebSubサーバー側の拡張実装（シナリオB）- ✅ 実装完了
 
-クライアント側が API 呼び出しを削減するには、WebSubサーバーが以下を拡張する必要があります：
+クライアント側が API 呼び出しを削減するため、WebSubサーバーが以下の拡張を実装しました：
 
-**POST /pubsub で以下を追加実装**:
+**実装内容**:
 - YouTube API を呼び出して `channel_name` を取得
 - `liveStreamingDetails` (scheduledStartTime, actualStartTime, actualEndTime) を取得
 - `is_premiere` フラグを判定
+- 新規カラムを DB スキーマに追加
 
-```python
-# WebSub サーバーの将来実装例
-def post_pubsub(request):
-    for video_id in parsed_videos:
-        # Atom XML から基本情報を抽出
-        video_data = {...}
+**DBスキーマ拡張** (実装済み):
+```sql
+-- 既存カラム
+id, video_id, channel_id, title, video_url, published_at, created_at
 
-        # ★ 新: YouTube API で追加情報を取得
-        try:
-            api_response = youtube.videos().list(
-                part="snippet,liveStreamingDetails",
-                id=video_id
-            ).execute()
-
-            video_data["channel_name"] = api_response["items"][0]["snippet"]["channelTitle"]
-            video_data["scheduled_start_time"] = ...
-            video_data["actual_start_time"] = ...
-            video_data["is_premiere"] = ...
-        except Exception:
-            # API 失敗時は基本情報のみで保存
-            pass
-
-        insert_video(video_data)
+-- ★ 新規カラム（実装済み）
+channel_name TEXT
+scheduled_start_time TEXT
+actual_start_time TEXT
+actual_end_time TEXT
+is_premiere INTEGER DEFAULT 0
 ```
 
-詳細は `youtube_data_analysis_websub_vs_api.md` セクション7～8 を参照。
+**POST /pubsub ハンドラー実装** (実装済み):
+```python
+# Atom XML からの情報抽出
+author = entry.find("{http://www.w3.org/2005/Atom}author")
+if author is not None:
+    name_elem = author.find("{http://www.w3.org/2005/Atom}name")
+    if name_elem is not None:
+        channel_name = name_elem.text or ""
+
+published_elem = entry.find("{http://www.w3.org/2005/Atom}published")
+published_at = published_elem.text if published_elem is not None else None
+
+# ★ YouTube API から詳細情報を取得（1ユニット/動画消費）
+api_details = fetch_video_details_from_youtube(video_id)
+
+# フォールバック: API から取得した channel_name か XML 値
+final_channel_name = api_details.get("channel_name") or channel_name or ""
+
+# 新規パラメータを含めて DB に保存
+insert_video(
+    channel_id=channel_id,
+    video_id=video_id,
+    title=title,
+    video_url=None,
+    published_at=published_at,
+    channel_name=final_channel_name,
+    scheduled_start_time=api_details.get("scheduled_start_time"),
+    actual_start_time=api_details.get("actual_start_time"),
+    actual_end_time=api_details.get("actual_end_time"),
+    is_premiere=api_details.get("is_premiere", False),
+)
+```
+
+**GET /videos エンドポイント更新** (実装済み):
+```json
+{
+  "channel_id": "UCxxxxxx",
+  "count": 1,
+  "items": [
+    {
+      "id": 1,
+      "video_id": "dQw4w9WgXcQ",
+      "channel_id": "UCxxxxxx",
+      "title": "動画タイトル",
+      "video_url": null,
+      "published_at": "2026-01-08T12:34:56Z",
+      "created_at": "2026-01-08T15:30:00",
+      "channel_name": "Gaming Channel",
+      "scheduled_start_time": "2026-01-09T18:00:00Z",
+      "actual_start_time": null,
+      "actual_end_time": null,
+      "is_premiere": false
+    }
+  ]
+}
+```
+
+**クォータ削減効果**:
+- 改修前：月間 400-500 ユニット消費（クライアント側で毎動画 API 呼び出し）
+- 改修後：月間 10 ユニット未満（WebSub サーバーで 1 回のみ、フォールバック用）
+- **削減効果: 月間 440-500 ユニット** ✅
+
+詳細は `WEBSUB_ENHANCEMENT_IMPLEMENTATION.md` と `youtube_data_analysis_websub_vs_api.md` を参照。
 
 ---
 
@@ -1073,6 +1124,7 @@ if config.youtube_feed_mode == "websub":
 ### 関連ドキュメント
 
 - [YouTube データフロー調査: WebSub vs API](../local/youtube_data_analysis_websub_vs_api.md) - WebSub データ形式・API 削減シナリオの詳細
+- [WebSub拡張実装レポート](../../webhook_app/docs/WEBSUB_ENHANCEMENT_IMPLEMENTATION.md) - WebSubサーバー側の実装完了（シナリオB）
 - [ARCHITECTURE_AND_DESIGN.md](ARCHITECTURE_AND_DESIGN.md) - 全体アーキテクチャ
 - [PLUGIN_SYSTEM.md](PLUGIN_SYSTEM.md) - プラグイン実装方法
 
