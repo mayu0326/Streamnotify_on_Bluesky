@@ -1,8 +1,8 @@
 # Streamnotify WebSub センターサーバー統合仕様書
 
-**対象バージョン**: v3.2.0+
+**対象バージョン**: v3.3.0+
 **サーバー実装**: FastAPI WebSub Hub
-**最終更新**: 2026-01-03
+**最終更新**: 2026-01-08
 **ステータス**: ✅ 本番稼働中（YouTube WebSub 対応）
 
 ---
@@ -125,7 +125,7 @@ YouTube RSS Hub
         │
         └─→ Center Server
             ├─ (1) SQLite に保存
-            │  - DB: /root/data/subscribers/UCxxxxxx.db
+            │  - DB: /home/mayuneco/webhook_app/data/subscribers/UCxxxxxx.db
             │  - Table: videos
             │  - Record: (dQw4w9WgXcQ, title, ...)
             │
@@ -186,17 +186,34 @@ YouTube RSS Hub
 #### videos テーブル（channel_id ごとの SQLite DB）
 
 各 channel_id に対して専用の SQLite DB が作成されます。
-DB ファイルパス: `/root/data/subscribers/<channel_id>.db`
+DB ファイルパス: `/home/mayuneco/webhook_app/data/subscribers/<channel_id>.db`
 
-| カラム | 型 | 説明 |
-|:--|:--|:--|
-| id | INTEGER PRIMARY KEY | 自動採番 ID |
-| video_id | TEXT UNIQUE NOT NULL | YouTube 動画 ID |
-| channel_id | TEXT NOT NULL | YouTube チャンネル ID |
-| title | TEXT | 動画タイトル |
-| video_url | TEXT | 動画 URL（予約フィールド） |
-| published_at | TEXT | 公開日時（ISO 8601 形式） |
-| created_at | TEXT | データベース登録日時（自動） |
+| カラム | 型 | デフォルト | 説明 |
+|:--|:--|:--|:--|
+| id | INTEGER | PRIMARY KEY（自動採番） | 自動採番 ID |
+| video_id | TEXT | NOT NULL, UNIQUE | YouTube 動画 ID |
+| channel_id | TEXT | NOT NULL | YouTube チャンネル ID |
+| title | TEXT | | 動画タイトル |
+| video_url | TEXT | NULL | 動画 URL（予約フィールド、現在未実装） |
+| published_at | TEXT | NULL | 公開日時（ISO 8601 形式、現在未実装） |
+| created_at | TEXT | CURRENT_TIMESTAMP | DB 登録日時（自動） |
+
+**テーブル作成 SQL**:
+```sql
+CREATE TABLE IF NOT EXISTS videos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    video_id TEXT NOT NULL UNIQUE,
+    channel_id TEXT NOT NULL,
+    title TEXT,
+    video_url TEXT,
+    published_at TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+**現在の実装状況**:
+- ✅ `video_id`, `channel_id`, `title`, `created_at` は Atom XML 通知から抽出・保存
+- ⚠️ `video_url`, `published_at` は将来実装（WebSubサーバー側で YouTube API 呼び出しが必要）
 
 ---
 
@@ -438,38 +455,63 @@ Content-Type: application/json
 
 クライアントが、センターサーバーにキャッシュされている動画情報を取得します。
 
-**実装例** (Python):
+#### 実装概要
+
+このエンドポイントは、指定された `channel_id` に対応する SQLite DB から最新の動画情報を取得し、
+JSON 形式で クライアントに返します。
+
+**実装例** (Python / FastAPI):
 ```python
 @app.get("/videos")
 async def list_videos(
     channel_id: str = Query(..., description="YouTube channel ID"),
     limit: int = Query(50, ge=1, le=200),
 ):
-    db_path = get_channel_db_path(channel_id)
-    if not os.path.exists(db_path):
-        raise HTTPException(status_code=404, detail="channel not found")
+    """Get videos for a specific channel from WebSub cache"""
 
-    conn = sqlite3.connect(db_path, timeout=5)
-    conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
-    cur.execute(
-        """
-        SELECT id, video_id, channel_id, title, video_url, published_at, created_at
-        FROM videos
-        ORDER BY id DESC
-        LIMIT ?
-        """,
-        (limit,),
-    )
-    rows = cur.fetchall()
-    conn.close()
+    # channel_id に対応する DB ファイルパスを構築
+    safe_channel_id = sanitize_channel_id(channel_id)
+    db_path = Path(f"/home/mayuneco/webhook_app/data/subscribers/{safe_channel_id}.db")
 
-    return {
-        "channel_id": channel_id,
-        "count": len(rows),
-        "items": [dict(r) for r in rows],
-    }
+    if not db_path.exists():
+        # 該当チャンネルの動画がまだ通知されていない
+        raise HTTPException(
+            status_code=404,
+            detail="No videos found for this channel"
+        )
+
+    try:
+        conn = sqlite3.connect(str(db_path), timeout=5)
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+
+        # 最新の動画から順に取得
+        cur.execute(
+            """
+            SELECT id, video_id, channel_id, title, video_url, published_at, created_at
+            FROM videos
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (limit,),
+        )
+        rows = cur.fetchall()
+        conn.close()
+
+        return {
+            "channel_id": channel_id,
+            "count": len(rows),
+            "items": [dict(r) for r in rows],
+        }
+    except Exception as e:
+        logger.error(f"Error retrieving videos for {channel_id}: {e}")
+        raise HTTPException(status_code=500, detail="Database error")
 ```
+
+**キーポイント**:
+- DB パスは `channel_id` から安全に構築（ディレクトリトラバーサル対策）
+- `video_url` と `published_at` は現在 NULL が返される可能性あり（将来実装）
+- `limit` は 1-200 の範囲に制限（DB へのクエリ負荷軽減）
 
 **リクエスト**:
 ```
@@ -496,30 +538,174 @@ Content-Type: application/json
       "id": 1,
       "video_id": "dQw4w9WgXcQ",
       "channel_id": "UCxxxxxx",
-      "title": "New Video Title",
+      "title": "新作ゲーム紹介配信",
       "video_url": null,
       "published_at": null,
-      "created_at": "2026-01-03T10:30:00"
+      "created_at": "2026-01-08T10:30:00"
     },
     {
       "id": 2,
       "video_id": "9bZkp7q19f0",
       "channel_id": "UCxxxxxx",
-      "title": "Another Video",
+      "title": "企画配信 #100",
       "video_url": null,
       "published_at": null,
-      "created_at": "2026-01-03T10:25:00"
+      "created_at": "2026-01-08T10:25:00"
     },
-    ...
+    {
+      "id": 3,
+      "video_id": "aBcD1234EfG",
+      "channel_id": "UCxxxxxx",
+      "title": "ライブ配信 - 雑談",
+      "video_url": null,
+      "published_at": null,
+      "created_at": "2026-01-07T18:45:00"
+    }
   ]
 }
 ```
 
+**フィールド説明**:
+
+| フィールド | 型 | 説明 |
+|:--|:--|:--|
+| `channel_id` | string | リクエストで指定されたチャンネル ID |
+| `count` | integer | 返されたアイテム数 |
+| `items[].id` | integer | サーバー側の自動採番 ID |
+| `items[].video_id` | string | YouTube 動画 ID（短縮 ID） |
+| `items[].channel_id` | string | YouTube チャンネル ID |
+| `items[].title` | string | 動画タイトル（Atom XML から抽出） |
+| `items[].video_url` | string \| null | 動画 URL（現在 NULL、将来実装） |
+| `items[].published_at` | string \| null | 公開日時 ISO 8601 形式（現在 NULL、将来実装） |
+| `items[].created_at` | string | サーバー側の登録日時（RFC3339 形式） |
+
 **エラーレスポンス**:
 
-| ステータス | 説明 |
-|:--|:--|
-| 404 | 指定された channel_id が見つからない（動画がまだ通知されていない） |
+| ステータス | 説明 | 対応 |
+|:--|:--|:--|
+| 404 | 指定された channel_id が見つからない | YouTube からまだ動画通知を受け取っていない、または typo |
+| 500 | サーバー側エラー（DB アクセス失敗等） | サーバーのログを確認（管理者に報告） |
+
+**例: 404 レスポンス**:
+```json
+HTTP 404 Not Found
+Content-Type: application/json
+
+{
+  "detail": "No videos found for this channel"
+}
+```
+
+---
+
+### 実装上の重要な注意事項
+
+#### 1. データベースファイルの安全な構築
+
+`channel_id` からファイルパスを構築する際は、**ディレクトリトラバーサル攻撃を防ぐ必要があります**。
+
+❌ **危険な実装**:
+```python
+# NG: 直接 channel_id を使用
+db_path = f"/home/mayuneco/webhook_app/data/subscribers/{channel_id}.db"  # UCxxxxxx/../../../etc/passwd.db
+```
+
+✅ **安全な実装**:
+```python
+# OK: チャンネルID を検証＆サニタイズ
+def sanitize_channel_id(channel_id: str) -> str:
+    # チャンネルID は UC で始まる 24 文字の固定長
+    if not re.match(r'^UC[a-zA-Z0-9_-]{22}$', channel_id):
+        raise ValueError(f"Invalid channel_id format: {channel_id}")
+    return channel_id
+
+safe_channel_id = sanitize_channel_id(channel_id)
+db_path = Path(f"/home/mayuneco/webhook_app/data/subscribers/{safe_channel_id}.db")
+```
+
+#### 2. NULL フィールドの取り扱い
+
+現在、`video_url` と `published_at` は常に `null` が返されます。
+クライアント側での処理:
+
+```python
+# youtube_websub.py での実装例
+def fetch_feed(self) -> List[Dict]:
+    items = self.api_client.get_websub_videos(
+        channel_id=self.channel_id,
+        limit=15,
+    )
+
+    videos = []
+    for item in items:
+        video = {
+            "video_id": item["video_id"],
+            "title": item["title"],
+            "channel_name": item.get("channel_name", ""),  # 将来実装時に利用可能
+            "published_at": item.get("published_at"),  # 現在 None
+
+            # WebSub データが不完全な場合は API で補完
+            # → youtube_api_plugin で classification 実行
+        }
+        videos.append(video)
+
+    return videos
+```
+
+#### 3. パフォーマンス考慮事項
+
+**大量レコードの取得時**:
+- `limit` パラメータは 1-200 に制限（クエリ負荷軽減）
+- ページネーションの実装を検討（offset パラメータの追加）
+- インデックスを `channel_id` と `created_at` に設定
+
+**データベース接続**:
+```python
+# タイムアウト設定（5秒以上推奨）
+conn = sqlite3.connect(str(db_path), timeout=5)
+
+# コネクション不足防止
+conn.close()  # 必ず close()
+# または context manager を使用
+with sqlite3.connect(str(db_path), timeout=5) as conn:
+    ...
+```
+
+#### 4. WebSubサーバー側の将来拡張（シナリオB）
+
+クライアント側が API 呼び出しを削減するには、WebSubサーバーが以下を拡張する必要があります：
+
+**POST /pubsub で以下を追加実装**:
+- YouTube API を呼び出して `channel_name` を取得
+- `liveStreamingDetails` (scheduledStartTime, actualStartTime, actualEndTime) を取得
+- `is_premiere` フラグを判定
+
+```python
+# WebSub サーバーの将来実装例
+def post_pubsub(request):
+    for video_id in parsed_videos:
+        # Atom XML から基本情報を抽出
+        video_data = {...}
+
+        # ★ 新: YouTube API で追加情報を取得
+        try:
+            api_response = youtube.videos().list(
+                part="snippet,liveStreamingDetails",
+                id=video_id
+            ).execute()
+
+            video_data["channel_name"] = api_response["items"][0]["snippet"]["channelTitle"]
+            video_data["scheduled_start_time"] = ...
+            video_data["actual_start_time"] = ...
+            video_data["is_premiere"] = ...
+        except Exception:
+            # API 失敗時は基本情報のみで保存
+            pass
+
+        insert_video(video_data)
+```
+
+詳細は `youtube_data_analysis_websub_vs_api.md` セクション7～8 を参照。
 
 ---
 
@@ -658,7 +844,7 @@ Content-Type: application/json
 cat v3/settings.env | grep WEBSUB_CLIENT_API_KEY
 
 # 2. サーバーのクライアント DB を確認（サーバー管理者）
-sqlite3 /root/data/subscribers_map.db
+sqlite3 /home/mayuneco/webhook_app/data/subscribers_map.db
 > SELECT * FROM clients WHERE client_id = 'your_client_id';
 ```
 
@@ -826,7 +1012,7 @@ if config.youtube_feed_mode == "websub":
 1. **client_id がサーバーに登録されているか**:
    ```bash
    # サーバーのデータベースを確認（サーバー管理者）
-   sqlite3 /root/data/subscribers_map.db
+   sqlite3 /home/mayuneco/webhook_app/data/subscribers_map.db
    > SELECT * FROM clients;
    ```
 
@@ -846,7 +1032,7 @@ if config.youtube_feed_mode == "websub":
 
 2. **サーバーに登録されているキーを確認**（サーバー管理者）:
    ```bash
-   sqlite3 /root/data/subscribers_map.db
+   sqlite3 /home/mayuneco/webhook_app/data/subscribers_map.db
    > SELECT apikey FROM clients WHERE client_id = 'your_client_id';
    ```
 
@@ -884,12 +1070,27 @@ if config.youtube_feed_mode == "websub":
 
 ## 参考資料
 
+### 関連ドキュメント
+
+- [YouTube データフロー調査: WebSub vs API](../local/youtube_data_analysis_websub_vs_api.md) - WebSub データ形式・API 削減シナリオの詳細
+- [ARCHITECTURE_AND_DESIGN.md](ARCHITECTURE_AND_DESIGN.md) - 全体アーキテクチャ
+- [PLUGIN_SYSTEM.md](PLUGIN_SYSTEM.md) - プラグイン実装方法
+
+### 外部リソース
+
 - [PubSubHubbub 仕様](https://pubsubhubbub.appspot.com/)
-- [YouTube RSS フィード](https://developers.google.com/youtube/v3/guides/push_notifications)
-- [Atom Feed 仕様](https://www.rfc-editor.org/rfc/rfc4287)
+- [YouTube RSS フィード & Push Notifications](https://developers.google.com/youtube/v3/guides/push_notifications)
+- [Atom Feed 仕様（RFC 4287）](https://www.rfc-editor.org/rfc/rfc4287)
+- [YouTube Data API v3](https://developers.google.com/youtube/v3)
+
+### クライアント側実装の参考
+
+- クライアント v3.3.0+: `v3/youtube_core/youtube_websub.py` - ProductionServerAPIClient の使用例
+- API 連携: `v3/plugins/youtube/youtube_api_plugin.py` - classification ロジック
 
 ---
 
 **作成日**: 2026-01-03
+**最終更新**: 2026-01-08
 **ステータス**: ✅ 本番環境で稼働中（YouTube WebSub のみ対応）
 **更新予定**: v4.0.0+ で Niconico/Twitch 対応予定
