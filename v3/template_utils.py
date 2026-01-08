@@ -418,11 +418,10 @@ TEMPLATE_ARGS = {
     # YouTube 新着動画
     "youtube_new_video": [
         ("動画タイトル", "title"),
-        ("動画 ID", "video_id"),
         ("動画 URL", "video_url"),
         ("チャンネル名", "channel_name"),
-        ("投稿日時", "published_at"),
-        ("プラットフォーム", "platform"),
+        ("投稿日", "published_at | datetimeformat('%Y年%m月%d日')"),
+        ("投稿日時", "published_at | datetimeformat('%Y年%m月%d日 %H:%M')"),
     ],
 
     # YouTube 配信開始
@@ -430,14 +429,26 @@ TEMPLATE_ARGS = {
         ("配信タイトル", "title"),
         ("配信 URL", "video_url"),
         ("チャンネル名", "channel_name"),
-        ("配信開始日時", "published_at"),
+        ("配信開始日時(通常)", "published_at | datetimeformat('%Y年%m月%d日 %H:%M')"),
         ("配信ステータス", "live_status"),
     ],
 
     # YouTube 配信終了
     "youtube_offline": [
-        ("チャンネル名", "channel_name"),
         ("配信タイトル", "title"),
+        ("配信 URL", "video_url"),
+        ("チャンネル名", "channel_name"),
+        ("配信終了日", "published_at | datetimeformat('%Y年%m月%d日')"),
+        ("配信ステータス", "live_status"),
+    ],
+
+    # YouTube スケジュール枠（★ 新規追加）
+    "youtube_schedule": [
+        ("スケジュール枠タイトル", "title"),
+        ("配信 URL", "video_url"),
+        ("チャンネル名", "channel_name"),
+        ("予定配信開始日時(通常)", "published_at | datetimeformat('%Y年%m月%d日 %H:%M')"),
+        ("予定配信開始日時(拡張)", "format_extended_datetime_range(published_at | datetimeformat('%Y-%m-%d'), 27)"),
         ("配信ステータス", "live_status"),
     ],
 
@@ -446,7 +457,7 @@ TEMPLATE_ARGS = {
         ("アーカイブタイトル", "title"),
         ("アーカイブ URL", "video_url"),
         ("チャンネル名", "channel_name"),
-        ("配信日時", "published_at"),
+        ("配信日", "published_at | datetimeformat('%Y年%m月%d日')"),
     ],
 
     # ニコニコ 新着動画
@@ -454,10 +465,9 @@ TEMPLATE_ARGS = {
     #        取得されたユーザー名は settings.env に自動保存されます
     "nico_new_video": [
         ("動画タイトル", "title"),
-        ("動画 ID", "video_id"),
         ("動画 URL", "video_url"),
         ("投稿者名", "channel_name"),  # 自動取得・優先順位: RSS > 静画API > ユーザーページ > 環境変数 > ユーザーID
-        ("投稿日時", "published_at"),
+        ("投稿日時", "published_at | datetimeformat('%Y年%m月%d日')"),
     ],
 
     # Twitch 配信開始（将来）
@@ -497,6 +507,7 @@ TEMPLATE_VAR_BLACKLIST = {
         "use_link_card",         # 内部用
         "embed",                 # 内部用
         "image_source",          # 内部用
+        "video_id",             # 内部用
     },
 
     "youtube_online": {
@@ -508,6 +519,8 @@ TEMPLATE_VAR_BLACKLIST = {
         "use_link_card",
         "embed",
         "image_source",
+        "video_id",
+        "live_status",  # ライブ中には不要
     },
 
     "youtube_offline": {
@@ -518,6 +531,20 @@ TEMPLATE_VAR_BLACKLIST = {
         "use_link_card",
         "embed",
         "image_source",
+        "video_id",
+        "live_status",  # オフラインには不要
+    },
+
+    "youtube_schedule": {  # ★ スケジュール枠テンプレート追加
+        "image_mode",
+        "image_filename",
+        "posted_at",
+        "selected_for_post",
+        "use_link_card",
+        "embed",
+        "image_source",
+        "video_id",
+        "live_status",  # スケジュール枠には不要
     },
 
     "youtube_archive": {  # ★ アーカイブテンプレート追加
@@ -529,6 +556,7 @@ TEMPLATE_VAR_BLACKLIST = {
         "embed",
         "image_source",
         "live_status",  # アーカイブには不要
+        "video_id",
     },
 
     "nico_new_video": {

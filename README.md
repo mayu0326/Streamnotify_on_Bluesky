@@ -142,7 +142,7 @@ Bluesky に自動投稿する常駐ボットです。
 ## 必要な環境
 
 - **OS**: Windows 10 以降、または Debian/Ubuntu 系 Linux
-- **Python**: 3.10 以上
+- **Python**: 3.13 以上
 - **アカウント**: YouTube チャンネル、Bluesky アカウント
 
 ## インストール

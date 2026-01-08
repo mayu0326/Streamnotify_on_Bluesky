@@ -171,6 +171,24 @@ def main():
         logger.warning(f"⚠️ YouTubeLiveモジュールの初期化に失敗しました: {e}")
         live_module = None
 
+    # ★ 【v3.3.3】新: Live スケジューラーを初期化
+    live_scheduler = None
+    try:
+        from plugins.youtube.live_scheduler import get_live_scheduler
+        live_scheduler = get_live_scheduler(
+            database=db,
+            classifier=classifier,
+            live_module=live_module,
+        )
+        if live_scheduler:
+            logger.info("✅ Live スケジューラーを初期化しました")
+        else:
+            logger.warning("⚠️ Live スケジューラーの初期化に失敗しました")
+    except ImportError:
+        logger.debug("ℹ️ Live スケジューラーのインポートに失敗しました（APScheduler が必要です）")
+    except Exception as e:
+        logger.warning(f"⚠️ Live スケジューラーの初期化中にエラー: {e}")
+
     # ===== YouTube フィード取得モード分岐 =====
     try:
         if config.youtube_feed_mode == "websub":
@@ -179,9 +197,18 @@ def main():
             try:
                 from youtube_core.youtube_websub import get_youtube_websub
                 yt_rss = get_youtube_websub(config.youtube_channel_id)
+
+                # ★ 【v3.3.3】WebSub サーバー接続確認
+                health_check = yt_rss.health_check()
+                if not health_check:
+                    raise Exception("WebSub サーバーに接続できません")
+
                 logger.info("[YouTube] WebSub の取得準備を完了しました")
-            except ImportError:
-                logger.warning("[YouTube] youtube_websub モジュールが見つかりません。RSS モードにフォールバックします。")
+            except (ImportError, Exception) as e:
+                if isinstance(e, ImportError):
+                    logger.warning("[YouTube] youtube_websub モジュールが見つかりません。RSS モードにフォールバックします。")
+                else:
+                    logger.warning(f"[YouTube] WebSub 接続失敗: {e}。RSS モードにフォールバックします。")
                 config.youtube_feed_mode = "poll"
                 from youtube_core.youtube_rss import get_youtube_rss
                 yt_rss = get_youtube_rss(config.youtube_channel_id)
@@ -541,6 +568,14 @@ def main():
                     niconico_plugin.stop_monitoring()
             except Exception as plugin_error:
                 logger.debug(f"[ニコニコプラグイン停止] エラー: {plugin_error}")
+
+        # ★ 【v3.3.3】Live スケジューラーをシャットダウン
+        try:
+            if live_scheduler:
+                live_scheduler.shutdown()
+        except Exception as scheduler_error:
+            logger.debug(f"[Live スケジューラー停止] エラー: {scheduler_error}")
+
         logger.info("🛑 アプリケーションをシャットダウン中...")
         stop_event.set()
         gui_instance = None  # GUI インスタンスをクリア

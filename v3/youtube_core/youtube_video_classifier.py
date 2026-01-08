@@ -63,14 +63,21 @@ class YouTubeVideoClassifier:
         self.video_detail_cache: Dict[str, Dict[str, Any]] = {}
         self._load_cache()
 
-    def classify_video(self, video_id: str) -> Dict[str, Any]:
+    def classify_video(self, video_id: str, force_refresh: bool = False) -> Dict[str, Any]:
         """
         動画 ID から動画の種別を判定
 
-        キャッシュを先に確認し、なければ API で取得してキャッシュに保存。
+        キャッシュを先に確認し、有効期限内ならそれを使用。
+        期限切れならば API で取得してキャッシュに保存。
+
+        ★ 【修正 v3.4.3】キャッシング戦略を統一（クォータ削減）
+        - 全ての動画（通常・Live関連）に統一したキャッシュ有効期限を適用
+        - Live関連でも有効期限内ならキャッシュを再利用
+        - 無条件な再取得を廃止し、クォータ消費を大幅削減
 
         Args:
             video_id: YouTube 動画 ID（11 文字のアルファベット・数字・ハイフン・アンダースコア）
+            force_refresh: True の場合、キャッシュを無視して API から再取得
 
         Returns:
             分類結果を含む辞書：
@@ -89,11 +96,12 @@ class YouTubeVideoClassifier:
                 "error": str or None,               # エラーメッセージ（失敗時のみ）
             }
         """
-        # ★ ステップ 1: キャッシュを確認
-        if video_id in self.video_detail_cache:
-            # ★ 【新】キャッシュの有効期限をチェック
+        # ★ ステップ 1: キャッシュを確認（force_refresh が True でない場合のみ）
+        # ★ 【修正 v3.4.3】Live 関連でも有効期限内ならキャッシュを再利用（クォータ削減）
+        if not force_refresh and video_id in self.video_detail_cache:
             cache_entry = self._get_cache_entry(video_id)
             if cache_entry:
+                # キャッシュが有効 → そのまま利用（Live関連含む）
                 logger.debug(f"📦 キャッシュから動画詳細を取得: {video_id}")
                 video_data = cache_entry
                 classified = self._classify_from_response({
@@ -120,13 +128,19 @@ class YouTubeVideoClassifier:
             if not result["success"]:
                 return result
 
-            # ★ ステップ 2: キャッシュに保存
-            if "video_data" in result:
-                self.video_detail_cache[video_id] = result["video_data"]
-                self._save_cache()
-
             # API レスポンスから種別を判定
             classified = self._classify_from_response(result)
+
+            # ★ ステップ 2: キャッシュに保存（全ての動画タイプを対象）
+            # ★ 【修正 v3.4.3】Live関連動画もキャッシュに保存（クォータ削減）
+            # キャッシュ有効期限（デフォルト 7 日）内なら、状態遷移中の Live 動画でも
+            # キャッシュを再利用して API 呼び出しを削減。状態が頻繁に変わる場合は
+            # force_refresh=True を指定して明示的に再取得すること
+            if result.get("success") and "video_data" in result:
+                self.video_detail_cache[video_id] = result["video_data"]
+                self._save_cache()
+                logger.debug(f"💾 動画詳細をキャッシュに保存: {video_id}")
+
             return classified
 
         except Exception as e:

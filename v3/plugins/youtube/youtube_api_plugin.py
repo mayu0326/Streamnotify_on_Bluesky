@@ -78,6 +78,9 @@ class YouTubeAPIPlugin(NotificationPlugin):
         self.last_request_time = 0
         self.request_interval = 0.5  # 秒（リクエスト間最小間隔）
 
+        # ★ 【新 v3.4.3】クォータ超過フラグ（403 エラー時に設定）
+        self.quota_exceeded = False
+
         # ビデオ詳細キャッシュ
         self.video_detail_cache: Dict[str, Dict[str, Any]] = {}
         self.cache_timestamps: Dict[str, float] = {}
@@ -325,6 +328,11 @@ class YouTubeAPIPlugin(NotificationPlugin):
         Returns:
             JSONレスポンス、失敗時は None
         """
+        # ★ 【新 v3.4.3】クォータ超過フラグが設定されていればスキップ
+        if self.quota_exceeded:
+            logger.warning(f"⏸️ クォータ超過のため、API 呼び出しをスキップ: {operation}")
+            return None
+
         if not self._check_quota(expected_cost):
             return None
 
@@ -337,6 +345,12 @@ class YouTubeAPIPlugin(NotificationPlugin):
 
                 logger.debug(f"🔌 API リクエスト開始: {operation} (試行 {attempt + 1}/{max_retries})")
                 resp = self.session.get(url, params=params_with_key, timeout=15)
+
+                # ★ 【新 v3.4.3】403 エラー = クォータ超過の信号 → 即座に中止
+                if resp.status_code == 403:
+                    logger.error(f"❌ 403 Forbidden: YouTube API クォータ超過と思われます。全 API 呼び出しを停止します")
+                    self.quota_exceeded = True
+                    return None
 
                 # 429: Over Quota または Rate Limit
                 if resp.status_code == 429:
