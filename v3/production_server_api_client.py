@@ -108,14 +108,23 @@ class ProductionServerAPIClient:
             ビデオ情報の辞書リスト
         """
         try:
+            # 環境変数から client 用 API キーを取得
+            client_api_key = os.getenv("WEBSUB_CLIENT_API_KEY")
+            if not client_api_key:
+                logger.error("❌ WEBSUB_CLIENT_API_KEY が設定されていません")
+                return []
+
             url = f"{self.base_url}/videos"
             params = {
                 "channel_id": channel_id,
                 "limit": limit
             }
+            headers = {
+                "X-Client-API-Key": client_api_key,
+            }
 
             logger.debug(f"📥 Websubサーバー HTTP API リクエスト: {url} params={params}")
-            response = requests.get(url, params=params, timeout=self.timeout)
+            response = requests.get(url, params=params, headers=headers, timeout=self.timeout)
             response.raise_for_status()
 
             data = response.json()
