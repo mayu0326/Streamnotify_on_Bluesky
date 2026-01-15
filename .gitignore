@@ -39,12 +39,5 @@ __pycache__
 # git 管理外の一時ファイル
 .gitattributes
 **/.github/**
-
-# 生成されたバックアップファイル
-**/v3/backup/**
-
-# その他の無視ファイル
-**/v2/utils/**
-**/v3/test_scripts/**
-**/v3/docs/local/**
-**/OLD_APP/**
+**v2/utils/**
+**v3/utils/**
