@@ -19,6 +19,9 @@ from image_manager import get_image_manager
 from pathlib import Path
 from unified_settings_window import UnifiedSettingsWindow
 from template_editor_dialog import TemplateEditorDialog
+from schedule_manager import BatchScheduleManager
+from batch_schedule_dialog import BatchScheduleDialog
+from schedule_view_tab import ScheduleViewTab
 
 try:
     from PIL import Image
@@ -94,6 +97,7 @@ class StreamNotifyGUI:
         self.plugin_manager = plugin_manager
         self.bluesky_core = bluesky_core  # コア機能へのアクセス
         self.image_manager = get_image_manager()  # 画像管理クラスを初期化
+        self.schedule_mgr = BatchScheduleManager(db)  # ★ 新: スケジュール管理を初期化
         self.selected_rows = set()
 
         # 設定を読み込み（AUTOPOST モード判定用）
@@ -126,6 +130,7 @@ class StreamNotifyGUI:
         ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=2)
         ttk.Button(toolbar, text="☑️ すべて選択", command=self.select_all).pack(side=tk.LEFT, padx=2)
         ttk.Button(toolbar, text="☐ すべて解除", command=self.deselect_all).pack(side=tk.LEFT, padx=2)
+        ttk.Button(toolbar, text="📅 一括スケジュール", command=self.batch_schedule).pack(side=tk.LEFT, padx=2)
         ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=2)
         ttk.Button(toolbar, text="💾 選択を保存", command=self.save_selection).pack(side=tk.LEFT, padx=2)
         ttk.Button(toolbar, text="🗑️ 削除", command=self.delete_selected).pack(side=tk.LEFT, padx=2)
@@ -145,6 +150,7 @@ class StreamNotifyGUI:
             self.execute_post_button.config(state=tk.DISABLED)
         ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=2)
         ttk.Button(toolbar, text="ℹ️ 統計", command=self.show_stats).pack(side=tk.LEFT, padx=2)
+        ttk.Button(toolbar, text="📅 投稿予定確認", command=self.show_schedule_view).pack(side=tk.LEFT, padx=2)
         ttk.Button(toolbar, text="⚙️ アプリ設定", command=self.show_app_settings).pack(side=tk.LEFT, padx=2)
         ttk.Button(toolbar, text="🔧 プラグイン", command=self.show_plugins).pack(side=tk.LEFT, padx=2)
         ttk.Button(toolbar, text="📝 テンプレート編集", command=self.show_template_editor).pack(side=tk.LEFT, padx=2)
@@ -2903,3 +2909,38 @@ class PostSettingsWindow:
         except Exception as e:
             logger.error(f"投稿エラー: {e}", exc_info=True)
             messagebox.showerror("エラー", f"投稿に失敗しました:\n{str(e)}")
+
+    def batch_schedule(self):
+        """複数動画の一括スケジュール設定（★ Phase 2 新機能）"""
+        if not self.selected_rows:
+            messagebox.showwarning("警告", "動画を選択してください")
+            return
+
+        selected_ids = list(self.selected_rows)
+        logger.info(f"📅 一括スケジュール開始: {len(selected_ids)} 件")
+
+        # ダイアログを開く
+        dialog = BatchScheduleDialog(
+            self.root,
+            selected_ids,
+            self.db,
+            self.schedule_mgr
+        )
+        self.root.wait_window(dialog)
+
+        # ダイアログクローズ後に表示を更新
+        self.refresh_data()
+
+    def show_schedule_view(self):
+        """投稿予定一覧を確認・管理（★ Phase 2 新機能）"""
+        logger.info("📅 投稿予定一覧を表示します")
+
+        # 別ウィンドウで投稿予定タブを開く
+        schedule_window = tk.Toplevel(self.root)
+        schedule_window.title("📅 投稿スケジュール管理")
+        schedule_window.geometry("900x600")
+
+        tab = ScheduleViewTab(schedule_window, self.db, self.schedule_mgr)
+        tab.get_frame().pack(fill=tk.BOTH, expand=True)
+
+        self.root.wait_window(schedule_window)

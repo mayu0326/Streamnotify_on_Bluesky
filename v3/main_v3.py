@@ -38,6 +38,9 @@ from logging_config import setup_logging
 # GUI クラスをインポート
 from gui_v3 import StreamNotifyGUI
 
+# ★ 新: スケジューラ管理（v3.4.0）
+from schedule_manager import BatchScheduleManager
+
 logger = None  # グローバル変数として後で初期化
 gui_instance = None  # GUI インスタンスをグローバルで保持（プラグイン判定後のリロード用）
 
@@ -350,6 +353,10 @@ def main():
     autopost_warning_shown = False  # セーフモード警告フラグ
     safe_mode_enabled = False       # セーフモード有効フラグ（仕様 5.3）
 
+    # ★ 新: スケジュール管理マネージャーを初期化（v3.4.0）
+    schedule_mgr = BatchScheduleManager(db)
+    logger.info("✅ バッチスケジュール管理を初期化しました")
+
     # ★ 新: セーフモード起動判定（仕様 5.3）
     # 起動時に posted_to_bluesky=0 かつ posted_at IS NOT NULL の件数をチェック
     # これは「投稿マーク自体がリセットされた」異常を検知する
@@ -498,42 +505,61 @@ def main():
                 # 安全弁解除
                 autopost_warning_shown = False
 
-                # 投稿間隔チェック
                 now = datetime.now()
-                should_post = last_post_time is None or \
-                              (now - last_post_time).total_seconds() >= config.autopost_interval_minutes * 60
 
-                if should_post:
-                    # 動画種別フィルタリング付きで候補を取得
-                    candidates = db.get_autopost_candidates(config)
-
-                    if candidates:
-                        # 最初の候補を選択（優先度順）
-                        selected_video = candidates[0]
-                        logger.info(f"🤖 AUTOPOST 対象を発見: {selected_video['title']}")
-
-                        # 重複チェック（念のため）
-                        if db.is_duplicate_post(selected_video['video_id']):
-                            logger.warning(f"⚠️  この動画は既に投稿済みです（{selected_video['title']}）")
-                            continue
-
-                        # プラグイン実行
-                        results = plugin_manager.post_video_with_all_enabled(selected_video)
-                        success = any(results.values())
-
-                        if success:
-                            # DB を投稿済みにマーク
-                            db.mark_as_posted(selected_video['video_id'])
+                # ★ 新: スケジュール済み動画の投稿チェック（v3.4.0）
+                scheduled_video = schedule_mgr.get_next_scheduled_video()
+                if scheduled_video:
+                    logger.info(f"📅 スケジュール投稿を実行: {scheduled_video['title']}")
+                    try:
+                        results = plugin_manager.post_video_with_all_enabled(scheduled_video)
+                        if any(results.values()):
+                            db.mark_as_posted(scheduled_video['video_id'])
+                            # スケジュール情報をクリア（投稿完了）
+                            db.update_selection(scheduled_video['video_id'], selected=False, scheduled_at=None)
                             last_post_time = now
-                            logger.info(f"✅ AUTOPOST 成功。次の投稿は {config.autopost_interval_minutes} 分後です。")
+                            logger.info(f"✅ スケジュール投稿成功。")
                         else:
-                            logger.error(f"❌ AUTOPOST 投稿失敗: {selected_video['title']}")
-                    else:
-                        logger.info("🤖 AUTOPOST: 投稿対象動画がありません。")
+                            logger.error(f"❌ スケジュール投稿失敗: {scheduled_video['title']}")
+                    except Exception as e:
+                        logger.error(f"❌ スケジュール投稿エラー: {e}")
                 else:
-                    elapsed = (now - last_post_time).total_seconds() / 60
-                    remaining = config.autopost_interval_minutes - elapsed
-                    logger.info(f"🤖 AUTOPOST: 投稿間隔制限中。次の投稿まで約 {remaining:.1f} 分待機。")
+                    # 従来の投稿ロジック（selected_for_post）
+                    # 投稿間隔チェック
+                    should_post = last_post_time is None or \
+                                  (now - last_post_time).total_seconds() >= config.autopost_interval_minutes * 60
+
+                    if should_post:
+                        # 動画種別フィルタリング付きで候補を取得
+                        candidates = db.get_autopost_candidates(config)
+
+                        if candidates:
+                            # 最初の候補を選択（優先度順）
+                            selected_video = candidates[0]
+                            logger.info(f"🤖 AUTOPOST 対象を発見: {selected_video['title']}")
+
+                            # 重複チェック（念のため）
+                            if db.is_duplicate_post(selected_video['video_id']):
+                                logger.warning(f"⚠️  この動画は既に投稿済みです（{selected_video['title']}）")
+                                continue
+
+                            # プラグイン実行
+                            results = plugin_manager.post_video_with_all_enabled(selected_video)
+                            success = any(results.values())
+
+                            if success:
+                                # DB を投稿済みにマーク
+                                db.mark_as_posted(selected_video['video_id'])
+                                last_post_time = now
+                                logger.info(f"✅ AUTOPOST 成功。次の投稿は {config.autopost_interval_minutes} 分後です。")
+                            else:
+                                logger.error(f"❌ AUTOPOST 投稿失敗: {selected_video['title']}")
+                        else:
+                            logger.info("🤖 AUTOPOST: 投稿対象動画がありません。")
+                    else:
+                        elapsed = (now - last_post_time).total_seconds() / 60
+                        remaining = config.autopost_interval_minutes - elapsed
+                        logger.info(f"🤖 AUTOPOST: 投稿間隔制限中。次の投稿まで約 {remaining:.1f} 分待機。")
 
             # ★ 新: YouTube Live 動的ポーリング間隔に対応（v3.4.0+ 改訂版）
             # live_module が有効な場合は、キャッシュ状態に応じた動的間隔を計算

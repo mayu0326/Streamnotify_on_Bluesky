@@ -989,6 +989,68 @@ class Database:
             "deleted_videos": deleted_videos
         }
 
+    def get_video(self, video_id: str) -> Optional[dict]:
+        """
+        指定動画IDの情報を取得（schedule_manager.py 用）
+
+        Args:
+            video_id: 動画ID
+
+        Returns:
+            動画情報（dict）またはNone
+        """
+        try:
+            conn = self._get_connection()
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+
+            cursor.execute("SELECT * FROM videos WHERE video_id = ?", (video_id,))
+            result = cursor.fetchone()
+            conn.close()
+
+            return dict(result) if result else None
+
+        except Exception as e:
+            logger.error(f"❌ 動画情報取得失敗: {e}")
+            return None
+
+    def update_selection_batch(
+        self, video_ids: list, selected: bool, scheduled_at: str = None
+    ) -> dict:
+        """
+        複数の動画の投稿選択状態を一括更新
+
+        Args:
+            video_ids: 動画IDのリスト
+            selected: 選択状態
+            scheduled_at: 予約日時（オプション）
+
+        Returns:
+            {
+                "success_count": int,
+                "failed_count": int,
+                "failed_videos": [video_id, ...]
+            }
+        """
+        success_count = 0
+        failed_videos = []
+
+        for video_id in video_ids:
+            try:
+                if not self.update_selection(video_id, selected, scheduled_at):
+                    failed_videos.append(video_id)
+                else:
+                    success_count += 1
+            except Exception as e:
+                logger.error(f"❌ 一括更新失敗 {video_id}: {e}")
+                failed_videos.append(video_id)
+
+        return {
+            "success_count": success_count,
+            "failed_count": len(failed_videos),
+            "failed_videos": failed_videos,
+        }
+
 
 def get_database(db_path=DB_PATH) -> Database:
     """データベースオブジェクトを取得"""
